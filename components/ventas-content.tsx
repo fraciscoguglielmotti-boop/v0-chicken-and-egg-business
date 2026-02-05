@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Plus, Filter, Download, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,7 +13,9 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { DataTable } from "./data-table"
+import { SheetsStatus } from "./sheets-status"
 import { NuevaVentaDialog } from "./nueva-venta-dialog"
+import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales } from "@/lib/store"
 import type { Venta } from "@/lib/types"
 
@@ -25,12 +27,33 @@ function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
-function formatDate(date: Date): string {
+function formatDate(date: Date | string): string {
   return new Intl.DateTimeFormat("es-AR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
   }).format(new Date(date))
+}
+
+function sheetRowToVenta(row: SheetRow, index: number): Venta {
+  return {
+    id: row.ID || String(index),
+    fecha: new Date(row.Fecha || Date.now()),
+    clienteId: row.ClienteID || "",
+    clienteNombre: row.Cliente || "",
+    items: [
+      {
+        productoId: "pollo_a",
+        productoNombre: row.Productos || "Producto",
+        cantidad: Number(row.Cantidad) || 0,
+        precioUnitario: Number(row.PrecioUnitario) || 0,
+        subtotal: Number(row.Total) || 0,
+      },
+    ],
+    total: Number(row.Total) || 0,
+    estado: (row.Estado as Venta["estado"]) || "pendiente",
+    createdAt: new Date(row.Fecha || Date.now()),
+  }
 }
 
 const estadoColors = {
@@ -46,10 +69,21 @@ const estadoLabels = {
 }
 
 export function VentasContent() {
-  const [ventas, setVentas] = useState(ventasIniciales)
+  const { rows, isLoading, error, mutate } = useSheet("Ventas")
+  const [localVentas, setLocalVentas] = useState(ventasIniciales)
   const [searchTerm, setSearchTerm] = useState("")
   const [estadoFilter, setEstadoFilter] = useState<string>("todos")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const isConnected = !error && !isLoading && rows.length >= 0 && !isLoading
+
+  const ventas: Venta[] = useMemo(() => {
+    if (isConnected && rows.length > 0) {
+      return rows.map(sheetRowToVenta)
+    }
+    return localVentas
+  }, [isConnected, rows, localVentas])
 
   const filteredVentas = ventas.filter((venta) => {
     const matchesSearch = venta.clienteNombre
@@ -65,9 +99,39 @@ export function VentasContent() {
     (v) => v.estado === "pendiente"
   ).length
 
-  const handleNuevaVenta = (venta: Venta) => {
-    setVentas([venta, ...ventas])
-    setDialogOpen(false)
+  const handleNuevaVenta = async (venta: Venta) => {
+    setSaving(true)
+    try {
+      // Build products summary
+      const productos = venta.items
+        .map((i) => `${i.cantidad} ${i.productoNombre}`)
+        .join(", ")
+
+      const sheetValues = [
+        [
+          venta.id,
+          new Date(venta.fecha).toLocaleDateString("es-AR"),
+          venta.clienteId,
+          venta.clienteNombre,
+          productos,
+          String(venta.items.reduce((a, i) => a + i.cantidad, 0)),
+          String(
+            venta.items.length > 0 ? venta.items[0].precioUnitario : 0
+          ),
+          String(venta.total),
+          venta.estado,
+        ],
+      ]
+
+      await addRow("Ventas", sheetValues)
+      await mutate()
+    } catch {
+      // If Sheets fails, save locally
+      setLocalVentas((prev) => [venta, ...prev])
+    } finally {
+      setSaving(false)
+      setDialogOpen(false)
+    }
   }
 
   const columns = [
@@ -152,7 +216,7 @@ export function VentasContent() {
 
       {/* Toolbar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 gap-3">
+        <div className="flex flex-1 items-center gap-3">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -174,15 +238,16 @@ export function VentasContent() {
               <SelectItem value="parcial">Parcial</SelectItem>
             </SelectContent>
           </Select>
+          <SheetsStatus isLoading={isLoading} error={error} isConnected={isConnected} />
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm">
             <Download className="mr-2 h-4 w-4" />
             Exportar
           </Button>
-          <Button size="sm" onClick={() => setDialogOpen(true)}>
+          <Button size="sm" onClick={() => setDialogOpen(true)} disabled={saving}>
             <Plus className="mr-2 h-4 w-4" />
-            Nueva Venta
+            {saving ? "Guardando..." : "Nueva Venta"}
           </Button>
         </div>
       </div>
@@ -191,7 +256,7 @@ export function VentasContent() {
       <DataTable
         columns={columns}
         data={filteredVentas}
-        emptyMessage="No hay ventas registradas"
+        emptyMessage={isLoading ? "Cargando ventas..." : "No hay ventas registradas"}
       />
 
       {/* Dialog */}
