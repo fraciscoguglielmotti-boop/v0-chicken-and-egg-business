@@ -14,7 +14,6 @@ import {
   Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Card,
@@ -32,26 +31,20 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { SHEET_NAMES, SHEET_COLUMNS } from "@/lib/google-sheets";
 
-interface KeyDebugInfo {
-  rawLength: number;
-  parsedLength: number;
-  rawStartsWith: string;
-  rawEndsWith: string;
-  parsedStartsWith: string;
-  parsedHasBeginMarker: boolean;
-  parsedHasEndMarker: boolean;
-  parsedHasRealNewlines: boolean;
-  parsedNewlineCount: number;
-}
-
 interface DiagnoseResult {
   status: string;
   message: string;
   missing?: string[];
   spreadsheetTitle?: string;
   availableSheets?: string[];
+  serviceAccountEmail?: string;
   detail?: string;
-  keyDebug?: KeyDebugInfo;
+  configInfo?: {
+    hasJson: boolean;
+    hasEmail: boolean;
+    hasKey: boolean;
+    jsonLength: number;
+  };
 }
 
 export function SheetsContent() {
@@ -118,7 +111,7 @@ export function SheetsContent() {
             Diagnostico de Conexion
           </CardTitle>
           <CardDescription>
-            Prueba la conexion y te mostramos exactamente que esta pasando
+            Prueba la conexion con tu hoja de Google Sheets
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -143,134 +136,77 @@ export function SheetsContent() {
                 <div className="flex-1 space-y-2">
                   <p className="font-medium text-foreground">{result.message}</p>
 
-                  {result.status === "missing_vars" && result.missing && (
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">
-                        Agrega estas variables en la seccion{" "}
-                        <strong>Vars</strong> del sidebar izquierdo de v0:
-                      </p>
-                      <ul className="space-y-1">
-                        {result.missing.map((v) => (
-                          <li
-                            key={v}
-                            className="flex items-center gap-2 text-sm"
-                          >
-                            <code className="rounded bg-muted px-2 py-0.5 font-mono text-xs text-foreground">
-                              {v}
-                            </code>
-                            <span className="text-destructive">
-                              -- no configurada
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
                   {result.status === "connected" && (
                     <div className="space-y-2">
-                      {result.spreadsheetTitle && (
+                      {result.serviceAccountEmail && (
                         <p className="text-sm text-muted-foreground">
-                          Hoja:{" "}
-                          <strong className="text-foreground">
-                            {result.spreadsheetTitle}
-                          </strong>
+                          Cuenta de servicio: <strong className="text-foreground">{result.serviceAccountEmail}</strong>
                         </p>
                       )}
-                      {result.availableSheets &&
-                        result.availableSheets.length > 0 && (
-                          <div>
-                            <p className="text-sm text-muted-foreground mb-1">
-                              Pestanas encontradas:
-                            </p>
-                            <div className="flex flex-wrap gap-1">
-                              {result.availableSheets.map((s) => {
-                                const isExpected = Object.values(
-                                  SHEET_NAMES
-                                ).includes(s as string);
-                                return (
-                                  <span
-                                    key={s}
-                                    className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
-                                      isExpected
-                                        ? "bg-primary/10 text-primary"
-                                        : "bg-muted text-muted-foreground"
-                                    }`}
-                                  >
-                                    {isExpected && (
-                                      <CheckCircle2 className="h-3 w-3" />
-                                    )}
-                                    {s}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                            {/* Verificar pestanas faltantes */}
-                            {(() => {
-                              const missingSheets = Object.values(
-                                SHEET_NAMES
-                              ).filter(
-                                (name) =>
-                                  !result.availableSheets?.includes(name)
+                      {result.spreadsheetTitle && (
+                        <p className="text-sm text-muted-foreground">
+                          Hoja: <strong className="text-foreground">{result.spreadsheetTitle}</strong>
+                        </p>
+                      )}
+                      {result.availableSheets && result.availableSheets.length > 0 && (
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Pestanas encontradas:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {result.availableSheets.map((s) => {
+                              const isExpected = Object.values(SHEET_NAMES).includes(s as string);
+                              return (
+                                <span
+                                  key={s}
+                                  className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
+                                    isExpected ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                                  }`}
+                                >
+                                  {isExpected && <CheckCircle2 className="h-3 w-3" />}
+                                  {s}
+                                </span>
                               );
-                              if (missingSheets.length > 0) {
-                                return (
-                                  <div className="mt-2">
-                                    <p className="text-sm text-amber-600">
-                                      Pestanas faltantes (crealas en tu Sheet):
-                                    </p>
-                                    <div className="flex flex-wrap gap-1 mt-1">
-                                      {missingSheets.map((s) => (
-                                        <span
-                                          key={s}
-                                          className="inline-block rounded bg-amber-100 px-2 py-1 text-xs text-amber-700"
-                                        >
-                                          {s}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              return null;
-                            })()}
+                            })}
                           </div>
-                        )}
+                          {(() => {
+                            const missingSheets = Object.values(SHEET_NAMES).filter(
+                              (name) => !result.availableSheets?.includes(name)
+                            );
+                            if (missingSheets.length > 0) {
+                              return (
+                                <div className="mt-2">
+                                  <p className="text-sm text-amber-600">Pestanas faltantes (crealas en tu Sheet):</p>
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {missingSheets.map((s) => (
+                                      <span key={s} className="inline-block rounded bg-amber-100 px-2 py-1 text-xs text-amber-700">
+                                        {s}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {result.status !== "connected" &&
-                    result.status !== "missing_vars" && (
-                      <div className="space-y-2">
-                        {result.detail && (
-                          <details className="text-xs text-muted-foreground">
-                            <summary className="cursor-pointer hover:text-foreground">
-                              Ver detalle tecnico
-                            </summary>
-                            <pre className="mt-1 whitespace-pre-wrap rounded bg-muted p-2 font-mono">
-                              {result.detail}
-                            </pre>
-                          </details>
-                        )}
-                        {result.keyDebug && (
-                          <details className="text-xs text-muted-foreground">
-                            <summary className="cursor-pointer hover:text-foreground">
-                              Ver diagnostico de la clave privada
-                            </summary>
-                            <div className="mt-1 rounded bg-muted p-2 font-mono space-y-1">
-                              <p>Largo raw: {result.keyDebug.rawLength} chars</p>
-                              <p>Largo parseado: {result.keyDebug.parsedLength} chars</p>
-                              <p>Empieza con: <code>{result.keyDebug.rawStartsWith}...</code></p>
-                              <p>Termina con: <code>...{result.keyDebug.rawEndsWith}</code></p>
-                              <p>Tiene BEGIN marker: {result.keyDebug.parsedHasBeginMarker ? "SI" : "NO"}</p>
-                              <p>Tiene END marker: {result.keyDebug.parsedHasEndMarker ? "SI" : "NO"}</p>
-                              <p>Tiene saltos de linea reales: {result.keyDebug.parsedHasRealNewlines ? "SI" : "NO"}</p>
-                              <p>Cantidad de saltos de linea: {result.keyDebug.parsedNewlineCount}</p>
-                            </div>
-                          </details>
-                        )}
-                      </div>
-                    )}
+                  {result.configInfo && (
+                    <div className="rounded bg-muted p-2 text-xs space-y-1">
+                      <p className="font-semibold text-foreground">Estado de las variables:</p>
+                      <p>GOOGLE_SERVICE_ACCOUNT_JSON: {result.configInfo.hasJson ? `Configurada (${result.configInfo.jsonLength} chars)` : "No configurada"}</p>
+                      <p>GOOGLE_SERVICE_ACCOUNT_EMAIL: {result.configInfo.hasEmail ? "Configurada" : "No configurada"}</p>
+                      <p>GOOGLE_PRIVATE_KEY: {result.configInfo.hasKey ? "Configurada" : "No configurada"}</p>
+                    </div>
+                  )}
+
+                  {result.detail && result.status !== "connected" && (
+                    <details className="text-xs text-muted-foreground">
+                      <summary className="cursor-pointer hover:text-foreground">Ver detalle tecnico</summary>
+                      <pre className="mt-1 whitespace-pre-wrap rounded bg-muted p-2 font-mono">{result.detail}</pre>
+                    </details>
+                  )}
                 </div>
               </div>
             </div>
@@ -278,179 +214,136 @@ export function SheetsContent() {
         </CardContent>
       </Card>
 
-      {/* Guia de configuracion */}
+      {/* Guia */}
       <Card>
         <CardHeader>
-          <CardTitle>Guia de Configuracion Paso a Paso</CardTitle>
-          <CardDescription>
-            Segui estos pasos para conectar tu hoja de calculo
-          </CardDescription>
+          <CardTitle>Guia de Configuracion</CardTitle>
+          <CardDescription>Segui estos pasos para conectar tu hoja de calculo</CardDescription>
         </CardHeader>
         <CardContent>
-          <Accordion type="single" collapsible className="w-full">
+          <Accordion type="single" collapsible className="w-full" defaultValue="step3">
             <AccordionItem value="step1">
-              <AccordionTrigger>
-                Paso 1: Crear cuenta de servicio en Google Cloud
-              </AccordionTrigger>
+              <AccordionTrigger>Paso 1: Crear cuenta de servicio en Google Cloud</AccordionTrigger>
               <AccordionContent className="space-y-3">
                 <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
                   <li>
                     Anda a{" "}
-                    <a
-                      href="https://console.cloud.google.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary underline inline-flex items-center gap-1"
-                    >
-                      Google Cloud Console
-                      <ExternalLink className="h-3 w-3" />
+                    <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
+                      Google Cloud Console <ExternalLink className="h-3 w-3" />
                     </a>
                   </li>
                   <li>Crea un proyecto nuevo o usa uno existente</li>
-                  <li>
-                    Busca <strong>Google Sheets API</strong> en la biblioteca y
-                    habilitala
-                  </li>
-                  <li>
-                    Anda a <strong>Credenciales</strong> {">"}{" "}
-                    <strong>Crear credenciales</strong> {">"}{" "}
-                    <strong>Cuenta de servicio</strong>
-                  </li>
-                  <li>
-                    Ponele un nombre, crea y despues anda a la pestaña{" "}
-                    <strong>Claves</strong>
-                  </li>
-                  <li>
-                    Click en <strong>Agregar clave</strong> {">"}{" "}
-                    <strong>Crear clave nueva</strong> {">"}{" "}
-                    <strong>JSON</strong>
-                  </li>
+                  <li>Busca <strong>Google Sheets API</strong> y habilitala</li>
+                  <li>Anda a <strong>Credenciales</strong> {">"} <strong>Crear credenciales</strong> {">"} <strong>Cuenta de servicio</strong></li>
+                  <li>Crea la cuenta, anda a <strong>Claves</strong> {">"} <strong>Agregar clave</strong> {">"} <strong>JSON</strong></li>
                   <li>Se descarga un archivo JSON. Guardalo bien.</li>
                 </ol>
               </AccordionContent>
             </AccordionItem>
 
             <AccordionItem value="step2">
-              <AccordionTrigger>
-                Paso 2: Compartir tu hoja de calculo
-              </AccordionTrigger>
+              <AccordionTrigger>Paso 2: Compartir tu hoja de calculo</AccordionTrigger>
               <AccordionContent className="space-y-3">
                 <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
                   <li>Abri tu hoja de Google Sheets</li>
+                  <li>Click en <strong>Compartir</strong></li>
                   <li>
-                    Click en <strong>Compartir</strong> (arriba a la derecha)
+                    Pega el email de la cuenta de servicio (del JSON, campo <code className="rounded bg-muted px-1 text-xs text-foreground">client_email</code>)
                   </li>
-                  <li>
-                    Pega el email de la cuenta de servicio (el{" "}
-                    <code className="rounded bg-muted px-1 text-xs text-foreground">
-                      client_email
-                    </code>{" "}
-                    del JSON, termina en{" "}
-                    <code className="rounded bg-muted px-1 text-xs text-foreground">
-                      @...iam.gserviceaccount.com
-                    </code>
-                    )
-                  </li>
-                  <li>
-                    Dale permisos de <strong>Editor</strong>
-                  </li>
+                  <li>Dale permisos de <strong>Editor</strong></li>
                 </ol>
               </AccordionContent>
             </AccordionItem>
 
             <AccordionItem value="step3">
-              <AccordionTrigger>
-                Paso 3: Configurar las variables de entorno
-              </AccordionTrigger>
+              <AccordionTrigger>Paso 3: Configurar variables de entorno (IMPORTANTE)</AccordionTrigger>
               <AccordionContent className="space-y-4">
-                <Alert>
+                <Alert className="border-primary bg-primary/5">
                   <Info className="h-4 w-4" />
-                  <AlertTitle>Donde van las variables</AlertTitle>
+                  <AlertTitle>Metodo recomendado (evita problemas con la clave privada)</AlertTitle>
                   <AlertDescription>
-                    En el sidebar izquierdo de v0, anda a la seccion{" "}
-                    <strong>Vars</strong> y agrega cada una.
+                    Solo necesitas <strong>2 variables</strong>. Agregalas en el sidebar {">"} <strong>Vars</strong>.
                   </AlertDescription>
                 </Alert>
 
-                <div className="space-y-3">
-                  {[
-                    {
-                      name: "GOOGLE_SPREADSHEET_ID",
-                      desc: 'El ID de tu hoja. Esta en la URL entre "/d/" y "/edit". Ejemplo: si la URL es https://docs.google.com/spreadsheets/d/1BxiM.../edit, el ID es 1BxiM...',
-                    },
-                    {
-                      name: "GOOGLE_SERVICE_ACCOUNT_EMAIL",
-                      desc: 'El campo "client_email" del archivo JSON que descargaste. Es algo como mi-cuenta@mi-proyecto.iam.gserviceaccount.com',
-                    },
-                    {
-                      name: "GOOGLE_PRIVATE_KEY",
-                      desc: 'El campo "private_key" del JSON. Copialo COMPLETO, incluyendo "-----BEGIN PRIVATE KEY-----" y "-----END PRIVATE KEY-----"',
-                    },
-                  ].map((variable) => (
-                    <div
-                      key={variable.name}
-                      className="rounded-lg border bg-muted/30 p-3 space-y-1"
-                    >
-                      <div className="flex items-center justify-between">
-                        <Label className="font-mono text-sm font-semibold text-foreground">
-                          {variable.name}
-                        </Label>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 gap-1 text-xs"
-                          onClick={() => copyToClipboard(variable.name)}
-                        >
-                          {copied === variable.name ? (
-                            <>
-                              <Check className="h-3 w-3" />
-                              Copiado
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="h-3 w-3" />
-                              Copiar nombre
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        {variable.desc}
-                      </p>
+                <div className="space-y-4">
+                  <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="font-mono text-sm font-bold text-foreground">GOOGLE_SPREADSHEET_ID</Label>
+                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => copyToClipboard("GOOGLE_SPREADSHEET_ID")}>
+                        {copied === "GOOGLE_SPREADSHEET_ID" ? <><Check className="h-3 w-3" /> Copiado</> : <><Copy className="h-3 w-3" /> Copiar</>}
+                      </Button>
                     </div>
-                  ))}
+                    <p className="text-xs text-muted-foreground">
+                      El ID de tu hoja. Esta en la URL de Google Sheets:
+                    </p>
+                    <code className="block rounded bg-muted p-2 text-xs text-foreground break-all">
+                      {'https://docs.google.com/spreadsheets/d/'}
+                      <strong className="text-primary">{'ESTE_ES_EL_ID'}</strong>
+                      {'/edit'}
+                    </code>
+                  </div>
+
+                  <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label className="font-mono text-sm font-bold text-foreground">GOOGLE_SERVICE_ACCOUNT_JSON</Label>
+                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => copyToClipboard("GOOGLE_SERVICE_ACCOUNT_JSON")}>
+                        {copied === "GOOGLE_SERVICE_ACCOUNT_JSON" ? <><Check className="h-3 w-3" /> Copiado</> : <><Copy className="h-3 w-3" /> Copiar</>}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Abri el archivo JSON que descargaste de Google Cloud y <strong>pega TODO el contenido</strong> como valor de esta variable.
+                    </p>
+                    <div className="rounded bg-muted p-2 text-xs font-mono text-muted-foreground">
+                      <p>{'{'}</p>
+                      <p className="pl-4">{'"type": "service_account",'}</p>
+                      <p className="pl-4">{'"project_id": "...",'}</p>
+                      <p className="pl-4">{'"private_key": "-----BEGIN...",'}</p>
+                      <p className="pl-4">{'"client_email": "...@....iam.gserviceaccount.com",'}</p>
+                      <p className="pl-4">{'...'}</p>
+                      <p>{'}'}</p>
+                    </div>
+                    <p className="text-xs text-amber-600 font-medium">
+                      Copia TODO el JSON completo, desde la llave de apertura hasta la llave de cierre.
+                    </p>
+                  </div>
                 </div>
+
+                <details className="text-xs text-muted-foreground">
+                  <summary className="cursor-pointer hover:text-foreground font-medium">
+                    Metodo alternativo (3 variables separadas)
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    <p>Si preferis usar variables separadas en vez del JSON completo:</p>
+                    {[
+                      { name: "GOOGLE_SPREADSHEET_ID", desc: "ID de la hoja (de la URL)" },
+                      { name: "GOOGLE_SERVICE_ACCOUNT_EMAIL", desc: 'Campo "client_email" del JSON' },
+                      { name: "GOOGLE_PRIVATE_KEY", desc: 'Campo "private_key" del JSON, sin comillas externas' },
+                    ].map((v) => (
+                      <div key={v.name} className="rounded border p-2">
+                        <code className="font-mono text-xs font-semibold text-foreground">{v.name}</code>
+                        <p className="text-xs text-muted-foreground">{v.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               </AccordionContent>
             </AccordionItem>
 
             <AccordionItem value="step4">
-              <AccordionTrigger>
-                Paso 4: Verificar las pestanas de tu hoja
-              </AccordionTrigger>
+              <AccordionTrigger>Paso 4: Verificar las pestanas de tu hoja</AccordionTrigger>
               <AccordionContent className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Tu hoja necesita estas pestanas (tabs abajo del todo en Google
-                  Sheets). Si no las tenes, crealas:
+                  Tu hoja necesita estas pestanas con los encabezados en la fila 1:
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {Object.entries(SHEET_NAMES).map(([key, name]) => (
                     <div key={key} className="rounded-lg border p-3">
-                      <h4 className="font-semibold text-sm text-foreground mb-2">
-                        {name}
-                      </h4>
-                      <p className="text-xs text-muted-foreground mb-2">
-                        Columnas en fila 1:
-                      </p>
+                      <h4 className="font-semibold text-sm text-foreground mb-2">{name}</h4>
+                      <p className="text-xs text-muted-foreground mb-2">Columnas en fila 1:</p>
                       <div className="flex flex-wrap gap-1">
-                        {SHEET_COLUMNS[
-                          key as keyof typeof SHEET_COLUMNS
-                        ]?.map((col, idx) => (
-                          <span
-                            key={idx}
-                            className="inline-block rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
-                          >
-                            {col}
-                          </span>
+                        {SHEET_COLUMNS[key as keyof typeof SHEET_COLUMNS]?.map((col, idx) => (
+                          <span key={idx} className="inline-block rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">{col}</span>
                         ))}
                       </div>
                     </div>

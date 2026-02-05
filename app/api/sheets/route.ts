@@ -1,103 +1,112 @@
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
 
-function checkEnvVars() {
-  const missing: string[] = [];
-  if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL)
-    missing.push("GOOGLE_SERVICE_ACCOUNT_EMAIL");
-  if (!process.env.GOOGLE_PRIVATE_KEY) missing.push("GOOGLE_PRIVATE_KEY");
-  if (!process.env.GOOGLE_SPREADSHEET_ID)
-    missing.push("GOOGLE_SPREADSHEET_ID");
-  return missing;
+interface ServiceAccountCredentials {
+  client_email: string;
+  private_key: string;
 }
 
-function parsePrivateKey(raw: string | undefined): string {
-  if (!raw) return "";
-  let key = raw.trim();
-
-  // Remove surrounding quotes (single, double, or backtick)
-  if (
-    (key.startsWith('"') && key.endsWith('"')) ||
-    (key.startsWith("'") && key.endsWith("'")) ||
-    (key.startsWith("`") && key.endsWith("`"))
-  ) {
-    key = key.slice(1, -1);
+function getCredentials(): {
+  credentials: ServiceAccountCredentials | null;
+  error: string | null;
+} {
+  // Method 1: Full JSON (recommended)
+  const jsonRaw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (jsonRaw) {
+    try {
+      const parsed = JSON.parse(jsonRaw);
+      if (parsed.client_email && parsed.private_key) {
+        return { credentials: parsed, error: null };
+      }
+      return {
+        credentials: null,
+        error:
+          "El JSON no contiene client_email o private_key. Verifica que sea el archivo correcto de cuenta de servicio.",
+      };
+    } catch {
+      return {
+        credentials: null,
+        error:
+          "GOOGLE_SERVICE_ACCOUNT_JSON no es un JSON valido. Pega el contenido COMPLETO del archivo .json descargado de Google Cloud.",
+      };
+    }
   }
 
-  // Replace literal \n with real newlines (handles both \\n and \n)
-  key = key.replace(/\\n/g, "\n");
-
-  // Also handle cases where the key was JSON-escaped twice
-  key = key.replace(/\\\\n/g, "\n");
-
-  // Remove any carriage returns
-  key = key.replace(/\r/g, "");
-
-  // If the key doesn't have PEM headers, try to reconstruct
-  if (!key.includes("-----BEGIN")) {
-    // Maybe the user pasted just the base64 content
-    const cleanBase64 = key.replace(/\s+/g, "");
-    key = `-----BEGIN PRIVATE KEY-----\n${cleanBase64}\n-----END PRIVATE KEY-----\n`;
+  // Method 2: Individual vars (fallback)
+  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const key = process.env.GOOGLE_PRIVATE_KEY;
+  if (email && key) {
+    let privateKey = key.replace(/\\n/g, "\n");
+    if (
+      (privateKey.startsWith('"') && privateKey.endsWith('"')) ||
+      (privateKey.startsWith("'") && privateKey.endsWith("'"))
+    ) {
+      privateKey = privateKey.slice(1, -1);
+      privateKey = privateKey.replace(/\\n/g, "\n");
+    }
+    return {
+      credentials: { client_email: email, private_key: privateKey },
+      error: null,
+    };
   }
 
-  // Ensure the key ends with a newline after END marker
-  if (key.includes("-----END PRIVATE KEY-----") && !key.endsWith("\n")) {
-    key = key + "\n";
-  }
-
-  return key;
-}
-
-function getAuth() {
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const privateKey = parsePrivateKey(process.env.GOOGLE_PRIVATE_KEY);
-
-  return new google.auth.JWT({
-    email: clientEmail,
-    key: privateKey,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
+  return {
+    credentials: null,
+    error:
+      "No se encontraron credenciales. Configura GOOGLE_SERVICE_ACCOUNT_JSON (recomendado) o GOOGLE_SERVICE_ACCOUNT_EMAIL + GOOGLE_PRIVATE_KEY.",
+  };
 }
 
 function getSheets() {
-  const auth = getAuth();
+  const { credentials, error } = getCredentials();
+  if (!credentials || error) {
+    throw new Error(error || "Sin credenciales");
+  }
+
+  const auth = new google.auth.JWT({
+    email: credentials.client_email,
+    key: credentials.private_key,
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+
   return google.sheets({ version: "v4", auth });
 }
 
-// GET - Diagnostico o leer datos
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action");
   const sheetName = searchParams.get("sheet");
 
-  // Endpoint de diagnostico
   if (action === "diagnose") {
-    const missing = checkEnvVars();
-    if (missing.length > 0) {
+    // Step 1: Check spreadsheet ID
+    if (!process.env.GOOGLE_SPREADSHEET_ID) {
       return NextResponse.json({
         status: "missing_vars",
-        message: `Faltan variables de entorno: ${missing.join(", ")}`,
-        missing,
+        message: "Falta la variable GOOGLE_SPREADSHEET_ID.",
+        missing: ["GOOGLE_SPREADSHEET_ID"],
       });
     }
 
-    // Debug: analizar el estado de la clave
-    const rawKey = process.env.GOOGLE_PRIVATE_KEY || "";
-    const parsedKey = parsePrivateKey(rawKey);
-    const keyDebug = {
-      rawLength: rawKey.length,
-      parsedLength: parsedKey.length,
-      rawStartsWith: rawKey.substring(0, 30),
-      rawEndsWith: rawKey.substring(rawKey.length - 30),
-      parsedStartsWith: parsedKey.substring(0, 35),
-      parsedHasBeginMarker: parsedKey.includes("-----BEGIN PRIVATE KEY-----"),
-      parsedHasEndMarker: parsedKey.includes("-----END PRIVATE KEY-----"),
-      parsedHasRealNewlines: parsedKey.includes("\n"),
-      parsedNewlineCount: (parsedKey.match(/\n/g) || []).length,
-    };
-    console.log("[v0] Key debug info:", JSON.stringify(keyDebug, null, 2));
+    // Step 2: Check credentials
+    const { credentials, error: credError } = getCredentials();
+    if (!credentials) {
+      const hasJson = !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+      const hasEmail = !!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+      const hasKey = !!process.env.GOOGLE_PRIVATE_KEY;
 
-    // Intentar conectar
+      return NextResponse.json({
+        status: "missing_vars",
+        message: credError,
+        configInfo: {
+          hasJson,
+          hasEmail,
+          hasKey,
+          jsonLength: process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.length || 0,
+        },
+      });
+    }
+
+    // Step 3: Try to connect
     try {
       const sheets = getSheets();
       const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
@@ -107,29 +116,33 @@ export async function GET(request: Request) {
 
       return NextResponse.json({
         status: "connected",
-        message: `Conectado a: "${response.data.properties?.title}"`,
+        message: `Conectado exitosamente a: "${response.data.properties?.title}"`,
         spreadsheetTitle: response.data.properties?.title,
         availableSheets: sheetTitles,
+        serviceAccountEmail: credentials.client_email,
       });
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
 
-      if (errorMsg.includes("DECODER") || errorMsg.includes("unsupported") || errorMsg.includes("PEM") || errorMsg.includes("routines")) {
+      if (
+        errorMsg.includes("DECODER") ||
+        errorMsg.includes("unsupported") ||
+        errorMsg.includes("PEM") ||
+        errorMsg.includes("routines")
+      ) {
         return NextResponse.json({
           status: "key_format_error",
           message:
-            "La GOOGLE_PRIVATE_KEY tiene formato incorrecto. Ve al sidebar > Vars, borra la variable GOOGLE_PRIVATE_KEY y volvela a pegar. Copia el valor del campo 'private_key' del JSON descargado de Google Cloud, SIN las comillas externas. Debe empezar con -----BEGIN PRIVATE KEY----- y terminar con -----END PRIVATE KEY-----",
+            "Error con la clave privada. Usa el metodo recomendado: en Vars, crea GOOGLE_SERVICE_ACCOUNT_JSON y pega el contenido COMPLETO del archivo JSON descargado de Google Cloud (todo el contenido, incluyendo las llaves { }).",
           detail: errorMsg,
-          keyDebug,
         });
       }
       if (errorMsg.includes("invalid_grant") || errorMsg.includes("JWT")) {
         return NextResponse.json({
           status: "auth_error",
           message:
-            "Error de autenticacion. Verifica que GOOGLE_PRIVATE_KEY y GOOGLE_SERVICE_ACCOUNT_EMAIL sean correctos.",
+            "Error de autenticacion. Verifica que las credenciales sean correctas y que la cuenta de servicio este activa.",
           detail: errorMsg,
-          keyDebug,
         });
       }
       if (
@@ -140,7 +153,8 @@ export async function GET(request: Request) {
         return NextResponse.json({
           status: "not_found",
           message:
-            "No se encontro la hoja de calculo. Verifica el GOOGLE_SPREADSHEET_ID y que la hoja este compartida con la cuenta de servicio.",
+            "No se encontro la hoja de calculo. Verifica el GOOGLE_SPREADSHEET_ID y que la hoja este compartida con: " +
+            credentials.client_email,
           detail: errorMsg,
         });
       }
@@ -148,37 +162,28 @@ export async function GET(request: Request) {
         return NextResponse.json({
           status: "permission_error",
           message:
-            "Sin permisos. Asegurate de compartir la hoja con el email de la cuenta de servicio como Editor.",
+            "Sin permisos. Comparti la hoja de calculo con: " +
+            credentials.client_email +
+            " como Editor.",
           detail: errorMsg,
         });
       }
 
       return NextResponse.json({
         status: "error",
-        message: "Error inesperado al conectar con Google Sheets.",
+        message: "Error inesperado al conectar.",
         detail: errorMsg,
       });
     }
   }
 
-  // Leer datos de una hoja
+  // Read data
   try {
-    const missing = checkEnvVars();
-    if (missing.length > 0) {
-      return NextResponse.json(
-        {
-          error: `Faltan variables: ${missing.join(", ")}`,
-          missing,
-        },
-        { status: 400 }
-      );
-    }
-
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
     if (!sheetName) {
       return NextResponse.json(
         { error: "Falta el parametro 'sheet'" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -197,29 +202,20 @@ export async function GET(request: Request) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
       { error: "Error al leer Google Sheets", detail: errorMsg },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-// POST - Agregar filas
 export async function POST(request: Request) {
   try {
-    const missing = checkEnvVars();
-    if (missing.length > 0) {
-      return NextResponse.json(
-        { error: `Faltan variables: ${missing.join(", ")}` },
-        { status: 400 }
-      );
-    }
-
     const { sheetName, values } = await request.json();
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
 
     if (!sheetName || !values) {
       return NextResponse.json(
         { error: "Faltan campos requeridos (sheetName, values)" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -236,29 +232,20 @@ export async function POST(request: Request) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
       { error: "Error al escribir en Google Sheets", detail: errorMsg },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-// PUT - Actualizar fila
 export async function PUT(request: Request) {
   try {
-    const missing = checkEnvVars();
-    if (missing.length > 0) {
-      return NextResponse.json(
-        { error: `Faltan variables: ${missing.join(", ")}` },
-        { status: 400 }
-      );
-    }
-
     const { sheetName, rowIndex, values } = await request.json();
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
 
     if (!sheetName || rowIndex === undefined || !values) {
       return NextResponse.json(
         { error: "Faltan campos requeridos" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -277,7 +264,7 @@ export async function PUT(request: Request) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
       { error: "Error al actualizar Google Sheets", detail: errorMsg },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
