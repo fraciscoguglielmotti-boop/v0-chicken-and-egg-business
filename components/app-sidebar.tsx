@@ -14,20 +14,46 @@ import {
   FileSpreadsheet,
   X,
   Egg,
+  Calculator,
+  UserCheck,
+  Wallet,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
-const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Ventas", href: "/ventas", icon: ShoppingCart },
-  { name: "Cobros", href: "/cobros", icon: Receipt },
-  { name: "Compras", href: "/compras", icon: Package },
-  { name: "Clientes", href: "/clientes", icon: Users },
-  { name: "Proveedores", href: "/proveedores", icon: Truck },
-  { name: "Cuentas Corrientes", href: "/cuentas", icon: BarChart3 },
-  { name: "Google Sheets", href: "/sheets", icon: FileSpreadsheet },
-  { name: "Configuracion", href: "/config", icon: Settings },
+const navSections = [
+  {
+    label: "Principal",
+    items: [
+      { name: "Dashboard", href: "/", icon: LayoutDashboard },
+      { name: "Ventas", href: "/ventas", icon: ShoppingCart },
+      { name: "Cobros", href: "/cobros", icon: Receipt },
+      { name: "Compras", href: "/compras", icon: Package },
+    ],
+  },
+  {
+    label: "Gestion",
+    items: [
+      { name: "Clientes", href: "/clientes", icon: Users },
+      { name: "Proveedores", href: "/proveedores", icon: Truck },
+      { name: "Cuentas Corrientes", href: "/cuentas", icon: BarChart3 },
+      { name: "Vendedores", href: "/vendedores", icon: UserCheck },
+    ],
+  },
+  {
+    label: "Finanzas",
+    items: [
+      { name: "Contabilidad", href: "/contabilidad", icon: Calculator },
+      { name: "Flujo de Fondos", href: "/flujo", icon: Wallet },
+    ],
+  },
+  {
+    label: "Sistema",
+    items: [
+      { name: "Google Sheets", href: "/sheets", icon: FileSpreadsheet },
+      { name: "Configuracion", href: "/config", icon: Settings },
+    ],
+  },
 ]
 
 interface AppSidebarProps {
@@ -84,28 +110,35 @@ export function AppSidebar({ open, onClose }: AppSidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-3">
-          <ul className="space-y-1" role="list">
-            {navigation.map((item) => {
-              const isActive = pathname === item.href
-              return (
-                <li key={item.name}>
-                  <Link
-                    href={item.href}
-                    onClick={onClose}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-                      isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <item.icon className="h-[18px] w-[18px] shrink-0" />
-                    {item.name}
-                  </Link>
-                </li>
-              )
-            })}
-          </ul>
+          {navSections.map((section) => (
+            <div key={section.label} className="mb-4">
+              <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                {section.label}
+              </p>
+              <ul className="space-y-0.5" role="list">
+                {section.items.map((item) => {
+                  const isActive = pathname === item.href
+                  return (
+                    <li key={item.name}>
+                      <Link
+                        href={item.href}
+                        onClick={onClose}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                          isActive
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        <item.icon className="h-4 w-4 shrink-0" />
+                        {item.name}
+                      </Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          ))}
         </nav>
 
         {/* Footer */}

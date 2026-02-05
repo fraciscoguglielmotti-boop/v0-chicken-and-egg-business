@@ -99,7 +99,7 @@ export function VentasContent() {
     (v) => v.estado === "pendiente"
   ).length
 
-  const handleNuevaVenta = async (venta: Venta) => {
+  const handleNuevaVenta = async (venta: Venta & { vendedor?: string }) => {
     setSaving(true)
     try {
       // Build products summary
@@ -120,6 +120,7 @@ export function VentasContent() {
           ),
           String(venta.total),
           venta.estado,
+          venta.vendedor || "",
         ],
       ]
 

@@ -21,7 +21,9 @@ export const SHEET_NAMES = {
   COMPRAS: "Compras",
   CLIENTES: "Clientes",
   PROVEEDORES: "Proveedores",
-  PRODUCTOS: "Productos",
+  VENDEDORES: "Vendedores",
+  GASTOS: "Gastos",
+  INVERSIONES: "Inversiones",
 } as const
 
 // Estructura de columnas esperada para cada hoja
@@ -29,20 +31,24 @@ export const SHEET_COLUMNS = {
   VENTAS: [
     "ID",
     "Fecha",
+    "ClienteID",
     "Cliente",
-    "Producto",
+    "Productos",
     "Cantidad",
-    "Precio Unitario",
+    "PrecioUnitario",
     "Total",
     "Estado",
+    "Vendedor",
   ],
   COBROS: [
     "ID",
     "Fecha",
+    "ClienteID",
     "Cliente",
     "Monto",
-    "Metodo",
+    "MetodoPago",
     "Observaciones",
+    "Vendedor",
   ],
   COMPRAS: [
     "ID",
@@ -69,6 +75,27 @@ export const SHEET_COLUMNS = {
     "Telefono",
     "Direccion",
     "Saldo",
+  ],
+  VENDEDORES: [
+    "ID",
+    "Nombre",
+    "Comision",
+    "FechaAlta",
+  ],
+  GASTOS: [
+    "ID",
+    "Fecha",
+    "Tipo",
+    "Categoria",
+    "Descripcion",
+    "Monto",
+  ],
+  INVERSIONES: [
+    "ID",
+    "Fecha",
+    "Tipo",
+    "Descripcion",
+    "Monto",
   ],
 }
 
