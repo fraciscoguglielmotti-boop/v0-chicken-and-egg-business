@@ -39,12 +39,7 @@ interface DiagnoseResult {
   availableSheets?: string[];
   serviceAccountEmail?: string;
   detail?: string;
-  configInfo?: {
-    hasJson: boolean;
-    hasEmail: boolean;
-    hasKey: boolean;
-    jsonLength: number;
-  };
+  debug?: Record<string, unknown>;
 }
 
 export function SheetsContent() {
@@ -192,13 +187,15 @@ export function SheetsContent() {
                     </div>
                   )}
 
-                  {result.configInfo && (
-                    <div className="rounded bg-muted p-2 text-xs space-y-1">
-                      <p className="font-semibold text-foreground">Estado de las variables:</p>
-                      <p>GOOGLE_SERVICE_ACCOUNT_JSON: {result.configInfo.hasJson ? `Configurada (${result.configInfo.jsonLength} chars)` : "No configurada"}</p>
-                      <p>GOOGLE_SERVICE_ACCOUNT_EMAIL: {result.configInfo.hasEmail ? "Configurada" : "No configurada"}</p>
-                      <p>GOOGLE_PRIVATE_KEY: {result.configInfo.hasKey ? "Configurada" : "No configurada"}</p>
-                    </div>
+                  {result.debug && (
+                    <details className="text-xs text-muted-foreground" open>
+                      <summary className="cursor-pointer hover:text-foreground font-medium">Diagnostico detallado</summary>
+                      <div className="rounded bg-muted p-2 mt-1 space-y-1 font-mono">
+                        {Object.entries(result.debug).map(([key, value]) => (
+                          <p key={key}><span className="text-foreground">{key}:</span> {String(value)}</p>
+                        ))}
+                      </div>
+                    </details>
                   )}
 
                   {result.detail && result.status !== "connected" && (

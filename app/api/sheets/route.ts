@@ -6,30 +6,77 @@ interface ServiceAccountCredentials {
   private_key: string;
 }
 
+function tryParseJSON(raw: string): Record<string, string> | null {
+  // Attempt 1: Direct parse
+  try {
+    return JSON.parse(raw);
+  } catch { /* continue */ }
+
+  // Attempt 2: Trim whitespace and try again
+  const trimmed = raw.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch { /* continue */ }
+
+  // Attempt 3: Remove surrounding quotes that Vars might add
+  let cleaned = trimmed;
+  if ((cleaned.startsWith("'") && cleaned.endsWith("'")) ||
+      (cleaned.startsWith("`") && cleaned.endsWith("`"))) {
+    cleaned = cleaned.slice(1, -1);
+    try {
+      return JSON.parse(cleaned);
+    } catch { /* continue */ }
+  }
+
+  // Attempt 4: The env var system may have double-escaped the JSON
+  // e.g. \\\" instead of \"
+  try {
+    const unescaped = cleaned.replace(/\\\\"/g, '"').replace(/\\"/g, '"');
+    if (unescaped.startsWith("{")) {
+      return JSON.parse(unescaped);
+    }
+  } catch { /* continue */ }
+
+  // Attempt 5: Extract client_email and private_key with regex as last resort
+  const emailMatch = raw.match(/client_email["\s:]+([^"]*@[^"]*\.com)/);
+  const keyMatch = raw.match(/-----BEGIN[^-]*PRIVATE KEY-----[\s\S]*?-----END[^-]*PRIVATE KEY-----/);
+  if (emailMatch && keyMatch) {
+    return {
+      client_email: emailMatch[1],
+      private_key: keyMatch[0].replace(/\\n/g, "\n"),
+    };
+  }
+
+  return null;
+}
+
 function getCredentials(): {
   credentials: ServiceAccountCredentials | null;
   error: string | null;
+  debug?: Record<string, unknown>;
 } {
   // Method 1: Full JSON (recommended)
   const jsonRaw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (jsonRaw) {
-    try {
-      const parsed = JSON.parse(jsonRaw);
-      if (parsed.client_email && parsed.private_key) {
-        return { credentials: parsed, error: null };
-      }
-      return {
-        credentials: null,
-        error:
-          "El JSON no contiene client_email o private_key. Verifica que sea el archivo correcto de cuenta de servicio.",
-      };
-    } catch {
-      return {
-        credentials: null,
-        error:
-          "GOOGLE_SERVICE_ACCOUNT_JSON no es un JSON valido. Pega el contenido COMPLETO del archivo .json descargado de Google Cloud.",
-      };
+    const parsed = tryParseJSON(jsonRaw);
+    if (parsed && parsed.client_email && parsed.private_key) {
+      return { credentials: { client_email: parsed.client_email, private_key: parsed.private_key }, error: null };
     }
+    // Return debug info about what we received
+    return {
+      credentials: null,
+      error: "No se pudo leer GOOGLE_SERVICE_ACCOUNT_JSON correctamente.",
+      debug: {
+        length: jsonRaw.length,
+        first50: jsonRaw.substring(0, 50),
+        last50: jsonRaw.substring(jsonRaw.length - 50),
+        startsWithBrace: jsonRaw.trimStart().startsWith("{"),
+        endsWithBrace: jsonRaw.trimEnd().endsWith("}"),
+        hasClientEmail: jsonRaw.includes("client_email"),
+        hasPrivateKey: jsonRaw.includes("private_key"),
+        parsedSomething: parsed !== null,
+      },
+    };
   }
 
   // Method 2: Individual vars (fallback)
@@ -88,21 +135,12 @@ export async function GET(request: Request) {
     }
 
     // Step 2: Check credentials
-    const { credentials, error: credError } = getCredentials();
+    const { credentials, error: credError, debug: credDebug } = getCredentials();
     if (!credentials) {
-      const hasJson = !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-      const hasEmail = !!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-      const hasKey = !!process.env.GOOGLE_PRIVATE_KEY;
-
       return NextResponse.json({
         status: "missing_vars",
         message: credError,
-        configInfo: {
-          hasJson,
-          hasEmail,
-          hasKey,
-          jsonLength: process.env.GOOGLE_SERVICE_ACCOUNT_JSON?.length || 0,
-        },
+        debug: credDebug,
       });
     }
 
