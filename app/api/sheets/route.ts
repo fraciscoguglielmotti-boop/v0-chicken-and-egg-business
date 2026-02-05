@@ -11,9 +11,25 @@ function checkEnvVars() {
   return missing;
 }
 
+function parsePrivateKey(raw: string | undefined): string {
+  if (!raw) return "";
+  // Remove surrounding quotes if present (single or double)
+  let key = raw.trim();
+  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+    key = key.slice(1, -1);
+  }
+  // Replace all literal \n sequences with actual newlines
+  key = key.replace(/\\n/g, "\n");
+  // Ensure proper PEM format
+  if (!key.includes("-----BEGIN")) {
+    key = `-----BEGIN PRIVATE KEY-----\n${key}\n-----END PRIVATE KEY-----\n`;
+  }
+  return key;
+}
+
 function getAuth() {
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const privateKey = parsePrivateKey(process.env.GOOGLE_PRIVATE_KEY);
 
   return new google.auth.JWT({
     email: clientEmail,
@@ -61,6 +77,14 @@ export async function GET(request: Request) {
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
 
+      if (errorMsg.includes("DECODER") || errorMsg.includes("unsupported") || errorMsg.includes("PEM")) {
+        return NextResponse.json({
+          status: "key_format_error",
+          message:
+            "La GOOGLE_PRIVATE_KEY tiene un formato incorrecto. Asegurate de copiar la clave COMPLETA del archivo JSON incluyendo '-----BEGIN PRIVATE KEY-----' y '-----END PRIVATE KEY-----'. No agregues comillas alrededor del valor en la variable de entorno.",
+          detail: errorMsg,
+        });
+      }
       if (errorMsg.includes("invalid_grant") || errorMsg.includes("JWT")) {
         return NextResponse.json({
           status: "auth_error",
