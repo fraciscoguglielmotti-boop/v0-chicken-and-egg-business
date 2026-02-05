@@ -12,9 +12,11 @@ import {
   AlertTriangle,
   Loader2,
   Check,
+  KeyRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
@@ -39,13 +41,19 @@ interface DiagnoseResult {
   availableSheets?: string[];
   serviceAccountEmail?: string;
   detail?: string;
-  debug?: Record<string, unknown>;
+  method?: string;
 }
 
 export function SheetsContent() {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<DiagnoseResult | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+
+  // Base64 converter state
+  const [jsonInput, setJsonInput] = useState("");
+  const [base64Output, setBase64Output] = useState("");
+  const [convertError, setConvertError] = useState("");
+  const [convertedEmail, setConvertedEmail] = useState("");
 
   const handleTestConnection = async () => {
     setTesting(true);
@@ -66,9 +74,37 @@ export function SheetsContent() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
+  const handleConvertToBase64 = () => {
+    setConvertError("");
+    setBase64Output("");
+    setConvertedEmail("");
+
+    if (!jsonInput.trim()) {
+      setConvertError("Pega el contenido del archivo JSON primero.");
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(jsonInput.trim());
+      if (!parsed.client_email || !parsed.private_key) {
+        setConvertError(
+          "El JSON no contiene los campos 'client_email' o 'private_key'. Verifica que sea el archivo correcto de cuenta de servicio de Google."
+        );
+        return;
+      }
+      const encoded = btoa(jsonInput.trim());
+      setBase64Output(encoded);
+      setConvertedEmail(parsed.client_email);
+    } catch {
+      setConvertError(
+        "El texto ingresado no es un JSON valido. Asegurate de copiar TODO el contenido del archivo, desde la primera { hasta la ultima }."
+      );
+    }
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
-    setCopied(text);
+    setCopied(label);
     setTimeout(() => setCopied(null), 2000);
   };
 
@@ -98,6 +134,145 @@ export function SheetsContent() {
 
   return (
     <div className="space-y-6">
+      {/* Herramienta de conversion */}
+      <Card className="border-2 border-primary/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5 text-primary" />
+            Generador de Credenciales
+          </CardTitle>
+          <CardDescription>
+            Pega tu JSON de Google Cloud aca y te damos el valor listo para
+            copiar a Vars. Esto se procesa en tu navegador, no se envia a
+            ningun servidor.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="json-input">
+              1. Pega el contenido completo del archivo JSON:
+            </Label>
+            <Textarea
+              id="json-input"
+              placeholder={'{\n  "type": "service_account",\n  "project_id": "...",\n  ...todo el contenido...\n}'}
+              value={jsonInput}
+              onChange={(e) => setJsonInput(e.target.value)}
+              className="min-h-[160px] font-mono text-xs"
+            />
+          </div>
+
+          <Button onClick={handleConvertToBase64} className="w-full">
+            Generar Credencial
+          </Button>
+
+          {convertError && (
+            <Alert variant="destructive">
+              <XCircle className="h-4 w-4" />
+              <AlertDescription>{convertError}</AlertDescription>
+            </Alert>
+          )}
+
+          {base64Output && (
+            <div className="space-y-4 rounded-lg border-2 border-primary bg-primary/5 p-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-primary" />
+                <p className="font-semibold text-foreground">
+                  Credencial generada correctamente
+                </p>
+              </div>
+
+              {convertedEmail && (
+                <p className="text-sm text-muted-foreground">
+                  Cuenta de servicio:{" "}
+                  <strong className="text-foreground">
+                    {convertedEmail}
+                  </strong>
+                </p>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    2. Anda al sidebar {">"} Vars y crea esta variable:
+                  </Label>
+                  <div className="mt-1 flex items-center gap-2 rounded bg-card p-2 border">
+                    <code className="flex-1 text-sm font-mono font-bold text-foreground">
+                      GOOGLE_CREDENTIALS_BASE64
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 text-xs bg-transparent"
+                      onClick={() =>
+                        copyToClipboard(
+                          "GOOGLE_CREDENTIALS_BASE64",
+                          "var-name"
+                        )
+                      }
+                    >
+                      {copied === "var-name" ? (
+                        <>
+                          <Check className="h-3 w-3" /> Copiado
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3 w-3" /> Nombre
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs text-muted-foreground">
+                    3. Copia este valor y pegalo en la variable:
+                  </Label>
+                  <div className="mt-1 flex items-start gap-2 rounded bg-card p-2 border">
+                    <code className="flex-1 text-xs font-mono text-foreground break-all max-h-20 overflow-y-auto">
+                      {base64Output.substring(0, 200)}...
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 text-xs shrink-0 bg-transparent"
+                      onClick={() =>
+                        copyToClipboard(base64Output, "var-value")
+                      }
+                    >
+                      {copied === "var-value" ? (
+                        <>
+                          <Check className="h-3 w-3" /> Copiado
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3 w-3" /> Valor
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertTitle>No olvides</AlertTitle>
+                  <AlertDescription className="text-xs">
+                    Tambien necesitas la variable{" "}
+                    <strong>GOOGLE_SPREADSHEET_ID</strong> con el ID de tu
+                    hoja (el texto largo de la URL entre /d/ y /edit).
+                    {convertedEmail && (
+                      <>
+                        {" "}Y comparti tu hoja de Google Sheets con{" "}
+                        <strong>{convertedEmail}</strong> como Editor.
+                      </>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Diagnostico */}
       <Card>
         <CardHeader>
@@ -106,7 +281,7 @@ export function SheetsContent() {
             Diagnostico de Conexion
           </CardTitle>
           <CardDescription>
-            Prueba la conexion con tu hoja de Google Sheets
+            Una vez que configures las variables, proba la conexion
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -129,81 +304,106 @@ export function SheetsContent() {
               <div className="flex items-start gap-3">
                 {getStatusIcon()}
                 <div className="flex-1 space-y-2">
-                  <p className="font-medium text-foreground">{result.message}</p>
+                  <p className="font-medium text-foreground">
+                    {result.message}
+                  </p>
 
                   {result.status === "connected" && (
                     <div className="space-y-2">
+                      {result.method && (
+                        <p className="text-xs text-muted-foreground">
+                          Metodo de conexion: {result.method}
+                        </p>
+                      )}
                       {result.serviceAccountEmail && (
                         <p className="text-sm text-muted-foreground">
-                          Cuenta de servicio: <strong className="text-foreground">{result.serviceAccountEmail}</strong>
+                          Cuenta:{" "}
+                          <strong className="text-foreground">
+                            {result.serviceAccountEmail}
+                          </strong>
                         </p>
                       )}
                       {result.spreadsheetTitle && (
                         <p className="text-sm text-muted-foreground">
-                          Hoja: <strong className="text-foreground">{result.spreadsheetTitle}</strong>
+                          Hoja:{" "}
+                          <strong className="text-foreground">
+                            {result.spreadsheetTitle}
+                          </strong>
                         </p>
                       )}
-                      {result.availableSheets && result.availableSheets.length > 0 && (
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-1">Pestanas encontradas:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {result.availableSheets.map((s) => {
-                              const isExpected = Object.values(SHEET_NAMES).includes(s as string);
-                              return (
-                                <span
-                                  key={s}
-                                  className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
-                                    isExpected ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                                  }`}
-                                >
-                                  {isExpected && <CheckCircle2 className="h-3 w-3" />}
-                                  {s}
-                                </span>
+                      {result.availableSheets &&
+                        result.availableSheets.length > 0 && (
+                          <div>
+                            <p className="text-sm text-muted-foreground mb-1">
+                              Pestanas encontradas:
+                            </p>
+                            <div className="flex flex-wrap gap-1">
+                              {result.availableSheets.map((s) => {
+                                const isExpected = Object.values(
+                                  SHEET_NAMES
+                                ).includes(s as string);
+                                return (
+                                  <span
+                                    key={s}
+                                    className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
+                                      isExpected
+                                        ? "bg-primary/10 text-primary"
+                                        : "bg-muted text-muted-foreground"
+                                    }`}
+                                  >
+                                    {isExpected && (
+                                      <CheckCircle2 className="h-3 w-3" />
+                                    )}
+                                    {s}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            {(() => {
+                              const missingSheets = Object.values(
+                                SHEET_NAMES
+                              ).filter(
+                                (name) =>
+                                  !result.availableSheets?.includes(name)
                               );
-                            })}
-                          </div>
-                          {(() => {
-                            const missingSheets = Object.values(SHEET_NAMES).filter(
-                              (name) => !result.availableSheets?.includes(name)
-                            );
-                            if (missingSheets.length > 0) {
-                              return (
-                                <div className="mt-2">
-                                  <p className="text-sm text-amber-600">Pestanas faltantes (crealas en tu Sheet):</p>
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {missingSheets.map((s) => (
-                                      <span key={s} className="inline-block rounded bg-amber-100 px-2 py-1 text-xs text-amber-700">
-                                        {s}
-                                      </span>
-                                    ))}
+                              if (missingSheets.length > 0) {
+                                return (
+                                  <div className="mt-2">
+                                    <p className="text-sm text-amber-600">
+                                      Pestanas faltantes (crealas en tu
+                                      Sheet):
+                                    </p>
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                      {missingSheets.map((s) => (
+                                        <span
+                                          key={s}
+                                          className="inline-block rounded bg-amber-100 px-2 py-1 text-xs text-amber-700"
+                                        >
+                                          {s}
+                                        </span>
+                                      ))}
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            }
-                            return null;
-                          })()}
-                        </div>
-                      )}
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
+                        )}
                     </div>
                   )}
 
-                  {result.debug && (
-                    <details className="text-xs text-muted-foreground" open>
-                      <summary className="cursor-pointer hover:text-foreground font-medium">Diagnostico detallado</summary>
-                      <div className="rounded bg-muted p-2 mt-1 space-y-1 font-mono">
-                        {Object.entries(result.debug).map(([key, value]) => (
-                          <p key={key}><span className="text-foreground">{key}:</span> {String(value)}</p>
-                        ))}
-                      </div>
-                    </details>
-                  )}
-
-                  {result.detail && result.status !== "connected" && (
-                    <details className="text-xs text-muted-foreground">
-                      <summary className="cursor-pointer hover:text-foreground">Ver detalle tecnico</summary>
-                      <pre className="mt-1 whitespace-pre-wrap rounded bg-muted p-2 font-mono">{result.detail}</pre>
-                    </details>
-                  )}
+                  {result.detail &&
+                    result.status !== "connected" && (
+                      <details className="text-xs text-muted-foreground">
+                        <summary className="cursor-pointer hover:text-foreground">
+                          Ver detalle tecnico
+                        </summary>
+                        <pre className="mt-1 whitespace-pre-wrap rounded bg-muted p-2 font-mono">
+                          {result.detail}
+                        </pre>
+                      </details>
+                    )}
                 </div>
               </div>
             </div>
@@ -211,136 +411,101 @@ export function SheetsContent() {
         </CardContent>
       </Card>
 
-      {/* Guia */}
+      {/* Guia resumida */}
       <Card>
         <CardHeader>
-          <CardTitle>Guia de Configuracion</CardTitle>
-          <CardDescription>Segui estos pasos para conectar tu hoja de calculo</CardDescription>
+          <CardTitle>Guia Rapida</CardTitle>
+          <CardDescription>
+            Si aun no tenes una cuenta de servicio de Google
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <Accordion type="single" collapsible className="w-full" defaultValue="step3">
+          <Accordion type="single" collapsible className="w-full">
             <AccordionItem value="step1">
-              <AccordionTrigger>Paso 1: Crear cuenta de servicio en Google Cloud</AccordionTrigger>
+              <AccordionTrigger>
+                Paso 1: Crear cuenta de servicio
+              </AccordionTrigger>
               <AccordionContent className="space-y-3">
                 <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
                   <li>
                     Anda a{" "}
-                    <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-primary underline inline-flex items-center gap-1">
-                      Google Cloud Console <ExternalLink className="h-3 w-3" />
+                    <a
+                      href="https://console.cloud.google.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline inline-flex items-center gap-1"
+                    >
+                      Google Cloud Console{" "}
+                      <ExternalLink className="h-3 w-3" />
                     </a>
                   </li>
-                  <li>Crea un proyecto nuevo o usa uno existente</li>
-                  <li>Busca <strong>Google Sheets API</strong> y habilitala</li>
-                  <li>Anda a <strong>Credenciales</strong> {">"} <strong>Crear credenciales</strong> {">"} <strong>Cuenta de servicio</strong></li>
-                  <li>Crea la cuenta, anda a <strong>Claves</strong> {">"} <strong>Agregar clave</strong> {">"} <strong>JSON</strong></li>
-                  <li>Se descarga un archivo JSON. Guardalo bien.</li>
+                  <li>Crea un proyecto o usa uno existente</li>
+                  <li>
+                    Busca <strong>Google Sheets API</strong> y habilitala
+                  </li>
+                  <li>
+                    Anda a <strong>Credenciales</strong> {">"}{" "}
+                    <strong>Crear credenciales</strong> {">"}{" "}
+                    <strong>Cuenta de servicio</strong>
+                  </li>
+                  <li>
+                    Crea la cuenta, anda a <strong>Claves</strong> {">"}{" "}
+                    <strong>Agregar clave</strong> {">"}{" "}
+                    <strong>JSON</strong>
+                  </li>
+                  <li>Se descarga un archivo JSON -- pegalo arriba</li>
                 </ol>
               </AccordionContent>
             </AccordionItem>
-
             <AccordionItem value="step2">
-              <AccordionTrigger>Paso 2: Compartir tu hoja de calculo</AccordionTrigger>
+              <AccordionTrigger>
+                Paso 2: Compartir la hoja
+              </AccordionTrigger>
               <AccordionContent className="space-y-3">
                 <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
                   <li>Abri tu hoja de Google Sheets</li>
-                  <li>Click en <strong>Compartir</strong></li>
                   <li>
-                    Pega el email de la cuenta de servicio (del JSON, campo <code className="rounded bg-muted px-1 text-xs text-foreground">client_email</code>)
+                    Click en <strong>Compartir</strong>
                   </li>
-                  <li>Dale permisos de <strong>Editor</strong></li>
+                  <li>
+                    Pega el email de la cuenta de servicio (aparece en el
+                    campo{" "}
+                    <code className="rounded bg-muted px-1 text-xs text-foreground">
+                      client_email
+                    </code>{" "}
+                    del JSON)
+                  </li>
+                  <li>
+                    Dale permisos de <strong>Editor</strong>
+                  </li>
                 </ol>
               </AccordionContent>
             </AccordionItem>
-
             <AccordionItem value="step3">
-              <AccordionTrigger>Paso 3: Configurar variables de entorno (IMPORTANTE)</AccordionTrigger>
-              <AccordionContent className="space-y-4">
-                <Alert className="border-primary bg-primary/5">
-                  <Info className="h-4 w-4" />
-                  <AlertTitle>Metodo recomendado (evita problemas con la clave privada)</AlertTitle>
-                  <AlertDescription>
-                    Solo necesitas <strong>2 variables</strong>. Agregalas en el sidebar {">"} <strong>Vars</strong>.
-                  </AlertDescription>
-                </Alert>
-
-                <div className="space-y-4">
-                  <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="font-mono text-sm font-bold text-foreground">GOOGLE_SPREADSHEET_ID</Label>
-                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => copyToClipboard("GOOGLE_SPREADSHEET_ID")}>
-                        {copied === "GOOGLE_SPREADSHEET_ID" ? <><Check className="h-3 w-3" /> Copiado</> : <><Copy className="h-3 w-3" /> Copiar</>}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      El ID de tu hoja. Esta en la URL de Google Sheets:
-                    </p>
-                    <code className="block rounded bg-muted p-2 text-xs text-foreground break-all">
-                      {'https://docs.google.com/spreadsheets/d/'}
-                      <strong className="text-primary">{'ESTE_ES_EL_ID'}</strong>
-                      {'/edit'}
-                    </code>
-                  </div>
-
-                  <div className="rounded-lg border-2 border-primary/30 bg-primary/5 p-4 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="font-mono text-sm font-bold text-foreground">GOOGLE_SERVICE_ACCOUNT_JSON</Label>
-                      <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => copyToClipboard("GOOGLE_SERVICE_ACCOUNT_JSON")}>
-                        {copied === "GOOGLE_SERVICE_ACCOUNT_JSON" ? <><Check className="h-3 w-3" /> Copiado</> : <><Copy className="h-3 w-3" /> Copiar</>}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Abri el archivo JSON que descargaste de Google Cloud y <strong>pega TODO el contenido</strong> como valor de esta variable.
-                    </p>
-                    <div className="rounded bg-muted p-2 text-xs font-mono text-muted-foreground">
-                      <p>{'{'}</p>
-                      <p className="pl-4">{'"type": "service_account",'}</p>
-                      <p className="pl-4">{'"project_id": "...",'}</p>
-                      <p className="pl-4">{'"private_key": "-----BEGIN...",'}</p>
-                      <p className="pl-4">{'"client_email": "...@....iam.gserviceaccount.com",'}</p>
-                      <p className="pl-4">{'...'}</p>
-                      <p>{'}'}</p>
-                    </div>
-                    <p className="text-xs text-amber-600 font-medium">
-                      Copia TODO el JSON completo, desde la llave de apertura hasta la llave de cierre.
-                    </p>
-                  </div>
-                </div>
-
-                <details className="text-xs text-muted-foreground">
-                  <summary className="cursor-pointer hover:text-foreground font-medium">
-                    Metodo alternativo (3 variables separadas)
-                  </summary>
-                  <div className="mt-2 space-y-2">
-                    <p>Si preferis usar variables separadas en vez del JSON completo:</p>
-                    {[
-                      { name: "GOOGLE_SPREADSHEET_ID", desc: "ID de la hoja (de la URL)" },
-                      { name: "GOOGLE_SERVICE_ACCOUNT_EMAIL", desc: 'Campo "client_email" del JSON' },
-                      { name: "GOOGLE_PRIVATE_KEY", desc: 'Campo "private_key" del JSON, sin comillas externas' },
-                    ].map((v) => (
-                      <div key={v.name} className="rounded border p-2">
-                        <code className="font-mono text-xs font-semibold text-foreground">{v.name}</code>
-                        <p className="text-xs text-muted-foreground">{v.desc}</p>
-                      </div>
-                    ))}
-                  </div>
-                </details>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="step4">
-              <AccordionTrigger>Paso 4: Verificar las pestanas de tu hoja</AccordionTrigger>
+              <AccordionTrigger>
+                Paso 3: Estructura de pestanas
+              </AccordionTrigger>
               <AccordionContent className="space-y-3">
                 <p className="text-sm text-muted-foreground">
-                  Tu hoja necesita estas pestanas con los encabezados en la fila 1:
+                  Tu hoja necesita estas pestanas con encabezados en la fila
+                  1:
                 </p>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {Object.entries(SHEET_NAMES).map(([key, name]) => (
                     <div key={key} className="rounded-lg border p-3">
-                      <h4 className="font-semibold text-sm text-foreground mb-2">{name}</h4>
-                      <p className="text-xs text-muted-foreground mb-2">Columnas en fila 1:</p>
+                      <h4 className="font-semibold text-sm text-foreground mb-2">
+                        {name}
+                      </h4>
                       <div className="flex flex-wrap gap-1">
-                        {SHEET_COLUMNS[key as keyof typeof SHEET_COLUMNS]?.map((col, idx) => (
-                          <span key={idx} className="inline-block rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">{col}</span>
+                        {SHEET_COLUMNS[
+                          key as keyof typeof SHEET_COLUMNS
+                        ]?.map((col, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-block rounded bg-muted px-1.5 py-0.5 text-xs text-foreground"
+                          >
+                            {col}
+                          </span>
                         ))}
                       </div>
                     </div>
