@@ -119,8 +119,8 @@ export function ContabilidadContent() {
     // Purchases as expenses (Total = Cantidad x Precio)
     sheetsCompras.rows.forEach((r, i) => {
       const cant = Number(r.Cantidad) || 0
-      const precio = Number(r["Precio Unitario"] || r.PrecioUnitario) || 0
-      const total = cant * precio > 0 ? cant * precio : (Number(r.Total) || 0)
+      const precio = Number(r.PrecioUnitario) || 0
+      const total = cant * precio
       entries.push({
         id: `c-${i}`,
         fecha: r.Fecha || "",

@@ -142,7 +142,7 @@ export function CuentasContent() {
         saldo: 0,
       }
       const cant = Number(r.Cantidad) || 0
-      const precio = Number(r["Precio Unitario"] || r.PrecioUnitario) || 0
+      const precio = Number(r.PrecioUnitario) || 0
       existing.totalCompras += cant * precio
       map.set(key, existing)
     })

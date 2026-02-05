@@ -134,8 +134,8 @@ export function FlujoContent() {
       const fecha = new Date(r.Fecha || "")
       if (fecha.getFullYear() === anio) {
         const cant = Number(r.Cantidad) || 0
-        const precio = Number(r["Precio Unitario"] || r.PrecioUnitario) || 0
-        const total = cant * precio > 0 ? cant * precio : (Number(r.Total) || 0)
+        const precio = Number(r.PrecioUnitario) || 0
+        const total = cant * precio
         meses[fecha.getMonth()].egresos += total
       }
     })
