@@ -182,17 +182,17 @@ export function DashboardContent() {
             Acciones Rapidas
           </h3>
           <div className="mt-4 grid gap-3">
-            <Link href="/ventas/nueva">
+            <Link href="/ventas">
               <Button className="w-full justify-start gap-2 bg-transparent" variant="outline">
                 <ShoppingCart className="h-4 w-4" />
-                Nueva Venta
+                Ir a Ventas
                 <ArrowRight className="ml-auto h-4 w-4" />
               </Button>
             </Link>
-            <Link href="/cobros/nuevo">
+            <Link href="/cobros">
               <Button className="w-full justify-start gap-2 bg-transparent" variant="outline">
                 <Receipt className="h-4 w-4" />
-                Registrar Cobro
+                Ir a Cobros
                 <ArrowRight className="ml-auto h-4 w-4" />
               </Button>
             </Link>
