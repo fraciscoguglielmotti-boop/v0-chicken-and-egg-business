@@ -19,6 +19,7 @@ export const SHEET_NAMES = {
   VENTAS: "Ventas",
   COBROS: "Cobros",
   COMPRAS: "Compras",
+  PAGOS: "Pagos",
   CLIENTES: "Clientes",
   PROVEEDORES: "Proveedores",
   VENDEDORES: "Vendedores",
@@ -57,6 +58,15 @@ export const SHEET_COLUMNS = {
     "Precio Unitario",
     "Total",
     "Estado",
+  ],
+  PAGOS: [
+    "ID",
+    "Fecha",
+    "ProveedorID",
+    "Proveedor",
+    "Monto",
+    "MetodoPago",
+    "Observaciones",
   ],
   CLIENTES: [
     "ID",

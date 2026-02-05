@@ -19,64 +19,54 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { clientesIniciales, proveedoresIniciales } from "@/lib/store"
-import type { Cobro } from "@/lib/types"
+import { proveedoresIniciales } from "@/lib/store"
+import type { Pago } from "@/lib/types"
 import { useSheet } from "@/hooks/use-sheets"
 
-interface NuevoCobroDialogProps {
+interface NuevoPagoDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (cobro: Cobro, esProveedor?: boolean) => void
+  onSubmit: (pago: Pago) => void
 }
 
-export function NuevoCobroDialog({
+export function NuevoPagoDialog({
   open,
   onOpenChange,
   onSubmit,
-}: NuevoCobroDialogProps) {
-  const sheetsClientes = useSheet("Clientes")
+}: NuevoPagoDialogProps) {
   const sheetsProveedores = useSheet("Proveedores")
-  const [clienteId, setClienteId] = useState("")
+  const [proveedorId, setProveedorId] = useState("")
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0])
   const [monto, setMonto] = useState("")
   const [metodoPago, setMetodoPago] = useState<"efectivo" | "transferencia" | "cheque" | "">("")
   const [observaciones, setObservaciones] = useState("")
 
-  const allClientes = sheetsClientes.rows.length > 0
-    ? sheetsClientes.rows.map((r, i) => ({ id: r.ID || String(i), nombre: r.Nombre || "", saldoActual: Number(r.Saldo) || 0 }))
-    : clientesIniciales.map((c) => ({ id: c.id, nombre: c.nombre, saldoActual: c.saldoActual }))
-
   const allProveedores = sheetsProveedores.rows.length > 0
-    ? sheetsProveedores.rows.map((r, i) => ({ id: r.ID || String(i), nombre: r.Nombre || "" }))
-    : proveedoresIniciales.map((p) => ({ id: p.id, nombre: p.nombre }))
+    ? sheetsProveedores.rows.map((r, i) => ({ id: r.ID || String(i), nombre: r.Nombre || "", saldoActual: Number(r.Saldo) || 0 }))
+    : proveedoresIniciales.map((p) => ({ id: p.id, nombre: p.nombre, saldoActual: p.saldoActual }))
 
-  const cliente = allClientes.find((c) => c.id === clienteId)
+  const proveedor = allProveedores.find((p) => p.id === proveedorId)
 
   const handleSubmit = () => {
-    if (!clienteId || !monto || !metodoPago) return
+    if (!proveedorId || !monto || !metodoPago) return
 
-    const cobro: Cobro = {
+    const pago: Pago = {
       id: Date.now().toString(),
       fecha: new Date(fecha),
-      clienteId,
-      clienteNombre: cliente?.nombre || "",
+      proveedorId,
+      proveedorNombre: proveedor?.nombre || "",
       monto: Number.parseFloat(monto),
       metodoPago,
       observaciones: observaciones || undefined,
       createdAt: new Date(),
     }
 
-    // Check if cliente name matches a proveedor
-    const esProveedor = allProveedores.some(
-      (p) => p.nombre.toLowerCase().trim() === cliente?.nombre.toLowerCase().trim()
-    )
-
-    onSubmit(cobro, esProveedor)
+    onSubmit(pago)
     resetForm()
   }
 
   const resetForm = () => {
-    setClienteId("")
+    setProveedorId("")
     setFecha(new Date().toISOString().split("T")[0])
     setMonto("")
     setMetodoPago("")
@@ -94,25 +84,25 @@ export function NuevoCobroDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Registrar Cobro</DialogTitle>
+          <DialogTitle>Registrar Pago a Proveedor</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Cliente */}
+          {/* Proveedor */}
           <div className="space-y-2">
-            <Label>Cliente</Label>
-            <Select value={clienteId} onValueChange={setClienteId}>
+            <Label>Proveedor</Label>
+            <Select value={proveedorId} onValueChange={setProveedorId}>
               <SelectTrigger>
-                <SelectValue placeholder="Seleccionar cliente" />
+                <SelectValue placeholder="Seleccionar proveedor" />
               </SelectTrigger>
               <SelectContent>
-                {allClientes.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
+                {allProveedores.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>
                     <div className="flex items-center justify-between gap-4">
-                      <span>{c.nombre}</span>
-                      {c.saldoActual > 0 && (
+                      <span>{p.nombre}</span>
+                      {p.saldoActual > 0 && (
                         <span className="text-xs text-muted-foreground">
-                          Saldo: {formatCurrency(c.saldoActual)}
+                          Debe: {formatCurrency(p.saldoActual)}
                         </span>
                       )}
                     </div>
@@ -165,7 +155,7 @@ export function NuevoCobroDialog({
           <div className="space-y-2">
             <Label>Observaciones (opcional)</Label>
             <Textarea
-              placeholder="Notas sobre el cobro..."
+              placeholder="Notas sobre el pago..."
               value={observaciones}
               onChange={(e) => setObservaciones(e.target.value)}
               rows={3}
@@ -176,8 +166,8 @@ export function NuevoCobroDialog({
           {monto && (
             <div className="rounded-lg bg-muted/50 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Monto a registrar</span>
-                <span className="text-xl font-bold text-primary">
+                <span className="text-muted-foreground">Monto a pagar</span>
+                <span className="text-xl font-bold text-destructive">
                   {formatCurrency(Number.parseFloat(monto) || 0)}
                 </span>
               </div>
@@ -191,9 +181,9 @@ export function NuevoCobroDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!clienteId || !monto || !metodoPago}
+            disabled={!proveedorId || !monto || !metodoPago}
           >
-            Registrar Cobro
+            Registrar Pago
           </Button>
         </DialogFooter>
       </DialogContent>

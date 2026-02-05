@@ -74,6 +74,7 @@ export function CuentasContent() {
   const sheetsVentas = useSheet("Ventas")
   const sheetsCobros = useSheet("Cobros")
   const sheetsCompras = useSheet("Compras")
+  const sheetsPagos = useSheet("Pagos")
   const [searchTerm, setSearchTerm] = useState("")
   const [vendedorFilter, setVendedorFilter] = useState<string>("todos")
   const [selectedCuenta, setSelectedCuenta] = useState<CuentaCliente | null>(null)
@@ -146,7 +147,7 @@ export function CuentasContent() {
       .sort((a, b) => b.saldo - a.saldo)
   }, [sheetsVentas.rows, sheetsCobros.rows])
 
-  // Calculate provider balances from Compras
+  // Calculate provider balances from Compras and Pagos
   const cuentasProveedores = useMemo(() => {
     const map = new Map<string, { nombre: string; totalCompras: number; totalPagos: number; saldo: number }>()
 
@@ -166,10 +167,25 @@ export function CuentasContent() {
       map.set(key, existing)
     })
 
+    // Add payments to providers
+    sheetsPagos.rows.forEach((r) => {
+      const proveedor = r.Proveedor || r.ProveedorID || ""
+      if (!proveedor) return
+      const key = proveedor.toLowerCase().trim()
+      const existing = map.get(key) || {
+        nombre: proveedor,
+        totalCompras: 0,
+        totalPagos: 0,
+        saldo: 0,
+      }
+      existing.totalPagos += Number(r.Monto) || 0
+      map.set(key, existing)
+    })
+
     return Array.from(map.values())
       .map((p) => ({ ...p, saldo: p.totalCompras - p.totalPagos }))
       .sort((a, b) => b.saldo - a.saldo)
-  }, [sheetsCompras.rows])
+  }, [sheetsCompras.rows, sheetsPagos.rows])
 
   // Filter by search and vendor
   const filteredClientes = cuentasClientes.filter((c) => {
