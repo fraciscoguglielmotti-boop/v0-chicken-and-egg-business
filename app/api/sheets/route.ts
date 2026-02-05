@@ -13,17 +13,38 @@ function checkEnvVars() {
 
 function parsePrivateKey(raw: string | undefined): string {
   if (!raw) return "";
-  // Remove surrounding quotes if present (single or double)
   let key = raw.trim();
-  if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) {
+
+  // Remove surrounding quotes (single, double, or backtick)
+  if (
+    (key.startsWith('"') && key.endsWith('"')) ||
+    (key.startsWith("'") && key.endsWith("'")) ||
+    (key.startsWith("`") && key.endsWith("`"))
+  ) {
     key = key.slice(1, -1);
   }
-  // Replace all literal \n sequences with actual newlines
+
+  // Replace literal \n with real newlines (handles both \\n and \n)
   key = key.replace(/\\n/g, "\n");
-  // Ensure proper PEM format
+
+  // Also handle cases where the key was JSON-escaped twice
+  key = key.replace(/\\\\n/g, "\n");
+
+  // Remove any carriage returns
+  key = key.replace(/\r/g, "");
+
+  // If the key doesn't have PEM headers, try to reconstruct
   if (!key.includes("-----BEGIN")) {
-    key = `-----BEGIN PRIVATE KEY-----\n${key}\n-----END PRIVATE KEY-----\n`;
+    // Maybe the user pasted just the base64 content
+    const cleanBase64 = key.replace(/\s+/g, "");
+    key = `-----BEGIN PRIVATE KEY-----\n${cleanBase64}\n-----END PRIVATE KEY-----\n`;
   }
+
+  // Ensure the key ends with a newline after END marker
+  if (key.includes("-----END PRIVATE KEY-----") && !key.endsWith("\n")) {
+    key = key + "\n";
+  }
+
   return key;
 }
 
@@ -60,6 +81,22 @@ export async function GET(request: Request) {
       });
     }
 
+    // Debug: analizar el estado de la clave
+    const rawKey = process.env.GOOGLE_PRIVATE_KEY || "";
+    const parsedKey = parsePrivateKey(rawKey);
+    const keyDebug = {
+      rawLength: rawKey.length,
+      parsedLength: parsedKey.length,
+      rawStartsWith: rawKey.substring(0, 30),
+      rawEndsWith: rawKey.substring(rawKey.length - 30),
+      parsedStartsWith: parsedKey.substring(0, 35),
+      parsedHasBeginMarker: parsedKey.includes("-----BEGIN PRIVATE KEY-----"),
+      parsedHasEndMarker: parsedKey.includes("-----END PRIVATE KEY-----"),
+      parsedHasRealNewlines: parsedKey.includes("\n"),
+      parsedNewlineCount: (parsedKey.match(/\n/g) || []).length,
+    };
+    console.log("[v0] Key debug info:", JSON.stringify(keyDebug, null, 2));
+
     // Intentar conectar
     try {
       const sheets = getSheets();
@@ -77,12 +114,13 @@ export async function GET(request: Request) {
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
 
-      if (errorMsg.includes("DECODER") || errorMsg.includes("unsupported") || errorMsg.includes("PEM")) {
+      if (errorMsg.includes("DECODER") || errorMsg.includes("unsupported") || errorMsg.includes("PEM") || errorMsg.includes("routines")) {
         return NextResponse.json({
           status: "key_format_error",
           message:
-            "La GOOGLE_PRIVATE_KEY tiene un formato incorrecto. Asegurate de copiar la clave COMPLETA del archivo JSON incluyendo '-----BEGIN PRIVATE KEY-----' y '-----END PRIVATE KEY-----'. No agregues comillas alrededor del valor en la variable de entorno.",
+            "La GOOGLE_PRIVATE_KEY tiene formato incorrecto. Ve al sidebar > Vars, borra la variable GOOGLE_PRIVATE_KEY y volvela a pegar. Copia el valor del campo 'private_key' del JSON descargado de Google Cloud, SIN las comillas externas. Debe empezar con -----BEGIN PRIVATE KEY----- y terminar con -----END PRIVATE KEY-----",
           detail: errorMsg,
+          keyDebug,
         });
       }
       if (errorMsg.includes("invalid_grant") || errorMsg.includes("JWT")) {
@@ -91,6 +129,7 @@ export async function GET(request: Request) {
           message:
             "Error de autenticacion. Verifica que GOOGLE_PRIVATE_KEY y GOOGLE_SERVICE_ACCOUNT_EMAIL sean correctos.",
           detail: errorMsg,
+          keyDebug,
         });
       }
       if (

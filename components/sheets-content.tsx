@@ -32,6 +32,18 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { SHEET_NAMES, SHEET_COLUMNS } from "@/lib/google-sheets";
 
+interface KeyDebugInfo {
+  rawLength: number;
+  parsedLength: number;
+  rawStartsWith: string;
+  rawEndsWith: string;
+  parsedStartsWith: string;
+  parsedHasBeginMarker: boolean;
+  parsedHasEndMarker: boolean;
+  parsedHasRealNewlines: boolean;
+  parsedNewlineCount: number;
+}
+
 interface DiagnoseResult {
   status: string;
   message: string;
@@ -39,6 +51,7 @@ interface DiagnoseResult {
   spreadsheetTitle?: string;
   availableSheets?: string[];
   detail?: string;
+  keyDebug?: KeyDebugInfo;
 }
 
 export function SheetsContent() {
@@ -226,17 +239,37 @@ export function SheetsContent() {
                     </div>
                   )}
 
-                  {result.detail &&
-                    result.status !== "connected" &&
+                  {result.status !== "connected" &&
                     result.status !== "missing_vars" && (
-                      <details className="text-xs text-muted-foreground">
-                        <summary className="cursor-pointer hover:text-foreground">
-                          Ver detalle tecnico
-                        </summary>
-                        <pre className="mt-1 whitespace-pre-wrap rounded bg-muted p-2 font-mono">
-                          {result.detail}
-                        </pre>
-                      </details>
+                      <div className="space-y-2">
+                        {result.detail && (
+                          <details className="text-xs text-muted-foreground">
+                            <summary className="cursor-pointer hover:text-foreground">
+                              Ver detalle tecnico
+                            </summary>
+                            <pre className="mt-1 whitespace-pre-wrap rounded bg-muted p-2 font-mono">
+                              {result.detail}
+                            </pre>
+                          </details>
+                        )}
+                        {result.keyDebug && (
+                          <details className="text-xs text-muted-foreground">
+                            <summary className="cursor-pointer hover:text-foreground">
+                              Ver diagnostico de la clave privada
+                            </summary>
+                            <div className="mt-1 rounded bg-muted p-2 font-mono space-y-1">
+                              <p>Largo raw: {result.keyDebug.rawLength} chars</p>
+                              <p>Largo parseado: {result.keyDebug.parsedLength} chars</p>
+                              <p>Empieza con: <code>{result.keyDebug.rawStartsWith}...</code></p>
+                              <p>Termina con: <code>...{result.keyDebug.rawEndsWith}</code></p>
+                              <p>Tiene BEGIN marker: {result.keyDebug.parsedHasBeginMarker ? "SI" : "NO"}</p>
+                              <p>Tiene END marker: {result.keyDebug.parsedHasEndMarker ? "SI" : "NO"}</p>
+                              <p>Tiene saltos de linea reales: {result.keyDebug.parsedHasRealNewlines ? "SI" : "NO"}</p>
+                              <p>Cantidad de saltos de linea: {result.keyDebug.parsedNewlineCount}</p>
+                            </div>
+                          </details>
+                        )}
+                      </div>
                     )}
                 </div>
               </div>
