@@ -35,7 +35,13 @@ function formatDate(date: Date | string): string {
   }).format(new Date(date))
 }
 
-function sheetRowToVenta(row: SheetRow, index: number): Venta {
+function sheetRowToVenta(row: SheetRow, index: number): Venta & { vendedor?: string } {
+  const cantidad = Number(row.Cantidad) || 0
+  const precioUnitario = Number(row.PrecioUnitario) || 0
+  // Always compute total from qty x price
+  const totalCalculado = cantidad * precioUnitario
+  const total = totalCalculado > 0 ? totalCalculado : Number(row.Total) || 0
+
   return {
     id: row.ID || String(index),
     fecha: new Date(row.Fecha || Date.now()),
@@ -45,14 +51,15 @@ function sheetRowToVenta(row: SheetRow, index: number): Venta {
       {
         productoId: "pollo_a",
         productoNombre: row.Productos || "Producto",
-        cantidad: Number(row.Cantidad) || 0,
-        precioUnitario: Number(row.PrecioUnitario) || 0,
-        subtotal: Number(row.Total) || 0,
+        cantidad,
+        precioUnitario,
+        subtotal: total,
       },
     ],
-    total: Number(row.Total) || 0,
+    total,
     estado: (row.Estado as Venta["estado"]) || "pendiente",
     createdAt: new Date(row.Fecha || Date.now()),
+    vendedor: row.Vendedor || "",
   }
 }
 
@@ -94,6 +101,30 @@ export function VentasContent() {
     return matchesSearch && matchesEstado
   })
 
+  const handleExportar = () => {
+    const headers = ["Fecha", "Cliente", "Productos", "Total", "Estado", "Vendedor"]
+    const csvRows = [headers.join(",")]
+    filteredVentas.forEach((v) => {
+      const vWithVendedor = v as Venta & { vendedor?: string }
+      const items = v.items.map((i) => `${i.cantidad} ${i.productoNombre}`).join(" / ")
+      csvRows.push([
+        formatDate(v.fecha),
+        `"${v.clienteNombre}"`,
+        `"${items}"`,
+        String(v.total),
+        v.estado,
+        vWithVendedor.vendedor || "",
+      ].join(","))
+    })
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `ventas_${new Date().toISOString().split("T")[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const totalVentas = filteredVentas.reduce((acc, v) => acc + v.total, 0)
   const ventasPendientes = filteredVentas.filter(
     (v) => v.estado === "pendiente"
@@ -107,6 +138,11 @@ export function VentasContent() {
         .map((i) => `${i.cantidad} ${i.productoNombre}`)
         .join(", ")
 
+      const cantidadTotal = venta.items.reduce((a, i) => a + i.cantidad, 0)
+      const precioPromedio = venta.items.length > 0 ? venta.items[0].precioUnitario : 0
+      // Total is always qty x price (auto-calculated)
+      const totalCalculado = venta.items.reduce((a, i) => a + (i.cantidad * i.precioUnitario), 0)
+
       const sheetValues = [
         [
           venta.id,
@@ -114,11 +150,9 @@ export function VentasContent() {
           venta.clienteId,
           venta.clienteNombre,
           productos,
-          String(venta.items.reduce((a, i) => a + i.cantidad, 0)),
-          String(
-            venta.items.length > 0 ? venta.items[0].precioUnitario : 0
-          ),
-          String(venta.total),
+          String(cantidadTotal),
+          String(precioPromedio),
+          String(totalCalculado),
           venta.estado,
           venta.vendedor || "",
         ],
@@ -183,6 +217,13 @@ export function VentasContent() {
       ),
     },
     {
+      key: "vendedor",
+      header: "Vendedor",
+      render: (venta: Venta & { vendedor?: string }) => (
+        <span className="text-sm text-muted-foreground">{venta.vendedor || "-"}</span>
+      ),
+    },
+    {
       key: "estado",
       header: "Estado",
       render: (venta: Venta) => (
@@ -242,9 +283,9 @@ export function VentasContent() {
           <SheetsStatus isLoading={isLoading} error={error} isConnected={isConnected} />
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleExportar}>
             <Download className="mr-2 h-4 w-4" />
-            Exportar
+            Exportar CSV
           </Button>
           <Button size="sm" onClick={() => setDialogOpen(true)} disabled={saving}>
             <Plus className="mr-2 h-4 w-4" />

@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select"
 import { clientesIniciales } from "@/lib/store"
 import type { Cobro } from "@/lib/types"
+import { useSheet } from "@/hooks/use-sheets"
 
 interface NuevoCobroDialogProps {
   open: boolean
@@ -33,13 +34,18 @@ export function NuevoCobroDialog({
   onOpenChange,
   onSubmit,
 }: NuevoCobroDialogProps) {
+  const sheetsClientes = useSheet("Clientes")
   const [clienteId, setClienteId] = useState("")
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0])
   const [monto, setMonto] = useState("")
   const [metodoPago, setMetodoPago] = useState<"efectivo" | "transferencia" | "cheque" | "">("")
   const [observaciones, setObservaciones] = useState("")
 
-  const cliente = clientesIniciales.find((c) => c.id === clienteId)
+  const allClientes = sheetsClientes.rows.length > 0
+    ? sheetsClientes.rows.map((r, i) => ({ id: r.ID || String(i), nombre: r.Nombre || "", saldoActual: Number(r.Saldo) || 0 }))
+    : clientesIniciales.map((c) => ({ id: c.id, nombre: c.nombre, saldoActual: c.saldoActual }))
+
+  const cliente = allClientes.find((c) => c.id === clienteId)
 
   const handleSubmit = () => {
     if (!clienteId || !monto || !metodoPago) return
@@ -90,7 +96,7 @@ export function NuevoCobroDialog({
                 <SelectValue placeholder="Seleccionar cliente" />
               </SelectTrigger>
               <SelectContent>
-                {clientesIniciales.map((c) => (
+                {allClientes.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     <div className="flex items-center justify-between gap-4">
                       <span>{c.nombre}</span>

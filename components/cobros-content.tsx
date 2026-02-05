@@ -88,6 +88,27 @@ export function CobrosContent() {
 
   const totalCobros = filteredCobros.reduce((acc, c) => acc + c.monto, 0)
 
+  const handleExportar = () => {
+    const headers = ["Fecha", "Cliente", "Monto", "Metodo de Pago", "Observaciones"]
+    const csvRows = [headers.join(",")]
+    filteredCobros.forEach((c) => {
+      csvRows.push([
+        formatDate(c.fecha),
+        `"${c.clienteNombre}"`,
+        String(c.monto),
+        c.metodoPago,
+        `"${c.observaciones || ""}"`,
+      ].join(","))
+    })
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `cobros_${new Date().toISOString().split("T")[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const cobrosPorMetodo = {
     efectivo: filteredCobros
       .filter((c) => c.metodoPago === "efectivo")
@@ -223,9 +244,9 @@ export function CobrosContent() {
           <SheetsStatus isLoading={isLoading} error={error} isConnected={isConnected} />
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleExportar}>
             <Download className="mr-2 h-4 w-4" />
-            Exportar
+            Exportar CSV
           </Button>
           <Button size="sm" onClick={() => setDialogOpen(true)} disabled={saving}>
             <Plus className="mr-2 h-4 w-4" />
