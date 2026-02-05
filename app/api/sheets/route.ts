@@ -7,44 +7,85 @@ interface ServiceAccountCredentials {
 }
 
 function tryParseJSON(raw: string): Record<string, string> | null {
+  const BACKSLASH = String.fromCharCode(92); // \
+  const QUOTE = String.fromCharCode(34); // "
+  const ESCAPED_QUOTE = BACKSLASH + QUOTE; // \"
+
   // Attempt 1: Direct parse
   try {
     return JSON.parse(raw);
-  } catch { /* continue */ }
+  } catch {
+    /* continue */
+  }
 
-  // Attempt 2: Trim whitespace and try again
+  // Attempt 2: Trim
   const trimmed = raw.trim();
   try {
     return JSON.parse(trimmed);
-  } catch { /* continue */ }
-
-  // Attempt 3: Remove surrounding quotes that Vars might add
-  let cleaned = trimmed;
-  if ((cleaned.startsWith("'") && cleaned.endsWith("'")) ||
-      (cleaned.startsWith("`") && cleaned.endsWith("`"))) {
-    cleaned = cleaned.slice(1, -1);
-    try {
-      return JSON.parse(cleaned);
-    } catch { /* continue */ }
+  } catch {
+    /* continue */
   }
 
-  // Attempt 4: The env var system may have double-escaped the JSON
-  // e.g. \\\" instead of \"
+  // Attempt 3: The Vars system escapes quotes as \" — unescape them
+  // We use split/join to avoid any regex/autoformat ambiguity
   try {
-    const unescaped = cleaned.replace(/\\\\"/g, '"').replace(/\\"/g, '"');
-    if (unescaped.startsWith("{")) {
-      return JSON.parse(unescaped);
-    }
-  } catch { /* continue */ }
+    const unescaped = trimmed.split(ESCAPED_QUOTE).join(QUOTE);
+    console.log("[v0] Unescape attempt - first 80 chars:", unescaped.substring(0, 80));
+    return JSON.parse(unescaped);
+  } catch (e) {
+    console.log("[v0] Unescape parse failed:", e instanceof Error ? e.message : String(e));
+  }
 
-  // Attempt 5: Extract client_email and private_key with regex as last resort
-  const emailMatch = raw.match(/client_email["\s:]+([^"]*@[^"]*\.com)/);
-  const keyMatch = raw.match(/-----BEGIN[^-]*PRIVATE KEY-----[\s\S]*?-----END[^-]*PRIVATE KEY-----/);
-  if (emailMatch && keyMatch) {
-    return {
-      client_email: emailMatch[1],
-      private_key: keyMatch[0].replace(/\\n/g, "\n"),
-    };
+  // Attempt 4: Double-escaped \\\"
+  try {
+    const doubleEscaped = BACKSLASH + BACKSLASH + QUOTE;
+    const step1 = trimmed.split(doubleEscaped).join(QUOTE);
+    const step2 = step1.split(ESCAPED_QUOTE).join(QUOTE);
+    return JSON.parse(step2);
+  } catch {
+    /* continue */
+  }
+
+  // Attempt 5: Extract fields directly with string scanning
+  try {
+    const emailMarker = "client_email";
+    const keyMarker = "-----BEGIN";
+    const keyEnd = "-----END PRIVATE KEY-----";
+
+    const emailIdx = raw.indexOf(emailMarker);
+    const keyStartIdx = raw.indexOf(keyMarker);
+    const keyEndIdx = raw.indexOf(keyEnd);
+
+    if (emailIdx !== -1 && keyStartIdx !== -1 && keyEndIdx !== -1) {
+      // Extract email: find the @ sign near emailIdx and get the full email
+      const afterEmail = raw.substring(emailIdx + emailMarker.length);
+      const atIdx = afterEmail.indexOf("@");
+      if (atIdx !== -1) {
+        // Scan backwards from @ to find start of email
+        let emailStart = atIdx;
+        while (emailStart > 0 && afterEmail[emailStart - 1] !== QUOTE && afterEmail[emailStart - 1] !== BACKSLASH) {
+          emailStart--;
+        }
+        // Scan forward from @ to find end of email
+        let emailEnd = atIdx;
+        while (emailEnd < afterEmail.length && afterEmail[emailEnd] !== QUOTE && afterEmail[emailEnd] !== BACKSLASH && afterEmail[emailEnd] !== ",") {
+          emailEnd++;
+        }
+        const email = afterEmail.substring(emailStart, emailEnd).trim();
+
+        // Extract private key
+        const fullKey = raw.substring(keyStartIdx, keyEndIdx + keyEnd.length);
+        // Replace literal \n with real newlines
+        const privateKey = fullKey.split(BACKSLASH + "n").join("\n");
+
+        if (email.includes("@") && privateKey.includes("BEGIN")) {
+          console.log("[v0] Regex extraction found email:", email);
+          return { client_email: email, private_key: privateKey };
+        }
+      }
+    }
+  } catch {
+    /* continue */
   }
 
   return null;
