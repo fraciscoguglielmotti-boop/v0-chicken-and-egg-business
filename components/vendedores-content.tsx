@@ -280,7 +280,7 @@ export function VendedoresContent() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Porcentaje de Comision</Label>
+              <Label>Porcentaje de Comision (%)</Label>
               <div className="flex items-center gap-2">
                 <Input
                   type="number"
@@ -292,6 +292,10 @@ export function VendedoresContent() {
                 />
                 <span className="text-muted-foreground">%</span>
               </div>
+            </div>
+            <div className="rounded-md bg-muted p-3 text-sm text-muted-foreground">
+              <p className="font-medium">Nota:</p>
+              <p>El vendedor se agregara a la pestana "Vendedores" de Google Sheets. Para editar o eliminar vendedores, edita directamente en la hoja de calculo.</p>
             </div>
           </div>
           <DialogFooter>

@@ -1,7 +1,8 @@
 "use client"
 
-import { Menu } from "lucide-react"
+import { Menu, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useRouter } from "next/navigation"
 
 interface AppHeaderProps {
   title: string
@@ -10,6 +11,13 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ title, subtitle, onMenuClick }: AppHeaderProps) {
+  const router = useRouter()
+
+  const handleLogout = () => {
+    sessionStorage.removeItem("avigest_logged_in")
+    router.push("/login")
+  }
+
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:px-6">
       <Button
@@ -21,12 +29,16 @@ export function AppHeader({ title, subtitle, onMenuClick }: AppHeaderProps) {
         <Menu className="h-5 w-5" />
         <span className="sr-only">Abrir menu</span>
       </Button>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <h1 className="truncate text-lg font-semibold text-foreground leading-tight">{title}</h1>
         {subtitle && (
           <p className="truncate text-sm text-muted-foreground leading-none">{subtitle}</p>
         )}
       </div>
+      <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2">
+        <LogOut className="h-4 w-4" />
+        <span className="hidden sm:inline">Salir</span>
+      </Button>
     </header>
   )
 }

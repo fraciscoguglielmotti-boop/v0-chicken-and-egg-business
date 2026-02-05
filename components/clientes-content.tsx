@@ -120,17 +120,9 @@ export function ClientesContent() {
       key: "saldoActual",
       header: "Saldo",
       render: (cliente: Cliente) => (
-        <div>
-          {cliente.saldoActual > 0 ? (
-            <Badge variant="outline" className="bg-accent/20 text-accent-foreground border-accent/30">
-              {formatCurrency(cliente.saldoActual)}
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">
-              Al dia
-            </Badge>
-          )}
-        </div>
+        <span className={`font-semibold ${cliente.saldoActual > 0 ? "text-destructive" : cliente.saldoActual < 0 ? "text-primary" : "text-muted-foreground"}`}>
+          {formatCurrency(cliente.saldoActual)}
+        </span>
       ),
     },
   ]

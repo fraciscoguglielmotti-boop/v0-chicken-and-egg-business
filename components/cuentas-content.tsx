@@ -1,11 +1,25 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { ArrowUpRight, ArrowDownRight, Search, Users, Filter } from "lucide-react"
+import { ArrowUpRight, ArrowDownRight, Search, Users, Filter, Download, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import {
   Select,
   SelectContent,
@@ -64,6 +78,11 @@ export function CuentasContent() {
   const [vendedorFilter, setVendedorFilter] = useState<string>("todos")
   const [selectedCuenta, setSelectedCuenta] = useState<CuentaCliente | null>(null)
   const [tab, setTab] = useState("clientes")
+  const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [rangoExport, setRangoExport] = useState<{ desde: string; hasta: string }>({
+    desde: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    hasta: new Date().toISOString().split("T")[0],
+  })
 
   const isLoading = sheetsVentas.isLoading || sheetsCobros.isLoading
   const hasError = sheetsVentas.error || sheetsCobros.error
@@ -166,6 +185,53 @@ export function CuentasContent() {
   const totalPorCobrar = filteredClientes.reduce((acc, c) => acc + Math.max(c.saldo, 0), 0)
   const totalAFavor = filteredClientes.reduce((acc, c) => acc + Math.min(c.saldo, 0), 0)
   const totalPorPagar = filteredProveedores.reduce((acc, p) => acc + p.saldo, 0)
+
+  // Export functions
+  const handleExportHistorica = () => {
+    if (!selectedCuenta) return
+    exportMovimientos(movimientos, `cuenta_corriente_${selectedCuenta.nombre}_historica`)
+  }
+
+  const handleExportSemana = () => {
+    if (!selectedCuenta) return
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const filtered = movimientos.filter(m => new Date(m.fecha) >= weekAgo)
+    exportMovimientos(filtered, `cuenta_corriente_${selectedCuenta.nombre}_semana`)
+  }
+
+  const handleExportRango = () => {
+    if (!selectedCuenta) return
+    const desde = new Date(rangoExport.desde)
+    const hasta = new Date(rangoExport.hasta)
+    const filtered = movimientos.filter(m => {
+      const fecha = new Date(m.fecha)
+      return fecha >= desde && fecha <= hasta
+    })
+    exportMovimientos(filtered, `cuenta_corriente_${selectedCuenta.nombre}_${rangoExport.desde}_${rangoExport.hasta}`)
+    setExportDialogOpen(false)
+  }
+
+  function exportMovimientos(movs: Movimiento[], filename: string) {
+    const headers = ["Fecha", "Tipo", "Descripcion", "Debe", "Haber", "Saldo"]
+    const csvRows = [headers.join(",")]
+    movs.forEach(m => {
+      csvRows.push([
+        formatDate(m.fecha),
+        m.tipo === "venta" ? "Venta" : "Cobro",
+        `"${m.descripcion}"`,
+        String(m.debe),
+        String(m.haber),
+        String(m.saldoAcumulado),
+      ].join(","))
+    })
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${filename}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   // Build movements for selected client
   const movimientos: Movimiento[] = useMemo(() => {
@@ -388,7 +454,31 @@ export function CuentasContent() {
                     <p className="text-xs text-muted-foreground">Vendedor: {selectedCuenta.vendedor}</p>
                   )}
                 </div>
-                <Button variant="outline" onClick={() => setSelectedCuenta(null)}>Volver al listado</Button>
+                <div className="flex gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <Download className="mr-2 h-4 w-4" />
+                        Exportar
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={handleExportSemana}>
+                        <Calendar className="mr-2 h-4 w-4" />
+                        Ultima semana
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setExportDialogOpen(true)}>
+                        <Calendar className="mr-2 h-4 w-4" />
+                        Rango personalizado
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleExportHistorica}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Historica completa
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button variant="outline" onClick={() => setSelectedCuenta(null)}>Volver al listado</Button>
+                </div>
               </div>
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-sm">
@@ -440,6 +530,40 @@ export function CuentasContent() {
           <DataTable columns={proveedorColumns} data={filteredProveedores} emptyMessage="No hay cuentas de proveedores" />
         </TabsContent>
       </Tabs>
+
+      {/* Export Dialog */}
+      <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Exportar por Rango de Fechas</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Desde</Label>
+              <Input
+                type="date"
+                value={rangoExport.desde}
+                onChange={(e) => setRangoExport({ ...rangoExport, desde: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Hasta</Label>
+              <Input
+                type="date"
+                value={rangoExport.hasta}
+                onChange={(e) => setRangoExport({ ...rangoExport, hasta: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExportDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleExportRango}>
+              <Download className="mr-2 h-4 w-4" />
+              Exportar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

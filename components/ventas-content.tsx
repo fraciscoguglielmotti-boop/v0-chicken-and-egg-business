@@ -28,11 +28,19 @@ function formatCurrency(amount: number): string {
 }
 
 function formatDate(date: Date | string): string {
-  return new Intl.DateTimeFormat("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(date))
+  if (!date) return "-"
+  try {
+    const d = new Date(date)
+    // Add timezone offset to avoid date shifting
+    d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
+    return new Intl.DateTimeFormat("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(d)
+  } catch {
+    return String(date)
+  }
 }
 
 interface VentaConVendedor extends Venta {
@@ -240,15 +248,21 @@ export function VentasContent() {
     {
       key: "items",
       header: "Productos",
-      render: (venta: VentaConVendedor) => (
-        <div className="max-w-xs">
-          {venta.items.slice(0, 2).map((item, idx) => (
-            <p key={idx} className="text-sm text-muted-foreground truncate">
-              {item.cantidad} x {item.productoNombre}
-            </p>
-          ))}
-        </div>
-      ),
+      render: (venta: VentaConVendedor) => {
+        const totalProductos = venta.items.reduce((a, i) => a + i.cantidad, 0)
+        return (
+          <div className="max-w-xs space-y-0.5">
+            {venta.items.slice(0, 2).map((item, idx) => (
+              <p key={idx} className="text-sm text-foreground">
+                {item.cantidad} x {item.productoNombre}
+              </p>
+            ))}
+            {venta.items.length > 2 && (
+              <p className="text-xs text-muted-foreground">+{venta.items.length - 2} más</p>
+            )}
+          </div>
+        )
+      },
     },
     {
       key: "cantidad",
@@ -268,7 +282,7 @@ export function VentasContent() {
     },
     {
       key: "total",
-      header: "Total (P x Q)",
+      header: "Total",
       render: (venta: VentaConVendedor) => (
         <span className="font-semibold text-foreground">
           {formatCurrency(venta.total)}
