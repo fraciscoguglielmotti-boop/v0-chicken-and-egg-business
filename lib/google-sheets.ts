@@ -36,8 +36,6 @@ export const SHEET_COLUMNS = {
     "Productos",
     "Cantidad",
     "PrecioUnitario",
-    "Total",
-    "Estado",
     "Vendedor",
   ],
   COBROS: [

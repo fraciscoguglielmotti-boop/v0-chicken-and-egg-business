@@ -97,7 +97,10 @@ export function CuentasContent() {
         totalCobros: 0,
         saldo: 0,
       }
-      existing.totalVentas += Number(r.Total) || 0
+      // Calculate total as Cantidad x PrecioUnitario
+      const cant = Number(r.Cantidad) || 0
+      const precio = Number(r.PrecioUnitario) || 0
+      existing.totalVentas += cant * precio
       if (r.Vendedor && !existing.vendedor) existing.vendedor = r.Vendedor
       map.set(key, existing)
     })
@@ -138,7 +141,9 @@ export function CuentasContent() {
         totalPagos: 0,
         saldo: 0,
       }
-      existing.totalCompras += Number(r.Total) || 0
+      const cant = Number(r.Cantidad) || 0
+      const precio = Number(r["Precio Unitario"] || r.PrecioUnitario) || 0
+      existing.totalCompras += cant * precio
       map.set(key, existing)
     })
 
@@ -172,11 +177,13 @@ export function CuentasContent() {
     sheetsVentas.rows.forEach((r) => {
       const c = (r.Cliente || r.ClienteID || "").toLowerCase().trim()
       if (c === clienteKey) {
+        const cant = Number(r.Cantidad) || 0
+        const precio = Number(r.PrecioUnitario) || 0
         entries.push({
           fecha: r.Fecha || "",
           tipo: "venta",
-          desc: `Venta - ${r.Productos || "Productos"} (${r.Cantidad || ""})`,
-          monto: Number(r.Total) || 0,
+          desc: `Venta - ${r.Productos || "Productos"} (${cant} x ${formatCurrency(precio)})`,
+          monto: cant * precio,
         })
       }
     })

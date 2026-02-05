@@ -97,7 +97,9 @@ export function VendedoresContent() {
         cantidadVentas: 0,
         clientes: [],
       }
-      const total = Number(r.Total) || 0
+      const cant = Number(r.Cantidad) || 0
+      const precio = Number(r.PrecioUnitario) || 0
+      const total = cant * precio
       existing.totalVentas += total
       existing.cantidadVentas += 1
       existing.totalComisiones += total * (existing.comisionPct / 100)

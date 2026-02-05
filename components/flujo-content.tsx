@@ -110,11 +110,13 @@ export function FlujoContent() {
       acumulado: 0,
     }))
 
-    // Income from sales
+    // Income from sales (Cantidad x PrecioUnitario)
     sheetsVentas.rows.forEach((r) => {
       const fecha = new Date(r.Fecha || "")
       if (fecha.getFullYear() === anio) {
-        meses[fecha.getMonth()].ingresos += Number(r.Total) || 0
+        const cant = Number(r.Cantidad) || 0
+        const precio = Number(r.PrecioUnitario) || 0
+        meses[fecha.getMonth()].ingresos += cant * precio
       }
     })
 
@@ -127,11 +129,14 @@ export function FlujoContent() {
       }
     })
 
-    // Expenses from purchases
+    // Expenses from purchases (Cantidad x Precio)
     sheetsCompras.rows.forEach((r) => {
       const fecha = new Date(r.Fecha || "")
       if (fecha.getFullYear() === anio) {
-        meses[fecha.getMonth()].egresos += Number(r.Total) || 0
+        const cant = Number(r.Cantidad) || 0
+        const precio = Number(r["Precio Unitario"] || r.PrecioUnitario) || 0
+        const total = cant * precio > 0 ? cant * precio : (Number(r.Total) || 0)
+        meses[fecha.getMonth()].egresos += total
       }
     })
 

@@ -39,14 +39,23 @@ function formatDate(date: Date | string): string {
 }
 
 function rowToVenta(row: SheetRow, i: number): Venta {
+  const cant = Number(row.Cantidad) || 0
+  const precio = Number(row.PrecioUnitario) || 0
+  const total = cant * precio
   return {
     id: row.ID || String(i),
     fecha: new Date(row.Fecha || Date.now()),
     clienteId: row.ClienteID || "",
     clienteNombre: row.Cliente || "",
-    items: [],
-    total: Number(row.Total) || 0,
-    estado: (row.Estado as Venta["estado"]) || "pendiente",
+    items: [{
+      productoId: "producto",
+      productoNombre: row.Productos || "Producto",
+      cantidad: cant,
+      precioUnitario: precio,
+      subtotal: total,
+    }],
+    total,
+    estado: "pendiente",
     createdAt: new Date(row.Fecha || Date.now()),
   }
 }

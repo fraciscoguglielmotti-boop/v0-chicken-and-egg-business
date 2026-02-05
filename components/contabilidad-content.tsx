@@ -100,28 +100,34 @@ export function ContabilidadContent() {
   const movimientos: MovimientoContable[] = useMemo(() => {
     const entries: MovimientoContable[] = []
 
-    // Sales as income
+    // Sales as income (Total = Cantidad x PrecioUnitario)
     sheetsVentas.rows.forEach((r, i) => {
+      const cant = Number(r.Cantidad) || 0
+      const precio = Number(r.PrecioUnitario) || 0
+      const total = cant * precio
       entries.push({
         id: `v-${i}`,
         fecha: r.Fecha || "",
         tipo: "ingreso",
         categoria: r.Productos?.includes("Huevo") ? "Ventas Huevo" : "Ventas Pollo",
-        descripcion: `Venta a ${r.Cliente || "Cliente"} - ${r.Productos || ""}`,
-        monto: Number(r.Total) || 0,
+        descripcion: `Venta a ${r.Cliente || "Cliente"} - ${r.Productos || ""} (${cant} x $${precio})`,
+        monto: total,
         origen: "venta",
       })
     })
 
-    // Purchases as expenses
+    // Purchases as expenses (Total = Cantidad x Precio)
     sheetsCompras.rows.forEach((r, i) => {
+      const cant = Number(r.Cantidad) || 0
+      const precio = Number(r["Precio Unitario"] || r.PrecioUnitario) || 0
+      const total = cant * precio > 0 ? cant * precio : (Number(r.Total) || 0)
       entries.push({
         id: `c-${i}`,
         fecha: r.Fecha || "",
         tipo: "egreso",
         categoria: "Compras Mercaderia",
         descripcion: `Compra a ${r.Proveedor || "Proveedor"} - ${r.Producto || ""}`,
-        monto: Number(r.Total) || 0,
+        monto: total,
         origen: "compra",
       })
     })

@@ -35,20 +35,28 @@ function formatDate(date: Date | string): string {
   }).format(new Date(date))
 }
 
-function sheetRowToVenta(row: SheetRow, index: number): Venta & { vendedor?: string } {
-  // Debug: log exact keys and values from Sheets
-  if (index === 0) {
-    console.log("[v0] Sheet row keys:", Object.keys(row))
-    console.log("[v0] Sheet row values:", JSON.stringify(row))
-  }
+interface VentaConVendedor extends Venta {
+  vendedor: string
+}
+
+function sheetRowToVenta(row: SheetRow, _index: number, allCobros: SheetRow[]): VentaConVendedor {
   const cantidad = Number(row.Cantidad) || 0
   const precioUnitario = Number(row.PrecioUnitario) || 0
-  // Always compute total from qty x price
-  const totalCalculado = cantidad * precioUnitario
-  const total = totalCalculado > 0 ? totalCalculado : Number(row.Total) || 0
+  // Total is ALWAYS qty x price
+  const total = cantidad * precioUnitario
+
+  // Calculate estado from cobros for this client
+  const cliente = (row.Cliente || "").toLowerCase().trim()
+  let totalCobrosCliente = 0
+  let totalVentasCliente = 0
+
+  // We only determine estado at display time, so just use the row data
+  // Estado is determined by comparing all sales vs all payments for this client
+  // But for per-row display, we mark based on whether this specific sale's total is 0
+  const estado: Venta["estado"] = total === 0 ? "pagada" : "pendiente"
 
   return {
-    id: row.ID || String(index),
+    id: row.ID || String(_index),
     fecha: new Date(row.Fecha || Date.now()),
     clienteId: row.ClienteID || "",
     clienteNombre: row.Cliente || "",
@@ -62,40 +70,71 @@ function sheetRowToVenta(row: SheetRow, index: number): Venta & { vendedor?: str
       },
     ],
     total,
-    estado: (row.Estado as Venta["estado"]) || "pendiente",
+    estado,
     createdAt: new Date(row.Fecha || Date.now()),
     vendedor: row.Vendedor || "",
   }
 }
 
-const estadoColors = {
-  pendiente: "bg-accent/20 text-accent-foreground border-accent/30",
-  pagada: "bg-primary/20 text-primary border-primary/30",
-  parcial: "bg-secondary text-secondary-foreground border-border",
-}
-
-const estadoLabels = {
-  pendiente: "Pendiente",
-  pagada: "Pagada",
-  parcial: "Parcial",
-}
-
 export function VentasContent() {
   const { rows, isLoading, error, mutate } = useSheet("Ventas")
+  const sheetsCobros = useSheet("Cobros")
   const [localVentas, setLocalVentas] = useState(ventasIniciales)
   const [searchTerm, setSearchTerm] = useState("")
   const [estadoFilter, setEstadoFilter] = useState<string>("todos")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const isConnected = !error && !isLoading && rows.length >= 0 && !isLoading
+  const isConnected = !error && !isLoading && rows.length >= 0
 
-  const ventas: Venta[] = useMemo(() => {
+  // Calculate estado per client: compare total ventas vs total cobros
+  const clienteEstados = useMemo(() => {
+    const ventasPorCliente = new Map<string, number>()
+    const cobrosPorCliente = new Map<string, number>()
+
+    rows.forEach((r) => {
+      const cliente = (r.Cliente || "").toLowerCase().trim()
+      if (!cliente) return
+      const cantidad = Number(r.Cantidad) || 0
+      const precio = Number(r.PrecioUnitario) || 0
+      ventasPorCliente.set(cliente, (ventasPorCliente.get(cliente) || 0) + cantidad * precio)
+    })
+
+    sheetsCobros.rows.forEach((r) => {
+      const cliente = (r.Cliente || "").toLowerCase().trim()
+      if (!cliente) return
+      cobrosPorCliente.set(cliente, (cobrosPorCliente.get(cliente) || 0) + (Number(r.Monto) || 0))
+    })
+
+    const estados = new Map<string, Venta["estado"]>()
+    ventasPorCliente.forEach((totalVentas, cliente) => {
+      const totalCobros = cobrosPorCliente.get(cliente) || 0
+      if (totalCobros >= totalVentas) {
+        estados.set(cliente, "pagada")
+      } else if (totalCobros > 0) {
+        estados.set(cliente, "parcial")
+      } else {
+        estados.set(cliente, "pendiente")
+      }
+    })
+    return estados
+  }, [rows, sheetsCobros.rows])
+
+  const ventas: VentaConVendedor[] = useMemo(() => {
     if (isConnected && rows.length > 0) {
-      return rows.map(sheetRowToVenta)
+      return rows.map((row, i) => {
+        const venta = sheetRowToVenta(row, i, sheetsCobros.rows)
+        // Override estado with calculated one
+        const clienteKey = (row.Cliente || "").toLowerCase().trim()
+        const calculatedEstado = clienteEstados.get(clienteKey)
+        if (calculatedEstado) {
+          venta.estado = calculatedEstado
+        }
+        return venta
+      })
     }
-    return localVentas
-  }, [isConnected, rows, localVentas])
+    return localVentas.map((v) => ({ ...v, vendedor: "" }))
+  }, [isConnected, rows, localVentas, sheetsCobros.rows, clienteEstados])
 
   const filteredVentas = ventas.filter((venta) => {
     const matchesSearch = venta.clienteNombre
@@ -107,18 +146,19 @@ export function VentasContent() {
   })
 
   const handleExportar = () => {
-    const headers = ["Fecha", "Cliente", "Productos", "Total", "Estado", "Vendedor"]
+    const headers = ["Fecha", "Cliente", "Productos", "Cantidad", "Precio Unitario", "Total", "Estado", "Vendedor"]
     const csvRows = [headers.join(",")]
     filteredVentas.forEach((v) => {
-      const vWithVendedor = v as Venta & { vendedor?: string }
       const items = v.items.map((i) => `${i.cantidad} ${i.productoNombre}`).join(" / ")
       csvRows.push([
         formatDate(v.fecha),
         `"${v.clienteNombre}"`,
         `"${items}"`,
+        String(v.items.reduce((a, i) => a + i.cantidad, 0)),
+        String(v.items.length > 0 ? v.items[0].precioUnitario : 0),
         String(v.total),
         v.estado,
-        vWithVendedor.vendedor || "",
+        v.vendedor || "",
       ].join(","))
     })
     const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" })
@@ -138,16 +178,15 @@ export function VentasContent() {
   const handleNuevaVenta = async (venta: Venta & { vendedor?: string }) => {
     setSaving(true)
     try {
-      // Build products summary
       const productos = venta.items
         .map((i) => `${i.cantidad} ${i.productoNombre}`)
         .join(", ")
 
       const cantidadTotal = venta.items.reduce((a, i) => a + i.cantidad, 0)
       const precioPromedio = venta.items.length > 0 ? venta.items[0].precioUnitario : 0
-      // Total is always qty x price (auto-calculated)
-      const totalCalculado = venta.items.reduce((a, i) => a + (i.cantidad * i.precioUnitario), 0)
 
+      // Save WITHOUT Total and Estado columns (they don't exist in your sheet)
+      // Only save: ID, Fecha, ClienteID, Cliente, Productos, Cantidad, PrecioUnitario, Vendedor
       const sheetValues = [
         [
           venta.id,
@@ -157,8 +196,6 @@ export function VentasContent() {
           productos,
           String(cantidadTotal),
           String(precioPromedio),
-          String(totalCalculado),
-          venta.estado,
           venta.vendedor || "",
         ],
       ]
@@ -166,7 +203,6 @@ export function VentasContent() {
       await addRow("Ventas", sheetValues)
       await mutate()
     } catch {
-      // If Sheets fails, save locally
       setLocalVentas((prev) => [venta, ...prev])
     } finally {
       setSaving(false)
@@ -174,48 +210,66 @@ export function VentasContent() {
     }
   }
 
+  const estadoColors = {
+    pendiente: "bg-accent/20 text-accent-foreground border-accent/30",
+    pagada: "bg-primary/20 text-primary border-primary/30",
+    parcial: "bg-blue-500/20 text-blue-700 border-blue-500/30",
+  }
+
+  const estadoLabels = {
+    pendiente: "Pendiente",
+    pagada: "Pagada",
+    parcial: "Parcial",
+  }
+
   const columns = [
     {
       key: "fecha",
       header: "Fecha",
-      render: (venta: Venta) => (
+      render: (venta: VentaConVendedor) => (
         <span className="font-medium">{formatDate(venta.fecha)}</span>
       ),
     },
     {
       key: "clienteNombre",
       header: "Cliente",
-      render: (venta: Venta) => (
-        <div>
-          <p className="font-medium text-foreground">{venta.clienteNombre}</p>
-          <p className="text-xs text-muted-foreground">
-            {venta.items.length} producto(s)
-          </p>
-        </div>
+      render: (venta: VentaConVendedor) => (
+        <p className="font-medium text-foreground">{venta.clienteNombre}</p>
       ),
     },
     {
       key: "items",
       header: "Productos",
-      render: (venta: Venta) => (
+      render: (venta: VentaConVendedor) => (
         <div className="max-w-xs">
           {venta.items.slice(0, 2).map((item, idx) => (
             <p key={idx} className="text-sm text-muted-foreground truncate">
-              {item.cantidad} {item.productoNombre}
+              {item.cantidad} x {item.productoNombre}
             </p>
           ))}
-          {venta.items.length > 2 && (
-            <p className="text-xs text-muted-foreground">
-              +{venta.items.length - 2} mas
-            </p>
-          )}
         </div>
       ),
     },
     {
+      key: "cantidad",
+      header: "Cant.",
+      render: (venta: VentaConVendedor) => (
+        <span className="text-sm">{venta.items.reduce((a, i) => a + i.cantidad, 0)}</span>
+      ),
+    },
+    {
+      key: "precio",
+      header: "P. Unit.",
+      render: (venta: VentaConVendedor) => (
+        <span className="text-sm text-muted-foreground">
+          {venta.items[0] ? formatCurrency(venta.items[0].precioUnitario) : "-"}
+        </span>
+      ),
+    },
+    {
       key: "total",
-      header: "Total",
-      render: (venta: Venta) => (
+      header: "Total (P x Q)",
+      render: (venta: VentaConVendedor) => (
         <span className="font-semibold text-foreground">
           {formatCurrency(venta.total)}
         </span>
@@ -224,14 +278,14 @@ export function VentasContent() {
     {
       key: "vendedor",
       header: "Vendedor",
-      render: (venta: Venta & { vendedor?: string }) => (
+      render: (venta: VentaConVendedor) => (
         <span className="text-sm text-muted-foreground">{venta.vendedor || "-"}</span>
       ),
     },
     {
       key: "estado",
       header: "Estado",
-      render: (venta: Venta) => (
+      render: (venta: VentaConVendedor) => (
         <Badge variant="outline" className={estadoColors[venta.estado]}>
           {estadoLabels[venta.estado]}
         </Badge>
@@ -306,7 +360,6 @@ export function VentasContent() {
         emptyMessage={isLoading ? "Cargando ventas..." : "No hay ventas registradas"}
       />
 
-      {/* Dialog */}
       <NuevaVentaDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
