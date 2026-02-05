@@ -36,6 +36,11 @@ function formatDate(date: Date | string): string {
 }
 
 function sheetRowToVenta(row: SheetRow, index: number): Venta & { vendedor?: string } {
+  // Debug: log exact keys and values from Sheets
+  if (index === 0) {
+    console.log("[v0] Sheet row keys:", Object.keys(row))
+    console.log("[v0] Sheet row values:", JSON.stringify(row))
+  }
   const cantidad = Number(row.Cantidad) || 0
   const precioUnitario = Number(row.PrecioUnitario) || 0
   // Always compute total from qty x price

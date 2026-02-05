@@ -38,6 +38,13 @@ export function useSheet(sheetName: string | null) {
   const rows: SheetRow[] =
     data?.headers && data?.data ? rowsToObjects(data.headers, data.data) : []
 
+  if (data?.headers && sheetName) {
+    console.log(`[v0] Sheet "${sheetName}" headers:`, data.headers)
+    if (data.data?.length > 0) {
+      console.log(`[v0] Sheet "${sheetName}" first raw row:`, data.data[0])
+    }
+  }
+
   return {
     rows,
     headers: (data?.headers as string[]) || [],
