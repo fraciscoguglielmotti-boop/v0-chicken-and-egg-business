@@ -1,9 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-
 import { Badge } from "@/components/ui/badge"
-
 import { useMemo } from "react"
 import {
   ShoppingCart,
@@ -19,19 +17,13 @@ import { SheetsStatus } from "./sheets-status"
 import { useSheet, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales, cobrosIniciales, calcularStats } from "@/lib/store"
 import type { Venta, Cobro } from "@/lib/types"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, resolveEntityName } from "@/lib/utils"
 
-function resolveClientName(row: SheetRow): string {
-  const clienteRaw = row.Cliente || ""
-  const clienteIdRaw = row.ClienteID || ""
-  return clienteRaw || (clienteIdRaw && Number.isNaN(Number(clienteIdRaw)) ? clienteIdRaw : "")
-}
-
-function rowToVenta(row: SheetRow, i: number): Venta {
+function rowToVenta(row: SheetRow, i: number, clienteLookup: SheetRow[]): Venta {
   const cant = Number(row.Cantidad) || 0
   const precio = Number(row.PrecioUnitario) || 0
   const total = cant * precio
-  const clienteNombre = resolveClientName(row)
+  const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
   return {
     id: row.ID || String(i),
     fecha: new Date(row.Fecha || Date.now()),
@@ -50,8 +42,8 @@ function rowToVenta(row: SheetRow, i: number): Venta {
   }
 }
 
-function rowToCobro(row: SheetRow, i: number): Cobro {
-  const clienteNombre = resolveClientName(row)
+function rowToCobro(row: SheetRow, i: number, clienteLookup: SheetRow[]): Cobro {
+  const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
   return {
     id: row.ID || String(i),
     fecha: new Date(row.Fecha || Date.now()),
@@ -81,7 +73,7 @@ export function DashboardContent() {
   const sheetsClientes = useSheet("Clientes")
 
   const isLoading = sheetsVentas.isLoading || sheetsCobros.isLoading
-  const hasError = sheetsVentas.error || sheetsCobros.error
+  const hasError = sheetsVentas.error || sheetsCobros.error || null
   const isConnected = !hasError && !isLoading
 
   // Calculate client balances: ventas - cobros
@@ -90,7 +82,7 @@ export function DashboardContent() {
 
     // Add ventas (debt)
     sheetsVentas.rows.forEach((row) => {
-      const cliente = resolveClientName(row)
+      const cliente = resolveEntityName(row.Cliente || "", row.ClienteID || "", sheetsClientes.rows)
       if (!cliente) return
       const key = cliente.toLowerCase().trim()
       const cant = Number(row.Cantidad) || 0
@@ -103,7 +95,7 @@ export function DashboardContent() {
 
     // Subtract cobros (payments)
     sheetsCobros.rows.forEach((row) => {
-      const cliente = resolveClientName(row)
+      const cliente = resolveEntityName(row.Cliente || "", row.ClienteID || "", sheetsClientes.rows)
       if (!cliente) return
       const key = cliente.toLowerCase().trim()
       const existing = balances.get(key)
@@ -116,17 +108,17 @@ export function DashboardContent() {
       .filter((c) => c.saldo > 0)
       .sort((a, b) => b.saldo - a.saldo)
       .slice(0, 5)
-  }, [sheetsVentas.rows, sheetsCobros.rows])
+  }, [sheetsVentas.rows, sheetsCobros.rows, sheetsClientes.rows])
 
   const ventas: Venta[] = useMemo(() => {
-    if (isConnected && sheetsVentas.rows.length > 0) return sheetsVentas.rows.map(rowToVenta)
+    if (isConnected && sheetsVentas.rows.length > 0) return sheetsVentas.rows.map((row, i) => rowToVenta(row, i, sheetsClientes.rows))
     return ventasIniciales
-  }, [isConnected, sheetsVentas.rows])
+  }, [isConnected, sheetsVentas.rows, sheetsClientes.rows])
 
   const cobros: Cobro[] = useMemo(() => {
-    if (isConnected && sheetsCobros.rows.length > 0) return sheetsCobros.rows.map(rowToCobro)
+    if (isConnected && sheetsCobros.rows.length > 0) return sheetsCobros.rows.map((row, i) => rowToCobro(row, i, sheetsClientes.rows))
     return cobrosIniciales
-  }, [isConnected, sheetsCobros.rows])
+  }, [isConnected, sheetsCobros.rows, sheetsClientes.rows])
 
   const stats = useMemo(() => {
     if (!isConnected) return calcularStats()

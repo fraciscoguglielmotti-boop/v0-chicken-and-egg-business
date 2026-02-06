@@ -17,15 +17,15 @@ import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import type { Pago } from "@/lib/types"
 import { NuevoPagoDialog } from "./nuevo-pago-dialog"
-import { formatCurrency, formatDateForSheets, formatDate } from "@/lib/utils"
+import { formatCurrency, formatDateForSheets, formatDate, resolveEntityName } from "@/lib/utils"
 
-function sheetRowToPago(row: SheetRow, index: number): Pago {
-  // Proveedor field is the display name; ProveedorID may also hold the name
-  const proveedorNombre = row.Proveedor || row.ProveedorID || ""
+function sheetRowToPago(row: SheetRow, index: number, proveedorLookup: SheetRow[]): Pago {
+  // Resolve proveedor name robustly (handles ID/name swaps from manual data entry)
+  const proveedorNombre = resolveEntityName(row.Proveedor || "", row.ProveedorID || "", proveedorLookup)
   return {
     id: row.ID || String(index),
     fecha: new Date(row.Fecha || Date.now()),
-    proveedorId: proveedorNombre, // Use name consistently
+    proveedorId: proveedorNombre,
     proveedorNombre,
     monto: Number(row.Monto) || 0,
     metodoPago: (row.MetodoPago as Pago["metodoPago"]) || "efectivo",
@@ -46,6 +46,7 @@ const metodoPagoLabels: Record<string, string> = {
 
 export function PagosContent() {
   const { rows, isLoading, error, mutate } = useSheet("Pagos")
+  const sheetsProveedores = useSheet("Proveedores")
   const [searchTerm, setSearchTerm] = useState("")
   const [metodoFilter, setMetodoFilter] = useState<string>("todos")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -55,10 +56,10 @@ export function PagosContent() {
 
   const pagos: Pago[] = useMemo(() => {
     if (isConnected && rows.length > 0) {
-      return rows.map(sheetRowToPago)
+      return rows.map((row, i) => sheetRowToPago(row, i, sheetsProveedores.rows))
     }
     return []
-  }, [isConnected, rows])
+  }, [isConnected, rows, sheetsProveedores.rows])
 
   const filteredPagos = pagos.filter((pago) => {
     const matchesSearch = pago.proveedorNombre

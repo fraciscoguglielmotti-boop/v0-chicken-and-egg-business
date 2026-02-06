@@ -112,9 +112,7 @@ export function VentasContent() {
     const cobrosPorCliente = new Map<string, number>()
 
     rows.forEach((r) => {
-      const cRaw = r.Cliente || ""
-      const cIdRaw = r.ClienteID || ""
-      const cliente = (cRaw || (cIdRaw && Number.isNaN(Number(cIdRaw)) ? cIdRaw : "")).toLowerCase().trim()
+      const cliente = resolveEntityName(r.Cliente || "", r.ClienteID || "", sheetsClientes.rows).toLowerCase().trim()
       if (!cliente) return
       const cantidad = Number(r.Cantidad) || 0
       const precio = Number(r.PrecioUnitario) || 0
@@ -122,9 +120,7 @@ export function VentasContent() {
     })
 
     sheetsCobros.rows.forEach((r) => {
-      const cRaw = r.Cliente || ""
-      const cIdRaw = r.ClienteID || ""
-      const cliente = (cRaw || (cIdRaw && Number.isNaN(Number(cIdRaw)) ? cIdRaw : "")).toLowerCase().trim()
+      const cliente = resolveEntityName(r.Cliente || "", r.ClienteID || "", sheetsClientes.rows).toLowerCase().trim()
       if (!cliente) return
       cobrosPorCliente.set(cliente, (cobrosPorCliente.get(cliente) || 0) + (Number(r.Monto) || 0))
     })
@@ -141,16 +137,14 @@ export function VentasContent() {
       }
     })
     return estados
-  }, [rows, sheetsCobros.rows])
+  }, [rows, sheetsCobros.rows, sheetsClientes.rows])
 
   const ventas: VentaConVendedor[] = useMemo(() => {
     if (isConnected && rows.length > 0) {
       return rows.map((row, i) => {
-        const venta = sheetRowToVenta(row, i, sheetsCobros.rows)
+        const venta = sheetRowToVenta(row, i, sheetsClientes.rows)
         // Override estado with calculated one
-        const cRaw2 = row.Cliente || ""
-        const cIdRaw2 = row.ClienteID || ""
-        const clienteKey = (cRaw2 || (cIdRaw2 && Number.isNaN(Number(cIdRaw2)) ? cIdRaw2 : "")).toLowerCase().trim()
+        const clienteKey = resolveEntityName(row.Cliente || "", row.ClienteID || "", sheetsClientes.rows).toLowerCase().trim()
         const calculatedEstado = clienteEstados.get(clienteKey)
         if (calculatedEstado) {
           venta.estado = calculatedEstado
@@ -159,7 +153,7 @@ export function VentasContent() {
       })
     }
     return localVentas.map((v) => ({ ...v, vendedor: "" }))
-  }, [isConnected, rows, localVentas, sheetsCobros.rows, clienteEstados])
+  }, [isConnected, rows, localVentas, sheetsClientes.rows, clienteEstados])
 
   const filteredVentas = ventas.filter((venta) => {
     const matchesSearch = venta.clienteNombre

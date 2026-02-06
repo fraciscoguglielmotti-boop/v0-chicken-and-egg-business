@@ -18,15 +18,15 @@ import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { cobrosIniciales } from "@/lib/store"
 import type { Cobro } from "@/lib/types"
 import { NuevoCobroDialog } from "./nuevo-cobro-dialog"
-import { formatCurrency, formatDate, formatDateForSheets } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets, resolveEntityName } from "@/lib/utils"
 
-function sheetRowToCobro(row: SheetRow, index: number): Cobro {
-  // Cliente field is the display name; ClienteID may also hold the name
-  const clienteNombre = row.Cliente || row.ClienteID || ""
+function sheetRowToCobro(row: SheetRow, index: number, clienteLookup: SheetRow[]): Cobro {
+  // Resolve client name robustly (handles ID/name swaps from manual data entry)
+  const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
   return {
     id: row.ID || String(index),
     fecha: new Date(row.Fecha || Date.now()),
-    clienteId: clienteNombre, // Use name consistently
+    clienteId: clienteNombre,
     clienteNombre,
     monto: Number(row.Monto) || 0,
     metodoPago: (row.MetodoPago as Cobro["metodoPago"]) || "efectivo",
@@ -47,6 +47,7 @@ const metodoPagoLabels: Record<string, string> = {
 
 export function CobrosContent() {
   const { rows, isLoading, error, mutate } = useSheet("Cobros")
+  const sheetsClientes = useSheet("Clientes")
   const [localCobros, setLocalCobros] = useState(cobrosIniciales)
   const [searchTerm, setSearchTerm] = useState("")
   const [metodoFilter, setMetodoFilter] = useState<string>("todos")
@@ -57,10 +58,10 @@ export function CobrosContent() {
 
   const cobros: Cobro[] = useMemo(() => {
     if (isConnected && rows.length > 0) {
-      return rows.map(sheetRowToCobro)
+      return rows.map((row, i) => sheetRowToCobro(row, i, sheetsClientes.rows))
     }
     return localCobros
-  }, [isConnected, rows, localCobros])
+  }, [isConnected, rows, localCobros, sheetsClientes.rows])
 
   const filteredCobros = cobros.filter((cobro) => {
     const matchesSearch = cobro.clienteNombre

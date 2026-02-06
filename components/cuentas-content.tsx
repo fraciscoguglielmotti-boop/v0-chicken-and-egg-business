@@ -1,7 +1,5 @@
 "use client"
 
-import { DialogDescription } from "@/components/ui/dialog"
-
 import { useState, useMemo } from "react"
 import { ArrowUpRight, ArrowDownRight, Search, Users, Filter, Download, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -12,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -32,27 +31,7 @@ import {
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, type SheetRow } from "@/hooks/use-sheets"
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-  }).format(amount)
-}
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return "-"
-  try {
-    return new Intl.DateTimeFormat("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(new Date(dateStr))
-  } catch {
-    return dateStr
-  }
-}
+import { formatCurrency, formatDate, resolveEntityName } from "@/lib/utils"
 
 interface CuentaCliente {
   id: string
@@ -77,6 +56,8 @@ export function CuentasContent() {
   const sheetsCobros = useSheet("Cobros")
   const sheetsCompras = useSheet("Compras")
   const sheetsPagos = useSheet("Pagos")
+  const sheetsClientes = useSheet("Clientes")
+  const sheetsProveedoresData = useSheet("Proveedores")
   const [searchTerm, setSearchTerm] = useState("")
   const [vendedorFilter, setVendedorFilter] = useState<string>("todos")
   const [selectedCuenta, setSelectedCuenta] = useState<CuentaCliente | null>(null)
@@ -88,7 +69,7 @@ export function CuentasContent() {
   })
 
   const isLoading = sheetsVentas.isLoading || sheetsCobros.isLoading
-  const hasError = sheetsVentas.error || sheetsCobros.error
+  const hasError = sheetsVentas.error || sheetsCobros.error || null
   const isConnected = !hasError && !isLoading
 
   // Extract unique vendors from sales
@@ -108,10 +89,7 @@ export function CuentasContent() {
     const map = new Map<string, CuentaCliente>()
 
     sheetsVentas.rows.forEach((r) => {
-      // Determine the client name: use Cliente column first, then ClienteID only if it looks like a name (not a number)
-      const clienteRaw = r.Cliente || ""
-      const clienteIdRaw = r.ClienteID || ""
-      const cliente = clienteRaw || (clienteIdRaw && Number.isNaN(Number(clienteIdRaw)) ? clienteIdRaw : "")
+      const cliente = resolveEntityName(r.Cliente || "", r.ClienteID || "", sheetsClientes.rows)
       if (!cliente || cliente === "-") return
       const key = cliente.toLowerCase().trim()
       const existing = map.get(key) || {
@@ -131,9 +109,7 @@ export function CuentasContent() {
     })
 
     sheetsCobros.rows.forEach((r) => {
-      const clienteRaw = r.Cliente || ""
-      const clienteIdRaw = r.ClienteID || ""
-      const cliente = clienteRaw || (clienteIdRaw && Number.isNaN(Number(clienteIdRaw)) ? clienteIdRaw : "")
+      const cliente = resolveEntityName(r.Cliente || "", r.ClienteID || "", sheetsClientes.rows)
       if (!cliente || cliente === "-") return
       const key = cliente.toLowerCase().trim()
       const existing = map.get(key) || {
@@ -152,16 +128,14 @@ export function CuentasContent() {
     return Array.from(map.values())
       .map((c) => ({ ...c, saldo: c.totalVentas - c.totalCobros }))
       .sort((a, b) => b.saldo - a.saldo)
-  }, [sheetsVentas.rows, sheetsCobros.rows])
+  }, [sheetsVentas.rows, sheetsCobros.rows, sheetsClientes.rows])
 
   // Calculate provider balances from Compras and Pagos
   const cuentasProveedores = useMemo(() => {
     const map = new Map<string, { id: string; nombre: string; totalCompras: number; totalPagos: number; saldo: number }>()
 
     sheetsCompras.rows.forEach((r) => {
-      const provRaw = r.Proveedor || ""
-      const provIdRaw = r.ProveedorID || ""
-      const proveedor = provRaw || (provIdRaw && Number.isNaN(Number(provIdRaw)) ? provIdRaw : "")
+      const proveedor = resolveEntityName(r.Proveedor || "", r.ProveedorID || "", sheetsProveedoresData.rows)
       if (!proveedor) return
       const key = proveedor.toLowerCase().trim()
       const existing = map.get(key) || {
@@ -179,9 +153,7 @@ export function CuentasContent() {
 
     // Add payments to providers
     sheetsPagos.rows.forEach((r) => {
-      const provRaw2 = r.Proveedor || ""
-      const provIdRaw2 = r.ProveedorID || ""
-      const proveedor = provRaw2 || (provIdRaw2 && Number.isNaN(Number(provIdRaw2)) ? provIdRaw2 : "")
+      const proveedor = resolveEntityName(r.Proveedor || "", r.ProveedorID || "", sheetsProveedoresData.rows)
       if (!proveedor) return
       const key = proveedor.toLowerCase().trim()
       const existing = map.get(key) || {
@@ -198,7 +170,7 @@ export function CuentasContent() {
     return Array.from(map.values())
       .map((p) => ({ ...p, saldo: p.totalCompras - p.totalPagos }))
       .sort((a, b) => b.saldo - a.saldo)
-  }, [sheetsCompras.rows, sheetsPagos.rows])
+  }, [sheetsCompras.rows, sheetsPagos.rows, sheetsProveedoresData.rows])
 
   // Filter by search and vendor
   const filteredClientes = cuentasClientes.filter((c) => {
@@ -270,9 +242,7 @@ export function CuentasContent() {
     const entries: { fecha: string; tipo: "venta" | "cobro"; desc: string; monto: number }[] = []
 
     sheetsVentas.rows.forEach((r) => {
-      const cRaw = r.Cliente || ""
-      const cIdRaw = r.ClienteID || ""
-      const c = (cRaw || (cIdRaw && Number.isNaN(Number(cIdRaw)) ? cIdRaw : "")).toLowerCase().trim()
+      const c = resolveEntityName(r.Cliente || "", r.ClienteID || "", sheetsClientes.rows).toLowerCase().trim()
       if (c === clienteKey) {
         const cant = Number(r.Cantidad) || 0
         const precio = Number(r.PrecioUnitario) || 0
@@ -286,9 +256,7 @@ export function CuentasContent() {
     })
 
     sheetsCobros.rows.forEach((r) => {
-      const cRaw = r.Cliente || ""
-      const cIdRaw = r.ClienteID || ""
-      const c = (cRaw || (cIdRaw && Number.isNaN(Number(cIdRaw)) ? cIdRaw : "")).toLowerCase().trim()
+      const c = resolveEntityName(r.Cliente || "", r.ClienteID || "", sheetsClientes.rows).toLowerCase().trim()
       if (c === clienteKey) {
         entries.push({
           fecha: r.Fecha || "",
@@ -316,7 +284,7 @@ export function CuentasContent() {
         saldoAcumulado: saldoAcum,
       }
     })
-  }, [selectedCuenta, sheetsVentas.rows, sheetsCobros.rows])
+  }, [selectedCuenta, sheetsVentas.rows, sheetsCobros.rows, sheetsClientes.rows])
 
   const clienteColumns = [
     {

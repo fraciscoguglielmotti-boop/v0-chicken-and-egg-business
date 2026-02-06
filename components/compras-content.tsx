@@ -25,14 +25,14 @@ import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { PRODUCTOS, type Compra, type ProductoTipo } from "@/lib/types"
-import { formatCurrency, formatDate, formatDateForSheets } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets, resolveEntityName } from "@/lib/utils"
 
-function sheetRowToCompra(row: SheetRow, index: number): Compra {
+function sheetRowToCompra(row: SheetRow, index: number, proveedorLookup: SheetRow[]): Compra {
   const cantidad = Number(row.Cantidad) || 0
   const precioUnitario = Number(row.PrecioUnitario) || Number(row["Precio Unitario"]) || 0
   const total = cantidad * precioUnitario
 
-  const proveedorNombre = row.Proveedor || row.ProveedorID || ""
+  const proveedorNombre = resolveEntityName(row.Proveedor || "", row.ProveedorID || "", proveedorLookup)
   return {
     id: row.ID || String(index),
     fecha: new Date(row.Fecha || Date.now()),
@@ -76,10 +76,10 @@ export function ComprasContent() {
 
   const compras: Compra[] = useMemo(() => {
     if (isConnected && sheetsCompras.rows.length > 0) {
-      return sheetsCompras.rows.map(sheetRowToCompra)
+      return sheetsCompras.rows.map((row, i) => sheetRowToCompra(row, i, sheetsProveedores.rows))
     }
     return []
-  }, [isConnected, sheetsCompras.rows])
+  }, [isConnected, sheetsCompras.rows, sheetsProveedores.rows])
 
   const proveedoresFromSheets = useMemo(() => {
     return sheetsProveedores.rows.map((row) => ({
