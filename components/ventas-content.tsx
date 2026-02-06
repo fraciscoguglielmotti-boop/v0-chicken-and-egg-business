@@ -18,20 +18,18 @@ import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales } from "@/lib/store"
 import type { Venta, VentaConVendedor, VentaItem, ProductoTipo } from "@/lib/types"
 import { NuevaVentaDialog } from "./nueva-venta-dialog"
-import { formatCurrency, formatDate, formatDateForSheets } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets, resolveEntityName } from "@/lib/utils"
 
-function sheetRowToVenta(row: SheetRow, _index: number, allCobros: SheetRow[]): VentaConVendedor {
+function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[]): VentaConVendedor {
   const cantidad = Number(row.Cantidad) || 0
   const precioUnitario = Number(row.PrecioUnitario) || 0
   const total = cantidad * precioUnitario
 
-  // Parse Productos field - can be:
-  // "2 x Pollo A, 3 x Huevo 1" (multi-product) or "2 Pollo A" (single product)
+  // Parse Productos field
   const productosStr = row.Productos || ""
   const items: VentaItem[] = []
 
   if (productosStr.includes(",")) {
-    // Multiple products separated by comma
     const productParts = productosStr.split(",").map((p) => p.trim())
     productParts.forEach((part) => {
       const match = part.match(/^(\d+(?:\.\d+)?)\s*x?\s*(.+)$/i)
@@ -42,13 +40,12 @@ function sheetRowToVenta(row: SheetRow, _index: number, allCobros: SheetRow[]): 
           productoId: prodName.toLowerCase().replace(/\s+/g, "_") as ProductoTipo,
           productoNombre: prodName,
           cantidad: qty,
-          precioUnitario: total / cantidad, // Approximate price per item
+          precioUnitario: total / cantidad,
           subtotal: (qty / cantidad) * total,
         })
       }
     })
   } else if (productosStr) {
-    // Single product
     const match = productosStr.match(/^(\d+(?:\.\d+)?)\s*x?\s*(.+)$/i)
     if (match) {
       items.push({
@@ -59,7 +56,6 @@ function sheetRowToVenta(row: SheetRow, _index: number, allCobros: SheetRow[]): 
         subtotal: total,
       })
     } else {
-      // Fallback: just use cantidad and productosStr as name
       items.push({
         productoId: "producto" as ProductoTipo,
         productoNombre: productosStr,
@@ -70,7 +66,6 @@ function sheetRowToVenta(row: SheetRow, _index: number, allCobros: SheetRow[]): 
     }
   }
 
-  // If no items parsed, create a default one
   if (items.length === 0) {
     items.push({
       productoId: "producto" as ProductoTipo,
@@ -83,15 +78,13 @@ function sheetRowToVenta(row: SheetRow, _index: number, allCobros: SheetRow[]): 
 
   const estado: Venta["estado"] = total === 0 ? "pagada" : "pendiente"
 
-  // Determine client name: use Cliente column first, then ClienteID only if it looks like a name (not a number)
-  const clienteRaw = row.Cliente || ""
-  const clienteIdRaw = row.ClienteID || ""
-  const clienteNombre = clienteRaw || (clienteIdRaw && Number.isNaN(Number(clienteIdRaw)) ? clienteIdRaw : "")
+  // Resolve client name using lookup table (handles ID/name swaps from manual entry)
+  const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
 
   return {
     id: row.ID || String(_index),
     fecha: new Date(row.Fecha || Date.now()),
-    clienteId: clienteNombre, // Use name consistently
+    clienteId: clienteNombre,
     clienteNombre,
     items,
     total,
@@ -104,6 +97,7 @@ function sheetRowToVenta(row: SheetRow, _index: number, allCobros: SheetRow[]): 
 export function VentasContent() {
   const { rows, isLoading, error, mutate } = useSheet("Ventas")
   const sheetsCobros = useSheet("Cobros")
+  const sheetsClientes = useSheet("Clientes")
   const [localVentas, setLocalVentas] = useState(ventasIniciales)
   const [searchTerm, setSearchTerm] = useState("")
   const [estadoFilter, setEstadoFilter] = useState<string>("todos")
