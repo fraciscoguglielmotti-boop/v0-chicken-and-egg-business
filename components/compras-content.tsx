@@ -24,24 +24,13 @@ import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { PRODUCTOS, type Compra, type ProductoTipo } from "@/lib/types"
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-  }).format(amount)
-}
-
-function formatDate(date: Date | string): string {
-  return new Intl.DateTimeFormat("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(date))
-}
+import { formatCurrency, formatDate, formatDateForSheets } from "@/lib/utils"
 
 function sheetRowToCompra(row: SheetRow, index: number): Compra {
+  const cantidad = Number(row.Cantidad) || 0
+  const precioUnitario = Number(row.PrecioUnitario) || Number(row["Precio Unitario"]) || 0
+  const total = cantidad * precioUnitario
+
   return {
     id: row.ID || String(index),
     fecha: new Date(row.Fecha || Date.now()),
@@ -50,11 +39,11 @@ function sheetRowToCompra(row: SheetRow, index: number): Compra {
     items: [{
       productoId: (row.ProductoID || "pollo_a") as ProductoTipo,
       productoNombre: row.Producto || "",
-      cantidad: Number(row.Cantidad) || 0,
-      precioUnitario: Number(row.PrecioUnitario) || 0,
-      subtotal: Number(row.Total) || 0,
+      cantidad,
+      precioUnitario,
+      subtotal: total,
     }],
-    total: Number(row.Total) || 0,
+    total,
     estado: (row.Estado as Compra["estado"]) || "pendiente",
     createdAt: new Date(row.Fecha || Date.now()),
   }
@@ -115,7 +104,7 @@ export function ComprasContent() {
       await addRow("Compras", [
         [
           id,
-          new Date(form.fecha).toLocaleDateString("es-AR"),
+          formatDateForSheets(form.fecha),
           form.proveedorId,
           form.proveedorNombre,
           form.productoId,

@@ -14,32 +14,10 @@ import {
 } from "@/components/ui/select"
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
-import { NuevoPagoDialog } from "./nuevo-pago-dialog"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import type { Pago } from "@/lib/types"
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-  }).format(amount)
-}
-
-function formatDate(date: Date | string): string {
-  if (!date) return "-"
-  try {
-    const d = new Date(date)
-    d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
-    return new Intl.DateTimeFormat("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(d)
-  } catch {
-    return String(date)
-  }
-}
+import { NuevoPagoDialog } from "./nuevo-pago-dialog"
+import { formatCurrency, formatDateForSheets, formatDate } from "@/lib/utils"
 
 function sheetRowToPago(row: SheetRow, index: number): Pago {
   return {
@@ -132,7 +110,7 @@ export function PagosContent() {
       const sheetValues = [
         [
           pago.id,
-          new Date(pago.fecha).toLocaleDateString("es-AR"),
+          formatDateForSheets(pago.fecha),
           pago.proveedorId,
           pago.proveedorNombre,
           String(pago.monto),

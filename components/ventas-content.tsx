@@ -14,53 +14,73 @@ import {
 } from "@/components/ui/select"
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
-import { NuevaVentaDialog } from "./nueva-venta-dialog"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales } from "@/lib/store"
-import type { Venta } from "@/lib/types"
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-  }).format(amount)
-}
-
-function formatDate(date: Date | string): string {
-  if (!date) return "-"
-  try {
-    const d = new Date(date)
-    // Add timezone offset to avoid date shifting
-    d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
-    return new Intl.DateTimeFormat("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(d)
-  } catch {
-    return String(date)
-  }
-}
-
-interface VentaConVendedor extends Venta {
-  vendedor: string
-}
+import type { Venta, VentaItem, ProductoTipo } from "@/lib/types"
+import { NuevaVentaDialog } from "./nueva-venta-dialog"
+import { formatCurrency, formatDateForSheets } from "@/lib/utils"
 
 function sheetRowToVenta(row: SheetRow, _index: number, allCobros: SheetRow[]): VentaConVendedor {
   const cantidad = Number(row.Cantidad) || 0
   const precioUnitario = Number(row.PrecioUnitario) || 0
-  // Total is ALWAYS qty x price
   const total = cantidad * precioUnitario
 
-  // Calculate estado from cobros for this client
-  const cliente = (row.Cliente || "").toLowerCase().trim()
-  let totalCobrosCliente = 0
-  let totalVentasCliente = 0
+  // Parse Productos field - can be:
+  // "2 x Pollo A, 3 x Huevo 1" (multi-product) or "2 Pollo A" (single product)
+  const productosStr = row.Productos || ""
+  const items: VentaItem[] = []
 
-  // We only determine estado at display time, so just use the row data
-  // Estado is determined by comparing all sales vs all payments for this client
-  // But for per-row display, we mark based on whether this specific sale's total is 0
+  if (productosStr.includes(",")) {
+    // Multiple products separated by comma
+    const productParts = productosStr.split(",").map((p) => p.trim())
+    productParts.forEach((part) => {
+      const match = part.match(/^(\d+(?:\.\d+)?)\s*x?\s*(.+)$/i)
+      if (match) {
+        const qty = Number.parseFloat(match[1])
+        const prodName = match[2].trim()
+        items.push({
+          productoId: prodName.toLowerCase().replace(/\s+/g, "_") as ProductoTipo,
+          productoNombre: prodName,
+          cantidad: qty,
+          precioUnitario: total / cantidad, // Approximate price per item
+          subtotal: (qty / cantidad) * total,
+        })
+      }
+    })
+  } else if (productosStr) {
+    // Single product
+    const match = productosStr.match(/^(\d+(?:\.\d+)?)\s*x?\s*(.+)$/i)
+    if (match) {
+      items.push({
+        productoId: match[2].trim().toLowerCase().replace(/\s+/g, "_") as ProductoTipo,
+        productoNombre: match[2].trim(),
+        cantidad: Number.parseFloat(match[1]),
+        precioUnitario,
+        subtotal: total,
+      })
+    } else {
+      // Fallback: just use cantidad and productosStr as name
+      items.push({
+        productoId: "producto" as ProductoTipo,
+        productoNombre: productosStr,
+        cantidad,
+        precioUnitario,
+        subtotal: total,
+      })
+    }
+  }
+
+  // If no items parsed, create a default one
+  if (items.length === 0) {
+    items.push({
+      productoId: "producto" as ProductoTipo,
+      productoNombre: "Producto",
+      cantidad,
+      precioUnitario,
+      subtotal: total,
+    })
+  }
+
   const estado: Venta["estado"] = total === 0 ? "pagada" : "pendiente"
 
   return {
@@ -68,15 +88,7 @@ function sheetRowToVenta(row: SheetRow, _index: number, allCobros: SheetRow[]): 
     fecha: new Date(row.Fecha || Date.now()),
     clienteId: row.ClienteID || "",
     clienteNombre: row.Cliente || "",
-    items: [
-      {
-        productoId: "pollo_a",
-        productoNombre: row.Productos || "Producto",
-        cantidad,
-        precioUnitario,
-        subtotal: total,
-      },
-    ],
+    items,
     total,
     estado,
     createdAt: new Date(row.Fecha || Date.now()),
@@ -198,7 +210,7 @@ export function VentasContent() {
       const sheetValues = [
         [
           venta.id,
-          new Date(venta.fecha).toLocaleDateString("es-AR"),
+          formatDateForSheets(venta.fecha),
           venta.clienteId,
           venta.clienteNombre,
           productos,

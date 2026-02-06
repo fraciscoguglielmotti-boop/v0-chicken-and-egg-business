@@ -40,6 +40,7 @@ const navSections = [
       { name: "Proveedores", href: "/proveedores", icon: Truck },
       { name: "Cuentas Corrientes", href: "/cuentas", icon: BarChart3 },
       { name: "Vendedores", href: "/vendedores", icon: UserCheck },
+      { name: "Inventario", href: "/stock", icon: Package },
     ],
   },
   {

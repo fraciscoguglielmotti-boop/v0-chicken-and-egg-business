@@ -1,5 +1,9 @@
 "use client"
 
+import { Button } from "@/components/ui/button"
+
+import { Badge } from "@/components/ui/badge"
+
 import { useMemo } from "react"
 import {
   ShoppingCart,
@@ -12,31 +16,10 @@ import Link from "next/link"
 import { StatCard } from "./stat-card"
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { useSheet, type SheetRow } from "@/hooks/use-sheets"
-import {
-  calcularStats,
-  ventasIniciales,
-  cobrosIniciales,
-} from "@/lib/store"
+import { ventasIniciales, cobrosIniciales, calcularStats } from "@/lib/store"
 import type { Venta, Cobro } from "@/lib/types"
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-  }).format(amount)
-}
-
-function formatDate(date: Date | string): string {
-  return new Intl.DateTimeFormat("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(date))
-}
+import { formatCurrency } from "@/lib/utils"
 
 function rowToVenta(row: SheetRow, i: number): Venta {
   const cant = Number(row.Cantidad) || 0
@@ -93,6 +76,40 @@ export function DashboardContent() {
   const hasError = sheetsVentas.error || sheetsCobros.error
   const isConnected = !hasError && !isLoading
 
+  // Calculate client balances: ventas - cobros
+  const clientBalances = useMemo(() => {
+    const balances = new Map<string, { nombre: string; saldo: number }>()
+
+    // Add ventas (debt)
+    sheetsVentas.rows.forEach((row) => {
+      const cliente = row.Cliente || ""
+      if (!cliente) return
+      const key = cliente.toLowerCase().trim()
+      const cant = Number(row.Cantidad) || 0
+      const precio = Number(row.PrecioUnitario) || 0
+      const total = cant * precio
+      const existing = balances.get(key) || { nombre: cliente, saldo: 0 }
+      existing.saldo += total
+      balances.set(key, existing)
+    })
+
+    // Subtract cobros (payments)
+    sheetsCobros.rows.forEach((row) => {
+      const cliente = row.Cliente || ""
+      if (!cliente) return
+      const key = cliente.toLowerCase().trim()
+      const existing = balances.get(key)
+      if (existing) {
+        existing.saldo -= Number(row.Monto) || 0
+      }
+    })
+
+    return Array.from(balances.values())
+      .filter((c) => c.saldo > 0)
+      .sort((a, b) => b.saldo - a.saldo)
+      .slice(0, 5)
+  }, [sheetsVentas.rows, sheetsCobros.rows])
+
   const ventas: Venta[] = useMemo(() => {
     if (isConnected && sheetsVentas.rows.length > 0) return sheetsVentas.rows.map(rowToVenta)
     return ventasIniciales
@@ -124,7 +141,11 @@ export function DashboardContent() {
   }, [isConnected, ventas, cobros, sheetsClientes.rows])
 
   const ventasColumns = [
-    { key: "fecha", header: "Fecha", render: (v: Venta) => formatDate(v.fecha) },
+    { key: "fecha", header: "Fecha", render: (v: Venta) => new Intl.DateTimeFormat("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(new Date(v.fecha)) },
     { key: "clienteNombre", header: "Cliente" },
     {
       key: "total",
@@ -141,7 +162,11 @@ export function DashboardContent() {
   ]
 
   const cobrosColumns = [
-    { key: "fecha", header: "Fecha", render: (c: Cobro) => formatDate(c.fecha) },
+    { key: "fecha", header: "Fecha", render: (c: Cobro) => new Intl.DateTimeFormat("es-AR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(new Date(c.fecha)) },
     { key: "clienteNombre", header: "Cliente" },
     {
       key: "monto",
@@ -194,8 +219,8 @@ export function DashboardContent() {
         />
       </div>
 
-      {/* Quick Actions */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      {/* Quick Actions + Top Deudores */}
+      <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border bg-card p-6">
           <h3 className="text-lg font-semibold text-foreground">Resumen</h3>
           <div className="mt-4 space-y-4">
@@ -237,6 +262,27 @@ export function DashboardContent() {
             </Link>
           </div>
         </div>
+
+        <div className="rounded-xl border bg-card p-6">
+          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+            <TrendingDown className="h-5 w-5 text-destructive" />
+            Top Deudores
+          </h3>
+          <div className="mt-4 space-y-3">
+            {clientBalances.length > 0 ? (
+              clientBalances.map((client, idx) => (
+                <Link key={idx} href="/cuentas">
+                  <div className="flex items-center justify-between rounded-lg border bg-accent/5 p-3 hover:bg-accent/10 transition-colors cursor-pointer">
+                    <span className="text-sm font-medium text-foreground truncate">{client.nombre}</span>
+                    <span className="text-sm font-bold text-destructive">{formatCurrency(client.saldo)}</span>
+                  </div>
+                </Link>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No hay deudas pendientes</p>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Recent Tables */}
@@ -258,7 +304,7 @@ export function DashboardContent() {
             <h3 className="text-lg font-semibold text-foreground">Ultimos Cobros</h3>
             <Link href="/cobros">
               <Button variant="ghost" size="sm" className="gap-1">
-                Ver todos
+                Ver todas
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>

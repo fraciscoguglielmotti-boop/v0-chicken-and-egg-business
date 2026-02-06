@@ -25,6 +25,8 @@ export const SHEET_NAMES = {
   VENDEDORES: "Vendedores",
   GASTOS: "Gastos",
   INVERSIONES: "Inversiones",
+  STOCK: "Stock",
+  STOCK_MOVIMIENTOS: "StockMovimientos",
 } as const
 
 // Estructura de columnas esperada para cada hoja
@@ -104,6 +106,26 @@ export const SHEET_COLUMNS = {
     "Tipo",
     "Descripcion",
     "Monto",
+  ],
+  STOCK: [
+    "ProductoID",
+    "Producto",
+    "Cantidad",
+    "Unidad",
+    "UltimaActualizacion",
+    "StockMinimo",
+  ],
+  STOCK_MOVIMIENTOS: [
+    "ID",
+    "Fecha",
+    "ProductoID",
+    "Producto",
+    "Tipo",
+    "Cantidad",
+    "CantidadAnterior",
+    "CantidadActual",
+    "Referencia",
+    "Observaciones",
   ],
 }
 

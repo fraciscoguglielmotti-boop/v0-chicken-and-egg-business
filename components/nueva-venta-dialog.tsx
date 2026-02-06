@@ -44,10 +44,14 @@ export function NuevaVentaDialog({
   const [cantidad, setCantidad] = useState("")
   const [precioUnitario, setPrecioUnitario] = useState("")
 
-  // Merge clients from Sheets and local
+  // Merge clients from Sheets and local with saldo
   const allClientes = sheetsClientes.rows.length > 0
-    ? sheetsClientes.rows.map((r, i) => ({ id: r.ID || String(i), nombre: r.Nombre || "" }))
-    : clientesIniciales.map((c) => ({ id: c.id, nombre: c.nombre }))
+    ? sheetsClientes.rows.map((r, i) => ({ 
+        id: r.ID || String(i), 
+        nombre: r.Nombre || "", 
+        saldo: Number(r.Saldo) || 0 
+      }))
+    : clientesIniciales.map((c) => ({ id: c.id, nombre: c.nombre, saldo: c.saldoActual || 0 }))
 
   const allVendedores = sheetsVendedores.rows
     .filter((r) => r.Nombre)
@@ -138,11 +142,21 @@ export function NuevaVentaDialog({
                 <SelectContent>
                   {allClientes.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.nombre}
+                      <div className="flex items-center justify-between gap-2">
+                        <span>{c.nombre}</span>
+                        {c.saldo > 0 && (
+                          <span className="text-xs text-destructive font-medium">
+                            Debe: {formatCurrency(c.saldo)}
+                          </span>
+                        )}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {cliente && cliente.saldo > 0 && (
+                <p className="text-xs text-destructive">Saldo actual: {formatCurrency(cliente.saldo)}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Vendedor</Label>

@@ -14,26 +14,11 @@ import {
 } from "@/components/ui/select"
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
-import { NuevoCobroDialog } from "./nuevo-cobro-dialog"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { cobrosIniciales } from "@/lib/store"
 import type { Cobro } from "@/lib/types"
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-  }).format(amount)
-}
-
-function formatDate(date: Date | string): string {
-  return new Intl.DateTimeFormat("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(new Date(date))
-}
+import { NuevoCobroDialog } from "./nuevo-cobro-dialog"
+import { formatCurrency, formatDateForSheets } from "@/lib/utils"
 
 function sheetRowToCobro(row: SheetRow, index: number): Cobro {
   return {
@@ -93,7 +78,7 @@ export function CobrosContent() {
     const csvRows = [headers.join(",")]
     filteredCobros.forEach((c) => {
       csvRows.push([
-        formatDate(c.fecha),
+        formatDateForSheets(c.fecha),
         `"${c.clienteNombre}"`,
         String(c.monto),
         c.metodoPago,
@@ -127,7 +112,7 @@ export function CobrosContent() {
       const sheetValues = [
         [
           cobro.id,
-          new Date(cobro.fecha).toLocaleDateString("es-AR"),
+          formatDateForSheets(cobro.fecha),
           cobro.clienteId,
           cobro.clienteNombre,
           String(cobro.monto),
@@ -142,7 +127,7 @@ export function CobrosContent() {
         const pagoValues = [
           [
             `pago-${Date.now()}`,
-            new Date(cobro.fecha).toLocaleDateString("es-AR"),
+            formatDateForSheets(cobro.fecha),
             cobro.clienteId,
             cobro.clienteNombre,
             String(cobro.monto),
@@ -167,7 +152,7 @@ export function CobrosContent() {
       key: "fecha",
       header: "Fecha",
       render: (cobro: Cobro) => (
-        <span className="font-medium">{formatDate(cobro.fecha)}</span>
+        <span className="font-medium">{formatDateForSheets(cobro.fecha)}</span>
       ),
     },
     {
