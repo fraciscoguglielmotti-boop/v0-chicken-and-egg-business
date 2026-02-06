@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -269,6 +270,7 @@ export function VendedoresContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Agregar Vendedor</DialogTitle>
+            <DialogDescription>Agregue un nuevo vendedor al sistema</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

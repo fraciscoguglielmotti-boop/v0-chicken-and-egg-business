@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -85,6 +86,7 @@ export function NuevoPagoDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Registrar Pago a Proveedor</DialogTitle>
+          <DialogDescription>Complete los datos del pago al proveedor</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">

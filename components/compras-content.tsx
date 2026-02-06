@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -101,13 +102,12 @@ export function ComprasContent() {
     try {
       const producto = PRODUCTOS.find((p) => p.id === form.productoId)
       const id = Date.now().toString()
+      // Columns: ID, Fecha, Proveedor, Producto, Cantidad, Precio Unitario, Total, Estado
       await addRow("Compras", [
         [
           id,
           formatDateForSheets(form.fecha),
-          form.proveedorId,
           form.proveedorNombre,
-          form.productoId,
           producto?.nombre || "",
           form.cantidad,
           form.precioUnitario,
@@ -202,6 +202,7 @@ export function ComprasContent() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Nueva Compra</DialogTitle>
+            <DialogDescription>Registre una nueva compra a proveedor</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

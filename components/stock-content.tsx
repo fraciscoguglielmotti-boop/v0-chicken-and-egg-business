@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -276,7 +277,7 @@ export function StockContent() {
         </div>
         <SheetsStatus 
           isLoading={sheetsStock.isLoading} 
-          error={!!sheetsStock.error} 
+          error={sheetsStock.error} 
           isConnected={isConnected} 
         />
       </div>
@@ -431,6 +432,7 @@ export function StockContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Ajuste Manual de Stock</DialogTitle>
+            <DialogDescription>Ajuste la cantidad de stock manualmente</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

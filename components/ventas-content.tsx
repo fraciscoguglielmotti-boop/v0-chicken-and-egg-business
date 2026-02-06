@@ -16,10 +16,9 @@ import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales } from "@/lib/store"
-import type { Venta, VentaItem, ProductoTipo } from "@/lib/types"
+import type { Venta, VentaConVendedor, VentaItem, ProductoTipo } from "@/lib/types"
 import { NuevaVentaDialog } from "./nueva-venta-dialog"
 import { formatCurrency, formatDate, formatDateForSheets } from "@/lib/utils"
-import { VentaConVendedor } from "@/lib/types" // Import VentaConVendedor type
 
 function sheetRowToVenta(row: SheetRow, _index: number, allCobros: SheetRow[]): VentaConVendedor {
   const cantidad = Number(row.Cantidad) || 0

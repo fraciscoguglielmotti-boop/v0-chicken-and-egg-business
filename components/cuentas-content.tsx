@@ -1,5 +1,7 @@
 "use client"
 
+import { DialogDescription } from "@/components/ui/dialog"
+
 import { useState, useMemo } from "react"
 import { ArrowUpRight, ArrowDownRight, Search, Users, Filter, Download, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -149,13 +151,14 @@ export function CuentasContent() {
 
   // Calculate provider balances from Compras and Pagos
   const cuentasProveedores = useMemo(() => {
-    const map = new Map<string, { nombre: string; totalCompras: number; totalPagos: number; saldo: number }>()
+    const map = new Map<string, { id: string; nombre: string; totalCompras: number; totalPagos: number; saldo: number }>()
 
     sheetsCompras.rows.forEach((r) => {
       const proveedor = r.Proveedor || r.ProveedorID || ""
       if (!proveedor) return
       const key = proveedor.toLowerCase().trim()
       const existing = map.get(key) || {
+        id: key,
         nombre: proveedor,
         totalCompras: 0,
         totalPagos: 0,
@@ -173,6 +176,7 @@ export function CuentasContent() {
       if (!proveedor) return
       const key = proveedor.toLowerCase().trim()
       const existing = map.get(key) || {
+        id: key,
         nombre: proveedor,
         totalCompras: 0,
         totalPagos: 0,
@@ -552,6 +556,7 @@ export function CuentasContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Exportar por Rango de Fechas</DialogTitle>
+            <DialogDescription>Seleccione el rango de fechas para exportar</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

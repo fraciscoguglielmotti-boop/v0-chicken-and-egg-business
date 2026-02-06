@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -128,6 +129,7 @@ export function NuevaVentaDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Nueva Venta</DialogTitle>
+          <DialogDescription>Complete los datos de la venta y agregue los productos</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">

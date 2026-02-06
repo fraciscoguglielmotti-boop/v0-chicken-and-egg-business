@@ -38,6 +38,11 @@ export interface Venta {
   total: number
   estado: 'pendiente' | 'pagada' | 'parcial'
   createdAt: Date
+  vendedor?: string
+}
+
+export interface VentaConVendedor extends Venta {
+  vendedor: string
 }
 
 export interface VentaItem {

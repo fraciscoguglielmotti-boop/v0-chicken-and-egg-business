@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -170,6 +171,7 @@ export function ProveedoresContent() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Nuevo Proveedor</DialogTitle>
+            <DialogDescription>Complete los datos del nuevo proveedor</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

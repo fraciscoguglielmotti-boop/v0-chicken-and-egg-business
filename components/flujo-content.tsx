@@ -17,6 +17,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -401,6 +402,7 @@ export function FlujoContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nueva Inversion / Retorno</DialogTitle>
+            <DialogDescription>Registre una inversion o retorno de capital</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

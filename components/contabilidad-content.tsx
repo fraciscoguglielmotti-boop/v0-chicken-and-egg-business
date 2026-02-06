@@ -17,6 +17,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -411,6 +412,7 @@ export function ContabilidadContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nuevo Movimiento</DialogTitle>
+            <DialogDescription>Registre un nuevo movimiento contable</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

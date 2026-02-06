@@ -18,7 +18,7 @@ import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { cobrosIniciales } from "@/lib/store"
 import type { Cobro } from "@/lib/types"
 import { NuevoCobroDialog } from "./nuevo-cobro-dialog"
-import { formatCurrency, formatDateForSheets } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets } from "@/lib/utils"
 
 function sheetRowToCobro(row: SheetRow, index: number): Cobro {
   return {
@@ -118,6 +118,7 @@ export function CobrosContent() {
           String(cobro.monto),
           cobro.metodoPago,
           cobro.observaciones || "",
+          "", // Vendedor column
         ],
       ]
       await addRow("Cobros", sheetValues)
@@ -152,7 +153,7 @@ export function CobrosContent() {
       key: "fecha",
       header: "Fecha",
       render: (cobro: Cobro) => (
-        <span className="font-medium">{formatDateForSheets(cobro.fecha)}</span>
+        <span className="font-medium">{formatDate(cobro.fecha)}</span>
       ),
     },
     {
