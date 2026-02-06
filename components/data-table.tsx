@@ -49,7 +49,7 @@ export function DataTable<T extends { id: string }>({
         </TableHeader>
         <TableBody>
           {data.length === 0 ? (
-            <TableRow>
+            <TableRow key="empty-row">
               <TableCell
                 colSpan={columns.length}
                 className="h-24 text-center text-muted-foreground"
