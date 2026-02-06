@@ -18,7 +18,8 @@ import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales } from "@/lib/store"
 import type { Venta, VentaItem, ProductoTipo } from "@/lib/types"
 import { NuevaVentaDialog } from "./nueva-venta-dialog"
-import { formatCurrency, formatDateForSheets } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets } from "@/lib/utils"
+import { VentaConVendedor } from "@/lib/types" // Import VentaConVendedor type
 
 function sheetRowToVenta(row: SheetRow, _index: number, allCobros: SheetRow[]): VentaConVendedor {
   const cantidad = Number(row.Cantidad) || 0
