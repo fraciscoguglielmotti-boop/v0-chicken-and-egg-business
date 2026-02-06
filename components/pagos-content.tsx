@@ -20,11 +20,13 @@ import { NuevoPagoDialog } from "./nuevo-pago-dialog"
 import { formatCurrency, formatDateForSheets, formatDate } from "@/lib/utils"
 
 function sheetRowToPago(row: SheetRow, index: number): Pago {
+  // Proveedor field is the display name; ProveedorID may also hold the name
+  const proveedorNombre = row.Proveedor || row.ProveedorID || ""
   return {
     id: row.ID || String(index),
     fecha: new Date(row.Fecha || Date.now()),
-    proveedorId: row.ProveedorID || "",
-    proveedorNombre: row.Proveedor || "",
+    proveedorId: proveedorNombre, // Use name consistently
+    proveedorNombre,
     monto: Number(row.Monto) || 0,
     metodoPago: (row.MetodoPago as Pago["metodoPago"]) || "efectivo",
     observaciones: row.Observaciones || undefined,
@@ -32,16 +34,14 @@ function sheetRowToPago(row: SheetRow, index: number): Pago {
   }
 }
 
-const metodoPagoColors = {
+const metodoPagoColors: Record<string, string> = {
   efectivo: "bg-primary/20 text-primary border-primary/30",
   transferencia: "bg-blue-500/20 text-blue-700 border-blue-500/30",
-  cheque: "bg-accent/20 text-accent-foreground border-accent/30",
 }
 
-const metodoPagoLabels = {
+const metodoPagoLabels: Record<string, string> = {
   efectivo: "Efectivo",
   transferencia: "Transferencia",
-  cheque: "Cheque",
 }
 
 export function PagosContent() {
@@ -78,9 +78,6 @@ export function PagosContent() {
     transferencia: filteredPagos
       .filter((p) => p.metodoPago === "transferencia")
       .reduce((acc, p) => acc + p.monto, 0),
-    cheque: filteredPagos
-      .filter((p) => p.metodoPago === "cheque")
-      .reduce((acc, p) => acc + p.monto, 0),
   }
 
   const handleExportar = () => {
@@ -111,7 +108,7 @@ export function PagosContent() {
         [
           pago.id,
           formatDateForSheets(pago.fecha),
-          pago.proveedorId,
+          pago.proveedorNombre, // Use nombre as ProveedorID for consistency
           pago.proveedorNombre,
           String(pago.monto),
           pago.metodoPago,
@@ -173,7 +170,7 @@ export function PagosContent() {
   return (
     <div className="space-y-6">
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border bg-card p-4">
           <p className="text-sm text-muted-foreground">Total Pagado</p>
           <p className="text-2xl font-bold text-destructive">
@@ -190,12 +187,6 @@ export function PagosContent() {
           <p className="text-sm text-muted-foreground">Transferencias</p>
           <p className="text-2xl font-bold text-foreground">
             {formatCurrency(pagosPorMetodo.transferencia)}
-          </p>
-        </div>
-        <div className="rounded-xl border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Cheques</p>
-          <p className="text-2xl font-bold text-foreground">
-            {formatCurrency(pagosPorMetodo.cheque)}
           </p>
         </div>
       </div>
@@ -221,7 +212,6 @@ export function PagosContent() {
               <SelectItem value="todos">Todos</SelectItem>
               <SelectItem value="efectivo">Efectivo</SelectItem>
               <SelectItem value="transferencia">Transferencia</SelectItem>
-              <SelectItem value="cheque">Cheque</SelectItem>
             </SelectContent>
           </Select>
           <SheetsStatus isLoading={isLoading} error={error} isConnected={isConnected} />

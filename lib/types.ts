@@ -59,7 +59,7 @@ export interface Cobro {
   clienteId: string
   clienteNombre: string
   monto: number
-  metodoPago: 'efectivo' | 'transferencia' | 'cheque'
+  metodoPago: 'efectivo' | 'transferencia'
   comprobante?: string
   observaciones?: string
   createdAt: Date
@@ -90,7 +90,7 @@ export interface Pago {
   proveedorId: string
   proveedorNombre: string
   monto: number
-  metodoPago: 'efectivo' | 'transferencia' | 'cheque'
+  metodoPago: 'efectivo' | 'transferencia'
   comprobante?: string
   observaciones?: string
   createdAt: Date

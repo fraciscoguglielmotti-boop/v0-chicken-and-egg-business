@@ -94,7 +94,7 @@ export function NuevaVentaDialog({
     const venta: Venta & { vendedor?: string } = {
       id: Date.now().toString(),
       fecha: new Date(fecha),
-      clienteId,
+      clienteId: cliente?.nombre || "", // Use name, not numeric ID
       clienteNombre: cliente?.nombre || "",
       items,
       total,

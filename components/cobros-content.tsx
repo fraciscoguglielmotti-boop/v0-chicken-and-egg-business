@@ -21,11 +21,13 @@ import { NuevoCobroDialog } from "./nuevo-cobro-dialog"
 import { formatCurrency, formatDate, formatDateForSheets } from "@/lib/utils"
 
 function sheetRowToCobro(row: SheetRow, index: number): Cobro {
+  // Cliente field is the display name; ClienteID may also hold the name
+  const clienteNombre = row.Cliente || row.ClienteID || ""
   return {
     id: row.ID || String(index),
     fecha: new Date(row.Fecha || Date.now()),
-    clienteId: row.ClienteID || "",
-    clienteNombre: row.Cliente || "",
+    clienteId: clienteNombre, // Use name consistently
+    clienteNombre,
     monto: Number(row.Monto) || 0,
     metodoPago: (row.MetodoPago as Cobro["metodoPago"]) || "efectivo",
     observaciones: row.Observaciones || undefined,
@@ -33,16 +35,14 @@ function sheetRowToCobro(row: SheetRow, index: number): Cobro {
   }
 }
 
-const metodoPagoColors = {
+const metodoPagoColors: Record<string, string> = {
   efectivo: "bg-primary/20 text-primary border-primary/30",
   transferencia: "bg-blue-500/20 text-blue-700 border-blue-500/30",
-  cheque: "bg-accent/20 text-accent-foreground border-accent/30",
 }
 
-const metodoPagoLabels = {
+const metodoPagoLabels: Record<string, string> = {
   efectivo: "Efectivo",
   transferencia: "Transferencia",
-  cheque: "Cheque",
 }
 
 export function CobrosContent() {
@@ -101,39 +101,43 @@ export function CobrosContent() {
     transferencia: filteredCobros
       .filter((c) => c.metodoPago === "transferencia")
       .reduce((acc, c) => acc + c.monto, 0),
-    cheque: filteredCobros
-      .filter((c) => c.metodoPago === "cheque")
-      .reduce((acc, c) => acc + c.monto, 0),
   }
 
-  const handleNuevoCobro = async (cobro: Cobro, esProveedor?: boolean) => {
+  const handleNuevoCobro = async (cobro: Cobro, esProveedor?: boolean, cuentaDestino?: string) => {
     setSaving(true)
     try {
+      // Build observaciones with cuenta destino for transferencias
+      let obs = cobro.observaciones || ""
+      if (cobro.metodoPago === "transferencia" && cuentaDestino) {
+        obs = `Cuenta: ${cuentaDestino}${obs ? ` - ${obs}` : ""}`
+      }
+
       const sheetValues = [
         [
           cobro.id,
           formatDateForSheets(cobro.fecha),
-          cobro.clienteId,
+          cobro.clienteNombre, // Use nombre as ClienteID for consistency
           cobro.clienteNombre,
           String(cobro.monto),
           cobro.metodoPago,
-          cobro.observaciones || "",
+          obs,
           "", // Vendedor column
         ],
       ]
       await addRow("Cobros", sheetValues)
 
-      // If the destino is a proveedor, also register as payment
-      if (esProveedor) {
+      // If transferencia to Agroaves SRL, also register as Pago to proveedor Agroaves
+      if (esProveedor || (cobro.metodoPago === "transferencia" && cuentaDestino?.toLowerCase().includes("agroaves"))) {
+        const proveedorName = cuentaDestino?.toLowerCase().includes("agroaves") ? "Agroaves SRL" : cobro.clienteNombre
         const pagoValues = [
           [
             `pago-${Date.now()}`,
             formatDateForSheets(cobro.fecha),
-            cobro.clienteId,
-            cobro.clienteNombre,
+            proveedorName,
+            proveedorName,
             String(cobro.monto),
             cobro.metodoPago,
-            `Registrado desde Cobros - ${cobro.observaciones || ""}`,
+            `Cobro de ${cobro.clienteNombre} transferido a ${cuentaDestino || proveedorName}`,
           ],
         ]
         await addRow("Pagos", pagoValues)
@@ -193,7 +197,7 @@ export function CobrosContent() {
   return (
     <div className="space-y-6">
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border bg-card p-4">
           <p className="text-sm text-muted-foreground">Total Cobrado</p>
           <p className="text-2xl font-bold text-primary">
@@ -210,12 +214,6 @@ export function CobrosContent() {
           <p className="text-sm text-muted-foreground">Transferencias</p>
           <p className="text-2xl font-bold text-foreground">
             {formatCurrency(cobrosPorMetodo.transferencia)}
-          </p>
-        </div>
-        <div className="rounded-xl border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Cheques</p>
-          <p className="text-2xl font-bold text-foreground">
-            {formatCurrency(cobrosPorMetodo.cheque)}
           </p>
         </div>
       </div>
@@ -241,7 +239,6 @@ export function CobrosContent() {
               <SelectItem value="todos">Todos</SelectItem>
               <SelectItem value="efectivo">Efectivo</SelectItem>
               <SelectItem value="transferencia">Transferencia</SelectItem>
-              <SelectItem value="cheque">Cheque</SelectItem>
             </SelectContent>
           </Select>
           <SheetsStatus isLoading={isLoading} error={error} isConnected={isConnected} />

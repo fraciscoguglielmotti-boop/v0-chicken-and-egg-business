@@ -83,11 +83,16 @@ function sheetRowToVenta(row: SheetRow, _index: number, allCobros: SheetRow[]): 
 
   const estado: Venta["estado"] = total === 0 ? "pagada" : "pendiente"
 
+  // Determine client name: use Cliente column first, then ClienteID only if it looks like a name (not a number)
+  const clienteRaw = row.Cliente || ""
+  const clienteIdRaw = row.ClienteID || ""
+  const clienteNombre = clienteRaw || (clienteIdRaw && Number.isNaN(Number(clienteIdRaw)) ? clienteIdRaw : "")
+
   return {
     id: row.ID || String(_index),
     fecha: new Date(row.Fecha || Date.now()),
-    clienteId: row.ClienteID || "",
-    clienteNombre: row.Cliente || "",
+    clienteId: clienteNombre, // Use name consistently
+    clienteNombre,
     items,
     total,
     estado,
@@ -113,7 +118,9 @@ export function VentasContent() {
     const cobrosPorCliente = new Map<string, number>()
 
     rows.forEach((r) => {
-      const cliente = (r.Cliente || "").toLowerCase().trim()
+      const cRaw = r.Cliente || ""
+      const cIdRaw = r.ClienteID || ""
+      const cliente = (cRaw || (cIdRaw && Number.isNaN(Number(cIdRaw)) ? cIdRaw : "")).toLowerCase().trim()
       if (!cliente) return
       const cantidad = Number(r.Cantidad) || 0
       const precio = Number(r.PrecioUnitario) || 0
@@ -121,7 +128,9 @@ export function VentasContent() {
     })
 
     sheetsCobros.rows.forEach((r) => {
-      const cliente = (r.Cliente || "").toLowerCase().trim()
+      const cRaw = r.Cliente || ""
+      const cIdRaw = r.ClienteID || ""
+      const cliente = (cRaw || (cIdRaw && Number.isNaN(Number(cIdRaw)) ? cIdRaw : "")).toLowerCase().trim()
       if (!cliente) return
       cobrosPorCliente.set(cliente, (cobrosPorCliente.get(cliente) || 0) + (Number(r.Monto) || 0))
     })
@@ -145,7 +154,9 @@ export function VentasContent() {
       return rows.map((row, i) => {
         const venta = sheetRowToVenta(row, i, sheetsCobros.rows)
         // Override estado with calculated one
-        const clienteKey = (row.Cliente || "").toLowerCase().trim()
+        const cRaw2 = row.Cliente || ""
+        const cIdRaw2 = row.ClienteID || ""
+        const clienteKey = (cRaw2 || (cIdRaw2 && Number.isNaN(Number(cIdRaw2)) ? cIdRaw2 : "")).toLowerCase().trim()
         const calculatedEstado = clienteEstados.get(clienteKey)
         if (calculatedEstado) {
           venta.estado = calculatedEstado
@@ -205,14 +216,14 @@ export function VentasContent() {
       const cantidadTotal = venta.items.reduce((a, i) => a + i.cantidad, 0)
       const precioPromedio = venta.items.length > 0 ? venta.items[0].precioUnitario : 0
 
-      // Save WITHOUT Total and Estado columns (they don't exist in your sheet)
-      // Only save: ID, Fecha, ClienteID, Cliente, Productos, Cantidad, PrecioUnitario, Vendedor
+      // Columns: ID, Fecha, ClienteID, Cliente, Productos, Cantidad, PrecioUnitario, Vendedor
+      // ClienteID = internal ID, Cliente = display name (NOMBRE)
       const sheetValues = [
         [
           venta.id,
           formatDateForSheets(venta.fecha),
-          venta.clienteId,
-          venta.clienteNombre,
+          venta.clienteNombre, // Use nombre as ClienteID for consistency
+          venta.clienteNombre, // Cliente name
           productos,
           String(cantidadTotal),
           String(precioPromedio),

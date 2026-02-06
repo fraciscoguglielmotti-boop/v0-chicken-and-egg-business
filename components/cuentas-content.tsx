@@ -108,11 +108,14 @@ export function CuentasContent() {
     const map = new Map<string, CuentaCliente>()
 
     sheetsVentas.rows.forEach((r) => {
-      const cliente = r.Cliente || r.ClienteID || ""
+      // Determine the client name: use Cliente column first, then ClienteID only if it looks like a name (not a number)
+      const clienteRaw = r.Cliente || ""
+      const clienteIdRaw = r.ClienteID || ""
+      const cliente = clienteRaw || (clienteIdRaw && Number.isNaN(Number(clienteIdRaw)) ? clienteIdRaw : "")
       if (!cliente || cliente === "-") return
       const key = cliente.toLowerCase().trim()
       const existing = map.get(key) || {
-        id: r.ClienteID || cliente,
+        id: key,
         nombre: cliente,
         vendedor: r.Vendedor || "",
         totalVentas: 0,
@@ -128,11 +131,13 @@ export function CuentasContent() {
     })
 
     sheetsCobros.rows.forEach((r) => {
-      const cliente = r.Cliente || r.ClienteID || ""
+      const clienteRaw = r.Cliente || ""
+      const clienteIdRaw = r.ClienteID || ""
+      const cliente = clienteRaw || (clienteIdRaw && Number.isNaN(Number(clienteIdRaw)) ? clienteIdRaw : "")
       if (!cliente || cliente === "-") return
       const key = cliente.toLowerCase().trim()
       const existing = map.get(key) || {
-        id: r.ClienteID || cliente,
+        id: key,
         nombre: cliente,
         vendedor: r.Vendedor || "",
         totalVentas: 0,
@@ -154,7 +159,9 @@ export function CuentasContent() {
     const map = new Map<string, { id: string; nombre: string; totalCompras: number; totalPagos: number; saldo: number }>()
 
     sheetsCompras.rows.forEach((r) => {
-      const proveedor = r.Proveedor || r.ProveedorID || ""
+      const provRaw = r.Proveedor || ""
+      const provIdRaw = r.ProveedorID || ""
+      const proveedor = provRaw || (provIdRaw && Number.isNaN(Number(provIdRaw)) ? provIdRaw : "")
       if (!proveedor) return
       const key = proveedor.toLowerCase().trim()
       const existing = map.get(key) || {
@@ -172,7 +179,9 @@ export function CuentasContent() {
 
     // Add payments to providers
     sheetsPagos.rows.forEach((r) => {
-      const proveedor = r.Proveedor || r.ProveedorID || ""
+      const provRaw2 = r.Proveedor || ""
+      const provIdRaw2 = r.ProveedorID || ""
+      const proveedor = provRaw2 || (provIdRaw2 && Number.isNaN(Number(provIdRaw2)) ? provIdRaw2 : "")
       if (!proveedor) return
       const key = proveedor.toLowerCase().trim()
       const existing = map.get(key) || {
@@ -261,7 +270,9 @@ export function CuentasContent() {
     const entries: { fecha: string; tipo: "venta" | "cobro"; desc: string; monto: number }[] = []
 
     sheetsVentas.rows.forEach((r) => {
-      const c = (r.Cliente || r.ClienteID || "").toLowerCase().trim()
+      const cRaw = r.Cliente || ""
+      const cIdRaw = r.ClienteID || ""
+      const c = (cRaw || (cIdRaw && Number.isNaN(Number(cIdRaw)) ? cIdRaw : "")).toLowerCase().trim()
       if (c === clienteKey) {
         const cant = Number(r.Cantidad) || 0
         const precio = Number(r.PrecioUnitario) || 0
@@ -275,7 +286,9 @@ export function CuentasContent() {
     })
 
     sheetsCobros.rows.forEach((r) => {
-      const c = (r.Cliente || r.ClienteID || "").toLowerCase().trim()
+      const cRaw = r.Cliente || ""
+      const cIdRaw = r.ClienteID || ""
+      const c = (cRaw || (cIdRaw && Number.isNaN(Number(cIdRaw)) ? cIdRaw : "")).toLowerCase().trim()
       if (c === clienteKey) {
         entries.push({
           fecha: r.Fecha || "",

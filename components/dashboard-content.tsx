@@ -21,15 +21,22 @@ import { ventasIniciales, cobrosIniciales, calcularStats } from "@/lib/store"
 import type { Venta, Cobro } from "@/lib/types"
 import { formatCurrency } from "@/lib/utils"
 
+function resolveClientName(row: SheetRow): string {
+  const clienteRaw = row.Cliente || ""
+  const clienteIdRaw = row.ClienteID || ""
+  return clienteRaw || (clienteIdRaw && Number.isNaN(Number(clienteIdRaw)) ? clienteIdRaw : "")
+}
+
 function rowToVenta(row: SheetRow, i: number): Venta {
   const cant = Number(row.Cantidad) || 0
   const precio = Number(row.PrecioUnitario) || 0
   const total = cant * precio
+  const clienteNombre = resolveClientName(row)
   return {
     id: row.ID || String(i),
     fecha: new Date(row.Fecha || Date.now()),
-    clienteId: row.ClienteID || "",
-    clienteNombre: row.Cliente || "",
+    clienteId: clienteNombre,
+    clienteNombre,
     items: [{
       productoId: "producto",
       productoNombre: row.Productos || "Producto",
@@ -44,11 +51,12 @@ function rowToVenta(row: SheetRow, i: number): Venta {
 }
 
 function rowToCobro(row: SheetRow, i: number): Cobro {
+  const clienteNombre = resolveClientName(row)
   return {
     id: row.ID || String(i),
     fecha: new Date(row.Fecha || Date.now()),
-    clienteId: row.ClienteID || "",
-    clienteNombre: row.Cliente || "",
+    clienteId: clienteNombre,
+    clienteNombre,
     monto: Number(row.Monto) || 0,
     metodoPago: (row.MetodoPago as Cobro["metodoPago"]) || "efectivo",
     createdAt: new Date(row.Fecha || Date.now()),
@@ -82,7 +90,7 @@ export function DashboardContent() {
 
     // Add ventas (debt)
     sheetsVentas.rows.forEach((row) => {
-      const cliente = row.Cliente || ""
+      const cliente = resolveClientName(row)
       if (!cliente) return
       const key = cliente.toLowerCase().trim()
       const cant = Number(row.Cantidad) || 0
@@ -95,7 +103,7 @@ export function DashboardContent() {
 
     // Subtract cobros (payments)
     sheetsCobros.rows.forEach((row) => {
-      const cliente = row.Cliente || ""
+      const cliente = resolveClientName(row)
       if (!cliente) return
       const key = cliente.toLowerCase().trim()
       const existing = balances.get(key)

@@ -39,7 +39,7 @@ export function NuevoPagoDialog({
   const [proveedorId, setProveedorId] = useState("")
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0])
   const [monto, setMonto] = useState("")
-  const [metodoPago, setMetodoPago] = useState<"efectivo" | "transferencia" | "cheque" | "">("")
+  const [metodoPago, setMetodoPago] = useState<"efectivo" | "transferencia" | "">("")
   const [observaciones, setObservaciones] = useState("")
 
   const allProveedores = sheetsProveedores.rows.length > 0
@@ -54,7 +54,7 @@ export function NuevoPagoDialog({
     const pago: Pago = {
       id: Date.now().toString(),
       fecha: new Date(fecha),
-      proveedorId,
+      proveedorId: proveedor?.nombre || "", // Use name, not numeric ID
       proveedorNombre: proveedor?.nombre || "",
       monto: Number.parseFloat(monto),
       metodoPago,
@@ -140,7 +140,7 @@ export function NuevoPagoDialog({
             <Label>Metodo de Pago</Label>
             <Select
               value={metodoPago}
-              onValueChange={(v) => setMetodoPago(v as "efectivo" | "transferencia" | "cheque")}
+              onValueChange={(v) => setMetodoPago(v as "efectivo" | "transferencia")}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Seleccionar metodo" />
@@ -148,7 +148,6 @@ export function NuevoPagoDialog({
               <SelectContent>
                 <SelectItem value="efectivo">Efectivo</SelectItem>
                 <SelectItem value="transferencia">Transferencia</SelectItem>
-                <SelectItem value="cheque">Cheque</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -32,11 +32,12 @@ function sheetRowToCompra(row: SheetRow, index: number): Compra {
   const precioUnitario = Number(row.PrecioUnitario) || Number(row["Precio Unitario"]) || 0
   const total = cantidad * precioUnitario
 
+  const proveedorNombre = row.Proveedor || row.ProveedorID || ""
   return {
     id: row.ID || String(index),
     fecha: new Date(row.Fecha || Date.now()),
-    proveedorId: row.ProveedorID || "",
-    proveedorNombre: row.Proveedor || "",
+    proveedorId: proveedorNombre,
+    proveedorNombre,
     items: [{
       productoId: (row.ProductoID || "pollo_a") as ProductoTipo,
       productoNombre: row.Producto || "",

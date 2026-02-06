@@ -20,14 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { clientesIniciales, proveedoresIniciales } from "@/lib/store"
+import { Badge } from "@/components/ui/badge"
+import { clientesIniciales } from "@/lib/store"
 import type { Cobro } from "@/lib/types"
 import { useSheet } from "@/hooks/use-sheets"
 
 interface NuevoCobroDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (cobro: Cobro, esProveedor?: boolean) => void
+  onSubmit: (cobro: Cobro, esProveedor?: boolean, cuentaDestino?: string) => void
 }
 
 export function NuevoCobroDialog({
@@ -36,30 +37,35 @@ export function NuevoCobroDialog({
   onSubmit,
 }: NuevoCobroDialogProps) {
   const sheetsClientes = useSheet("Clientes")
-  const sheetsProveedores = useSheet("Proveedores")
   const [clienteId, setClienteId] = useState("")
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0])
   const [monto, setMonto] = useState("")
-  const [metodoPago, setMetodoPago] = useState<"efectivo" | "transferencia" | "cheque" | "">("")
+  const [metodoPago, setMetodoPago] = useState<"efectivo" | "transferencia" | "">("")
+  const [cuentaDestino, setCuentaDestino] = useState("")
   const [observaciones, setObservaciones] = useState("")
 
   const allClientes = sheetsClientes.rows.length > 0
-    ? sheetsClientes.rows.map((r, i) => ({ id: r.ID || String(i), nombre: r.Nombre || "", saldoActual: Number(r.Saldo) || 0 }))
+    ? sheetsClientes.rows.map((r, i) => ({ 
+        id: r.ID || String(i), 
+        nombre: r.Nombre || "", 
+        saldoActual: Number(r.Saldo) || 0 
+      }))
     : clientesIniciales.map((c) => ({ id: c.id, nombre: c.nombre, saldoActual: c.saldoActual }))
-
-  const allProveedores = sheetsProveedores.rows.length > 0
-    ? sheetsProveedores.rows.map((r, i) => ({ id: r.ID || String(i), nombre: r.Nombre || "" }))
-    : proveedoresIniciales.map((p) => ({ id: p.id, nombre: p.nombre }))
 
   const cliente = allClientes.find((c) => c.id === clienteId)
 
+  // Check if cuenta destino is Agroaves SRL
+  const esTransferenciaAgroaves = metodoPago === "transferencia" && 
+    cuentaDestino.toLowerCase().includes("agroaves")
+
   const handleSubmit = () => {
     if (!clienteId || !monto || !metodoPago) return
+    if (metodoPago === "transferencia" && !cuentaDestino) return
 
     const cobro: Cobro = {
       id: Date.now().toString(),
       fecha: new Date(fecha),
-      clienteId,
+      clienteId: cliente?.nombre || "", // Use name, not numeric ID
       clienteNombre: cliente?.nombre || "",
       monto: Number.parseFloat(monto),
       metodoPago,
@@ -67,12 +73,7 @@ export function NuevoCobroDialog({
       createdAt: new Date(),
     }
 
-    // Check if cliente name matches a proveedor
-    const esProveedor = allProveedores.some(
-      (p) => p.nombre.toLowerCase().trim() === cliente?.nombre.toLowerCase().trim()
-    )
-
-    onSubmit(cobro, esProveedor)
+    onSubmit(cobro, esTransferenciaAgroaves, cuentaDestino || undefined)
     resetForm()
   }
 
@@ -81,6 +82,7 @@ export function NuevoCobroDialog({
     setFecha(new Date().toISOString().split("T")[0])
     setMonto("")
     setMetodoPago("")
+    setCuentaDestino("")
     setObservaciones("")
   }
 
@@ -145,12 +147,17 @@ export function NuevoCobroDialog({
             />
           </div>
 
-          {/* Metodo de Pago */}
+          {/* Metodo de Pago - sin cheque */}
           <div className="space-y-2">
-            <Label>Metodo de Pago</Label>
+            <Label>Metodo de Cobro</Label>
             <Select
               value={metodoPago}
-              onValueChange={(v) => setMetodoPago(v as "efectivo" | "transferencia" | "cheque")}
+              onValueChange={(v) => {
+                setMetodoPago(v as "efectivo" | "transferencia")
+                if (v !== "transferencia") {
+                  setCuentaDestino("")
+                }
+              }}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Seleccionar metodo" />
@@ -158,19 +165,55 @@ export function NuevoCobroDialog({
               <SelectContent>
                 <SelectItem value="efectivo">Efectivo</SelectItem>
                 <SelectItem value="transferencia">Transferencia</SelectItem>
-                <SelectItem value="cheque">Cheque</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {/* Cuenta destino - solo para transferencias */}
+          {metodoPago === "transferencia" && (
+            <div className="space-y-2">
+              <Label>Cuenta Destino</Label>
+              <Select value={cuentaDestino} onValueChange={setCuentaDestino}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar cuenta destino" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Agroaves SRL">Agroaves SRL</SelectItem>
+                  <SelectItem value="Cuenta Personal">Cuenta Personal</SelectItem>
+                  <SelectItem value="Otra">Otra cuenta</SelectItem>
+                </SelectContent>
+              </Select>
+              {cuentaDestino === "Otra" && (
+                <Input
+                  placeholder="Nombre del titular de la cuenta"
+                  value={observaciones}
+                  onChange={(e) => setObservaciones(e.target.value)}
+                />
+              )}
+              {esTransferenciaAgroaves && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <p className="text-sm text-blue-800">
+                    <Badge variant="outline" className="mr-2 bg-blue-100 text-blue-700 border-blue-300">
+                      Auto
+                    </Badge>
+                    Esta transferencia a Agroaves SRL se registrara tambien como pago al proveedor, descontando del saldo de cuenta corriente del proveedor.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Observaciones */}
           <div className="space-y-2">
             <Label>Observaciones (opcional)</Label>
             <Textarea
               placeholder="Notas sobre el cobro..."
-              value={observaciones}
-              onChange={(e) => setObservaciones(e.target.value)}
+              value={cuentaDestino === "Otra" ? "" : observaciones}
+              onChange={(e) => {
+                if (cuentaDestino !== "Otra") setObservaciones(e.target.value)
+              }}
               rows={3}
+              disabled={cuentaDestino === "Otra"}
             />
           </div>
 
@@ -193,7 +236,7 @@ export function NuevoCobroDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!clienteId || !monto || !metodoPago}
+            disabled={!clienteId || !monto || !metodoPago || (metodoPago === "transferencia" && !cuentaDestino)}
           >
             Registrar Cobro
           </Button>
