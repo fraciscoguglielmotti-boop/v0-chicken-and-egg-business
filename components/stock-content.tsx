@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
@@ -431,6 +432,9 @@ export function StockContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Ajuste Manual de Stock</DialogTitle>
+            <DialogDescription>
+              Ajuste la cantidad de stock manualmente
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

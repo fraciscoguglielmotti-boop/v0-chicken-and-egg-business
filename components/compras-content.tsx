@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
@@ -202,6 +203,9 @@ export function ComprasContent() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Nueva Compra</DialogTitle>
+            <DialogDescription>
+              Registre una nueva compra a proveedor
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
@@ -95,6 +96,9 @@ export function NuevoCobroDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Registrar Cobro</DialogTitle>
+          <DialogDescription>
+            Registre un cobro de cliente o pago a proveedor
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">

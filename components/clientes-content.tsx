@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
@@ -173,6 +174,9 @@ export function ClientesContent() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Nuevo Cliente</DialogTitle>
+            <DialogDescription>
+              Complete los datos del nuevo cliente
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

@@ -19,6 +19,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
@@ -401,6 +402,9 @@ export function FlujoContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nueva Inversion / Retorno</DialogTitle>
+            <DialogDescription>
+              Registre una inversión o retorno de capital
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

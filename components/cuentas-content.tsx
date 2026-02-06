@@ -12,6 +12,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
@@ -552,6 +553,9 @@ export function CuentasContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Exportar por Rango de Fechas</DialogTitle>
+            <DialogDescription>
+              Seleccione el rango de fechas para exportar
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

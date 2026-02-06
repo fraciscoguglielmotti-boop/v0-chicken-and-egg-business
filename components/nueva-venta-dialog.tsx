@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
@@ -127,7 +128,10 @@ export function NuevaVentaDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Nueva Venta</DialogTitle>
+          <DialogTitle>Registrar Nueva Venta</DialogTitle>
+          <DialogDescription>
+            Complete los datos de la venta y agregue los productos
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">

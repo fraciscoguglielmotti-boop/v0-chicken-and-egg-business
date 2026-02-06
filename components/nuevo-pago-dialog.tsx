@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
@@ -85,6 +86,9 @@ export function NuevoPagoDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Registrar Pago a Proveedor</DialogTitle>
+          <DialogDescription>
+            Complete los datos del pago al proveedor
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">

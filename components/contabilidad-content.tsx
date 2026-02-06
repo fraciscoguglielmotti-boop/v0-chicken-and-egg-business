@@ -19,6 +19,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
@@ -411,6 +412,9 @@ export function ContabilidadContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nuevo Movimiento</DialogTitle>
+            <DialogDescription>
+              Registre un nuevo movimiento contable
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">

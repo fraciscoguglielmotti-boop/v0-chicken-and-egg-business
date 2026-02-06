@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
@@ -269,6 +270,9 @@ export function VendedoresContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Agregar Vendedor</DialogTitle>
+            <DialogDescription>
+              Agregue un nuevo vendedor al sistema
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
