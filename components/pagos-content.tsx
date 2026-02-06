@@ -15,19 +15,18 @@ import {
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
-import { cobrosIniciales } from "@/lib/store"
-import type { Cobro } from "@/lib/types"
-import { NuevoCobroDialog } from "./nuevo-cobro-dialog"
-import { formatCurrency, formatDateForSheets } from "@/lib/utils"
+import type { Pago } from "@/lib/types"
+import { NuevoPagoDialog } from "./nuevo-pago-dialog"
+import { formatCurrency, formatDateForSheets, formatDate } from "@/lib/utils"
 
-function sheetRowToCobro(row: SheetRow, index: number): Cobro {
+function sheetRowToPago(row: SheetRow, index: number): Pago {
   return {
     id: row.ID || String(index),
     fecha: new Date(row.Fecha || Date.now()),
-    clienteId: row.ClienteID || "",
-    clienteNombre: row.Cliente || "",
+    proveedorId: row.ProveedorID || "",
+    proveedorNombre: row.Proveedor || "",
     monto: Number(row.Monto) || 0,
-    metodoPago: (row.MetodoPago as Cobro["metodoPago"]) || "efectivo",
+    metodoPago: (row.MetodoPago as Pago["metodoPago"]) || "efectivo",
     observaciones: row.Observaciones || undefined,
     createdAt: new Date(row.Fecha || Date.now()),
   }
@@ -45,9 +44,8 @@ const metodoPagoLabels = {
   cheque: "Cheque",
 }
 
-export function CobrosContent() {
-  const { rows, isLoading, error, mutate } = useSheet("Cobros")
-  const [localCobros, setLocalCobros] = useState(cobrosIniciales)
+export function PagosContent() {
+  const { rows, isLoading, error, mutate } = useSheet("Pagos")
   const [searchTerm, setSearchTerm] = useState("")
   const [metodoFilter, setMetodoFilter] = useState<string>("todos")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -55,92 +53,75 @@ export function CobrosContent() {
 
   const isConnected = !error && !isLoading && rows.length >= 0
 
-  const cobros: Cobro[] = useMemo(() => {
+  const pagos: Pago[] = useMemo(() => {
     if (isConnected && rows.length > 0) {
-      return rows.map(sheetRowToCobro)
+      return rows.map(sheetRowToPago)
     }
-    return localCobros
-  }, [isConnected, rows, localCobros])
+    return []
+  }, [isConnected, rows])
 
-  const filteredCobros = cobros.filter((cobro) => {
-    const matchesSearch = cobro.clienteNombre
+  const filteredPagos = pagos.filter((pago) => {
+    const matchesSearch = pago.proveedorNombre
       .toLowerCase()
       .includes(searchTerm.toLowerCase())
     const matchesMetodo =
-      metodoFilter === "todos" || cobro.metodoPago === metodoFilter
+      metodoFilter === "todos" || pago.metodoPago === metodoFilter
     return matchesSearch && matchesMetodo
   })
 
-  const totalCobros = filteredCobros.reduce((acc, c) => acc + c.monto, 0)
+  const totalPagos = filteredPagos.reduce((acc, p) => acc + p.monto, 0)
+
+  const pagosPorMetodo = {
+    efectivo: filteredPagos
+      .filter((p) => p.metodoPago === "efectivo")
+      .reduce((acc, p) => acc + p.monto, 0),
+    transferencia: filteredPagos
+      .filter((p) => p.metodoPago === "transferencia")
+      .reduce((acc, p) => acc + p.monto, 0),
+    cheque: filteredPagos
+      .filter((p) => p.metodoPago === "cheque")
+      .reduce((acc, p) => acc + p.monto, 0),
+  }
 
   const handleExportar = () => {
-    const headers = ["Fecha", "Cliente", "Monto", "Metodo de Pago", "Observaciones"]
+    const headers = ["Fecha", "Proveedor", "Monto", "Metodo de Pago", "Observaciones"]
     const csvRows = [headers.join(",")]
-    filteredCobros.forEach((c) => {
+    filteredPagos.forEach((p) => {
       csvRows.push([
-        formatDateForSheets(c.fecha),
-        `"${c.clienteNombre}"`,
-        String(c.monto),
-        c.metodoPago,
-        `"${c.observaciones || ""}"`,
+        formatDate(p.fecha),
+        `"${p.proveedorNombre}"`,
+        String(p.monto),
+        p.metodoPago,
+        `"${p.observaciones || ""}"`,
       ].join(","))
     })
     const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `cobros_${new Date().toISOString().split("T")[0]}.csv`
+    a.download = `pagos_${new Date().toISOString().split("T")[0]}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  const cobrosPorMetodo = {
-    efectivo: filteredCobros
-      .filter((c) => c.metodoPago === "efectivo")
-      .reduce((acc, c) => acc + c.monto, 0),
-    transferencia: filteredCobros
-      .filter((c) => c.metodoPago === "transferencia")
-      .reduce((acc, c) => acc + c.monto, 0),
-    cheque: filteredCobros
-      .filter((c) => c.metodoPago === "cheque")
-      .reduce((acc, c) => acc + c.monto, 0),
-  }
-
-  const handleNuevoCobro = async (cobro: Cobro, esProveedor?: boolean) => {
+  const handleNuevoPago = async (pago: Pago) => {
     setSaving(true)
     try {
       const sheetValues = [
         [
-          cobro.id,
-          formatDateForSheets(cobro.fecha),
-          cobro.clienteId,
-          cobro.clienteNombre,
-          String(cobro.monto),
-          cobro.metodoPago,
-          cobro.observaciones || "",
+          pago.id,
+          formatDateForSheets(pago.fecha),
+          pago.proveedorId,
+          pago.proveedorNombre,
+          String(pago.monto),
+          pago.metodoPago,
+          pago.observaciones || "",
         ],
       ]
-      await addRow("Cobros", sheetValues)
-
-      // If the destino is a proveedor, also register as payment
-      if (esProveedor) {
-        const pagoValues = [
-          [
-            `pago-${Date.now()}`,
-            formatDateForSheets(cobro.fecha),
-            cobro.clienteId,
-            cobro.clienteNombre,
-            String(cobro.monto),
-            cobro.metodoPago,
-            `Registrado desde Cobros - ${cobro.observaciones || ""}`,
-          ],
-        ]
-        await addRow("Pagos", pagoValues)
-      }
-
+      await addRow("Pagos", sheetValues)
       await mutate()
-    } catch {
-      setLocalCobros((prev) => [cobro, ...prev])
+    } catch (err) {
+      console.error("[v0] Error saving pago:", err)
     } finally {
       setSaving(false)
       setDialogOpen(false)
@@ -151,19 +132,19 @@ export function CobrosContent() {
     {
       key: "fecha",
       header: "Fecha",
-      render: (cobro: Cobro) => (
-        <span className="font-medium">{formatDateForSheets(cobro.fecha)}</span>
+      render: (pago: Pago) => (
+        <span className="font-medium">{formatDate(pago.fecha)}</span>
       ),
     },
     {
-      key: "clienteNombre",
-      header: "Cliente",
-      render: (cobro: Cobro) => (
+      key: "proveedorNombre",
+      header: "Proveedor",
+      render: (pago: Pago) => (
         <div>
-          <p className="font-medium text-foreground">{cobro.clienteNombre}</p>
-          {cobro.observaciones && (
+          <p className="font-medium text-foreground">{pago.proveedorNombre}</p>
+          {pago.observaciones && (
             <p className="text-xs text-muted-foreground truncate max-w-xs">
-              {cobro.observaciones}
+              {pago.observaciones}
             </p>
           )}
         </div>
@@ -172,18 +153,18 @@ export function CobrosContent() {
     {
       key: "monto",
       header: "Monto",
-      render: (cobro: Cobro) => (
-        <span className="font-semibold text-primary">
-          {formatCurrency(cobro.monto)}
+      render: (pago: Pago) => (
+        <span className="font-semibold text-destructive">
+          {formatCurrency(pago.monto)}
         </span>
       ),
     },
     {
       key: "metodoPago",
       header: "Metodo",
-      render: (cobro: Cobro) => (
-        <Badge variant="outline" className={metodoPagoColors[cobro.metodoPago]}>
-          {metodoPagoLabels[cobro.metodoPago]}
+      render: (pago: Pago) => (
+        <Badge variant="outline" className={metodoPagoColors[pago.metodoPago]}>
+          {metodoPagoLabels[pago.metodoPago]}
         </Badge>
       ),
     },
@@ -194,27 +175,27 @@ export function CobrosContent() {
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-4">
         <div className="rounded-xl border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Total Cobrado</p>
-          <p className="text-2xl font-bold text-primary">
-            {formatCurrency(totalCobros)}
+          <p className="text-sm text-muted-foreground">Total Pagado</p>
+          <p className="text-2xl font-bold text-destructive">
+            {formatCurrency(totalPagos)}
           </p>
         </div>
         <div className="rounded-xl border bg-card p-4">
           <p className="text-sm text-muted-foreground">Efectivo</p>
           <p className="text-2xl font-bold text-foreground">
-            {formatCurrency(cobrosPorMetodo.efectivo)}
+            {formatCurrency(pagosPorMetodo.efectivo)}
           </p>
         </div>
         <div className="rounded-xl border bg-card p-4">
           <p className="text-sm text-muted-foreground">Transferencias</p>
           <p className="text-2xl font-bold text-foreground">
-            {formatCurrency(cobrosPorMetodo.transferencia)}
+            {formatCurrency(pagosPorMetodo.transferencia)}
           </p>
         </div>
         <div className="rounded-xl border bg-card p-4">
           <p className="text-sm text-muted-foreground">Cheques</p>
           <p className="text-2xl font-bold text-foreground">
-            {formatCurrency(cobrosPorMetodo.cheque)}
+            {formatCurrency(pagosPorMetodo.cheque)}
           </p>
         </div>
       </div>
@@ -225,7 +206,7 @@ export function CobrosContent() {
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Buscar por cliente..."
+              placeholder="Buscar por proveedor..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9"
@@ -252,7 +233,7 @@ export function CobrosContent() {
           </Button>
           <Button size="sm" onClick={() => setDialogOpen(true)} disabled={saving}>
             <Plus className="mr-2 h-4 w-4" />
-            {saving ? "Guardando..." : "Nuevo Cobro"}
+            {saving ? "Guardando..." : "Nuevo Pago"}
           </Button>
         </div>
       </div>
@@ -260,15 +241,15 @@ export function CobrosContent() {
       {/* Table */}
       <DataTable
         columns={columns}
-        data={filteredCobros}
-        emptyMessage={isLoading ? "Cargando cobros..." : "No hay cobros registrados"}
+        data={filteredPagos}
+        emptyMessage={isLoading ? "Cargando pagos..." : "No hay pagos registrados"}
       />
 
       {/* Dialog */}
-      <NuevoCobroDialog
+      <NuevoPagoDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onSubmit={handleNuevoCobro}
+        onSubmit={handleNuevoPago}
       />
     </div>
   )

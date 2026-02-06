@@ -1,48 +1,44 @@
 "use client"
 
-import { Bell, Search, Menu } from "lucide-react"
+import { Menu, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { useRouter } from "next/navigation"
 
 interface AppHeaderProps {
   title: string
   subtitle?: string
-  onMenuClick?: () => void
+  onMenuClick: () => void
 }
 
 export function AppHeader({ title, subtitle, onMenuClick }: AppHeaderProps) {
-  return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-background px-6">
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="lg:hidden"
-          onClick={onMenuClick}
-        >
-          <Menu className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">{title}</h1>
-          {subtitle && (
-            <p className="text-sm text-muted-foreground">{subtitle}</p>
-          )}
-        </div>
-      </div>
+  const router = useRouter()
 
-      <div className="flex items-center gap-4">
-        <div className="relative hidden md:block">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar..."
-            className="w-64 pl-9"
-          />
-        </div>
-        <Button variant="ghost" size="icon" className="relative">
-          <Bell className="h-5 w-5" />
-          <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-destructive" />
-        </Button>
+  const handleLogout = () => {
+    sessionStorage.removeItem("avigest_logged_in")
+    router.push("/login")
+  }
+
+  return (
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:px-6">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 shrink-0 lg:hidden"
+        onClick={onMenuClick}
+      >
+        <Menu className="h-5 w-5" />
+        <span className="sr-only">Abrir menu</span>
+      </Button>
+      <div className="min-w-0 flex-1">
+        <h1 className="truncate text-lg font-semibold text-foreground leading-tight">{title}</h1>
+        {subtitle && (
+          <p className="truncate text-sm text-muted-foreground leading-none">{subtitle}</p>
+        )}
       </div>
+      <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2">
+        <LogOut className="h-4 w-4" />
+        <span className="hidden sm:inline">Salir</span>
+      </Button>
     </header>
   )
 }

@@ -4,75 +4,126 @@ import useSWR, { mutate as globalMutate } from "swr"
 
 const fetcher = async (url: string) => {
   const res = await fetch(url)
-  if (!res.ok) throw new Error("Failed to fetch")
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Error de red" }))
+    throw new Error(err.error || "Error al cargar datos")
+  }
   return res.json()
 }
 
-export type SheetRow = Record<string, string | number>
+export interface SheetRow {
+  [key: string]: string
+}
 
-export function useSheet(sheetName: string) {
-  const { data, error, isLoading, mutate } = useSWR<{ rows: SheetRow[] }>(
-    `/api/sheets?sheet=${sheetName}`,
+// Normalize a header: remove spaces, accents, lowercase, etc.
+// "Precio Unitario" -> "preciounitario"
+function normalizeKey(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove accents
+    .replace(/\s+/g, "") // remove spaces
+    .toLowerCase()
+}
+
+// Map of normalized keys to canonical keys used in the app
+const CANONICAL_KEYS: Record<string, string> = {
+  id: "ID",
+  fecha: "Fecha",
+  clienteid: "ClienteID",
+  cliente: "Cliente",
+  productos: "Productos",
+  producto: "Producto",
+  cantidad: "Cantidad",
+  preciounitario: "PrecioUnitario",
+  total: "Total",
+  estado: "Estado",
+  vendedor: "Vendedor",
+  proveedorid: "ProveedorID",
+  proveedor: "Proveedor",
+  nombre: "Nombre",
+  cuit: "CUIT",
+  telefono: "Telefono",
+  direccion: "Direccion",
+  saldo: "Saldo",
+  fechaalta: "FechaAlta",
+  monto: "Monto",
+  metodopago: "MetodoPago",
+  metodo: "MetodoPago",
+  observaciones: "Observaciones",
+  comision: "Comision",
+  tipo: "Tipo",
+  categoria: "Categoria",
+  descripcion: "Descripcion",
+}
+
+function getCanonicalKey(header: string): string {
+  const norm = normalizeKey(header)
+  return CANONICAL_KEYS[norm] || header
+}
+
+function rowsToObjects(headers: string[], data: string[][]): SheetRow[] {
+  const canonicalHeaders = headers.map(getCanonicalKey)
+  return data.map((row) => {
+    const obj: SheetRow = {}
+    canonicalHeaders.forEach((h, i) => {
+      obj[h] = row[i] || ""
+    })
+    return obj
+  })
+}
+
+export function useSheet(sheetName: string | null) {
+  const { data, error, isLoading, mutate } = useSWR(
+    sheetName ? `/api/sheets?sheet=${encodeURIComponent(sheetName)}` : null,
     fetcher,
     {
-      refreshInterval: 30000, // Refresh every 30 seconds
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
+      dedupingInterval: 10000,
     }
   )
 
+  const rows: SheetRow[] =
+    data?.headers && data?.data ? rowsToObjects(data.headers, data.data) : []
+
   return {
-    rows: data?.rows || [],
+    rows,
+    headers: (data?.headers as string[]) || [],
+    rawData: (data?.data as string[][]) || [],
     isLoading,
-    error,
+    error: error?.message || null,
     mutate,
   }
 }
 
-export async function addRow(sheetName: string, values: (string | number)[][]) {
+export async function addRow(sheetName: string, values: string[][]) {
   const res = await fetch("/api/sheets", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sheet: sheetName, values }),
+    body: JSON.stringify({ sheetName, values }),
   })
-
-  if (!res.ok) throw new Error("Failed to add row")
-
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Error de red" }))
+    throw new Error(err.error || "Error al guardar")
+  }
   // Revalidate the sheet data
-  await globalMutate(`/api/sheets?sheet=${sheetName}`)
-
+  await globalMutate(`/api/sheets?sheet=${encodeURIComponent(sheetName)}`)
   return res.json()
 }
 
 export async function updateRow(
   sheetName: string,
   rowIndex: number,
-  values: (string | number)[]
+  values: string[]
 ) {
   const res = await fetch("/api/sheets", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sheet: sheetName, rowIndex, values }),
+    body: JSON.stringify({ sheetName, rowIndex, values }),
   })
-
-  if (!res.ok) throw new Error("Failed to update row")
-
-  // Revalidate the sheet data
-  await globalMutate(`/api/sheets?sheet=${sheetName}`)
-
-  return res.json()
-}
-
-export async function deleteRow(sheetName: string, rowIndex: number) {
-  const res = await fetch("/api/sheets", {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sheet: sheetName, rowIndex }),
-  })
-
-  if (!res.ok) throw new Error("Failed to delete row")
-
-  // Revalidate the sheet data
-  await globalMutate(`/api/sheets?sheet=${sheetName}`)
-
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Error de red" }))
+    throw new Error(err.error || "Error al actualizar")
+  }
+  await globalMutate(`/api/sheets?sheet=${encodeURIComponent(sheetName)}`)
   return res.json()
 }

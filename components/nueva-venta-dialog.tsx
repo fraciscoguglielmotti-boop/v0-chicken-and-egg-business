@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select"
 import { clientesIniciales } from "@/lib/store"
 import { PRODUCTOS, type Venta, type VentaItem, type ProductoTipo } from "@/lib/types"
+import { useSheet } from "@/hooks/use-sheets"
 
 interface NuevaVentaDialogProps {
   open: boolean
@@ -33,14 +34,30 @@ export function NuevaVentaDialog({
   onOpenChange,
   onSubmit,
 }: NuevaVentaDialogProps) {
+  const sheetsVendedores = useSheet("Vendedores")
+  const sheetsClientes = useSheet("Clientes")
   const [clienteId, setClienteId] = useState("")
+  const [vendedor, setVendedor] = useState("")
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0])
   const [items, setItems] = useState<VentaItem[]>([])
   const [nuevoProducto, setNuevoProducto] = useState<ProductoTipo | "">("")
   const [cantidad, setCantidad] = useState("")
   const [precioUnitario, setPrecioUnitario] = useState("")
 
-  const cliente = clientesIniciales.find((c) => c.id === clienteId)
+  // Merge clients from Sheets and local with saldo
+  const allClientes = sheetsClientes.rows.length > 0
+    ? sheetsClientes.rows.map((r, i) => ({ 
+        id: r.ID || String(i), 
+        nombre: r.Nombre || "", 
+        saldo: Number(r.Saldo) || 0 
+      }))
+    : clientesIniciales.map((c) => ({ id: c.id, nombre: c.nombre, saldo: c.saldoActual || 0 }))
+
+  const allVendedores = sheetsVendedores.rows
+    .filter((r) => r.Nombre)
+    .map((r) => r.Nombre)
+
+  const cliente = allClientes.find((c) => c.id === clienteId)
   const total = items.reduce((acc, item) => acc + item.subtotal, 0)
 
   const handleAgregarItem = () => {
@@ -73,7 +90,7 @@ export function NuevaVentaDialog({
   const handleSubmit = () => {
     if (!clienteId || items.length === 0) return
 
-    const venta: Venta = {
+    const venta: Venta & { vendedor?: string } = {
       id: Date.now().toString(),
       fecha: new Date(fecha),
       clienteId,
@@ -82,6 +99,7 @@ export function NuevaVentaDialog({
       total,
       estado: "pendiente",
       createdAt: new Date(),
+      vendedor: vendedor || "",
     }
 
     onSubmit(venta)
@@ -90,6 +108,7 @@ export function NuevaVentaDialog({
 
   const resetForm = () => {
     setClienteId("")
+    setVendedor("")
     setFecha(new Date().toISOString().split("T")[0])
     setItems([])
     setNuevoProducto("")
@@ -112,8 +131,8 @@ export function NuevaVentaDialog({
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Cliente y Fecha */}
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/* Cliente, Vendedor y Fecha */}
+          <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label>Cliente</Label>
               <Select value={clienteId} onValueChange={setClienteId}>
@@ -121,13 +140,44 @@ export function NuevaVentaDialog({
                   <SelectValue placeholder="Seleccionar cliente" />
                 </SelectTrigger>
                 <SelectContent>
-                  {clientesIniciales.map((c) => (
+                  {allClientes.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.nombre}
+                      <div className="flex items-center justify-between gap-2">
+                        <span>{c.nombre}</span>
+                        {c.saldo > 0 && (
+                          <span className="text-xs text-destructive font-medium">
+                            Debe: {formatCurrency(c.saldo)}
+                          </span>
+                        )}
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {cliente && cliente.saldo > 0 && (
+                <p className="text-xs text-destructive">Saldo actual: {formatCurrency(cliente.saldo)}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Vendedor</Label>
+              {allVendedores.length > 0 ? (
+                <Select value={vendedor} onValueChange={setVendedor}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar vendedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allVendedores.map((v) => (
+                      <SelectItem key={v} value={v}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={vendedor}
+                  onChange={(e) => setVendedor(e.target.value)}
+                  placeholder="Nombre del vendedor"
+                />
+              )}
             </div>
             <div className="space-y-2">
               <Label>Fecha</Label>

@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
 export const metadata: Metadata = {
   title: 'AviGest - Gestion de Distribuidora',
-  description: 'Sistema de gestion integral para distribuidora de pollos y huevos',
+  description: 'Sistema integral de gestion para distribuidora de pollos y huevos',
 }
 
 export default function RootLayout({
@@ -17,8 +17,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="es" className={inter.variable}>
-      <body className="font-sans antialiased">{children}</body>
+    <html lang="es" className={inter.variable} suppressHydrationWarning>
+      <body className="font-sans antialiased" suppressHydrationWarning>{children}</body>
     </html>
   )
 }
