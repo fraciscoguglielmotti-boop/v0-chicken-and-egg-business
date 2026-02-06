@@ -1,243 +1,129 @@
-import { google } from "googleapis";
-import { NextResponse } from "next/server";
+import { google } from "googleapis"
+import { NextResponse } from "next/server"
 
-interface ServiceAccountCredentials {
-  client_email: string;
-  private_key: string;
-}
-
-function getCredentials(): {
-  credentials: ServiceAccountCredentials | null;
-  error: string | null;
-  method?: string;
-} {
-  // Method 1 (recommended): Base64-encoded JSON
-  const b64 = process.env.GOOGLE_CREDENTIALS_BASE64;
-  if (b64) {
-    try {
-      const decoded = Buffer.from(b64, "base64").toString("utf-8");
-      const parsed = JSON.parse(decoded);
-      if (parsed.client_email && parsed.private_key) {
-        return {
-          credentials: {
-            client_email: parsed.client_email,
-            private_key: parsed.private_key,
-          },
-          error: null,
-          method: "base64",
-        };
-      }
-      return {
-        credentials: null,
-        error:
-          "El JSON decodificado no contiene client_email o private_key.",
-      };
-    } catch (e) {
-      return {
-        credentials: null,
-        error: `Error al decodificar GOOGLE_CREDENTIALS_BASE64: ${e instanceof Error ? e.message : String(e)}`,
-      };
-    }
+// Configuración de autenticación con Google Sheets
+function getAuth() {
+  const credentials = {
+    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
   }
 
-  // Method 2: Individual vars
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key = process.env.GOOGLE_PRIVATE_KEY;
-  if (email && key) {
-    const privateKey = key.replace(/\\n/g, "\n");
-    return {
-      credentials: { client_email: email, private_key: privateKey },
-      error: null,
-      method: "individual",
-    };
+  if (!credentials.client_email || !credentials.private_key) {
+    throw new Error("Google Sheets credentials not configured")
   }
 
-  return {
-    credentials: null,
-    error:
-      "No se encontraron credenciales. Configura GOOGLE_CREDENTIALS_BASE64 desde la seccion Google Sheets de la app.",
-  };
-}
-
-function getSheets() {
-  const { credentials, error } = getCredentials();
-  if (!credentials || error) {
-    throw new Error(error || "Sin credenciales");
-  }
-  const auth = new google.auth.JWT({
+  return new google.auth.JWT({
     email: credentials.client_email,
     key: credentials.private_key,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-  });
-  return google.sheets({ version: "v4", auth });
+  })
 }
 
+function getSheets() {
+  const auth = getAuth()
+  return google.sheets({ version: "v4", auth })
+}
+
+// GET - Leer datos de una hoja
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const action = searchParams.get("action");
-  const sheetName = searchParams.get("sheet");
-
-  if (action === "diagnose") {
-    if (!process.env.GOOGLE_SPREADSHEET_ID) {
-      return NextResponse.json({
-        status: "missing_vars",
-        message:
-          "Falta la variable GOOGLE_SPREADSHEET_ID. Agregala en Vars del sidebar.",
-        missing: ["GOOGLE_SPREADSHEET_ID"],
-      });
-    }
-
-    const { credentials, error: credError, method } = getCredentials();
-    if (!credentials) {
-      return NextResponse.json({
-        status: "missing_vars",
-        message: credError,
-      });
-    }
-
-    try {
-      const sheets = getSheets();
-      const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-      const response = await sheets.spreadsheets.get({ spreadsheetId });
-      const sheetTitles =
-        response.data.sheets?.map((s) => s.properties?.title) || [];
-
-      return NextResponse.json({
-        status: "connected",
-        message: `Conectado exitosamente a: "${response.data.properties?.title}"`,
-        spreadsheetTitle: response.data.properties?.title,
-        availableSheets: sheetTitles,
-        serviceAccountEmail: credentials.client_email,
-        method,
-      });
-    } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-
-      if (
-        errorMsg.includes("DECODER") ||
-        errorMsg.includes("unsupported") ||
-        errorMsg.includes("routines")
-      ) {
-        return NextResponse.json({
-          status: "key_format_error",
-          message:
-            "Error con la clave privada. Usa la herramienta de la seccion Google Sheets para generar la variable correctamente.",
-          detail: errorMsg,
-        });
-      }
-      if (errorMsg.includes("invalid_grant") || errorMsg.includes("JWT")) {
-        return NextResponse.json({
-          status: "auth_error",
-          message:
-            "Error de autenticacion. Verifica que las credenciales sean correctas y que la cuenta de servicio este activa en Google Cloud.",
-          detail: errorMsg,
-        });
-      }
-      if (
-        errorMsg.includes("not found") ||
-        errorMsg.includes("404") ||
-        errorMsg.includes("Requested entity was not found")
-      ) {
-        return NextResponse.json({
-          status: "not_found",
-          message: `No se encontro la hoja. Verifica el GOOGLE_SPREADSHEET_ID y que la hoja este compartida con: ${credentials.client_email}`,
-          detail: errorMsg,
-        });
-      }
-      if (errorMsg.includes("403") || errorMsg.includes("permission")) {
-        return NextResponse.json({
-          status: "permission_error",
-          message: `Sin permisos. Comparti la hoja con: ${credentials.client_email} como Editor.`,
-          detail: errorMsg,
-        });
-      }
-
-      return NextResponse.json({
-        status: "error",
-        message: "Error inesperado al conectar.",
-        detail: errorMsg,
-      });
-    }
-  }
-
-  // Read data
   try {
-    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-    if (!sheetName) {
+    const { searchParams } = new URL(request.url)
+    const sheetName = searchParams.get("sheet")
+    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID
+
+    if (!sheetName || !spreadsheetId) {
       return NextResponse.json(
-        { error: "Falta el parametro 'sheet'" },
-        { status: 400 },
-      );
+        { error: "Missing sheet name or spreadsheet ID" },
+        { status: 400 }
+      )
     }
-    const sheets = getSheets();
+
+    const sheets = getSheets()
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: `${sheetName}!A:Z`,
-    });
-    const rows = response.data.values || [];
-    const headers = rows.length > 0 ? rows[0] : [];
-    const data = rows.length > 1 ? rows.slice(1) : [];
-    return NextResponse.json({ headers, data });
-  } catch (error: unknown) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    })
+
+    const rows = response.data.values || []
+    
+    // Remover header row si existe
+    const data = rows.length > 1 ? rows.slice(1) : []
+
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error("Error reading from Google Sheets:", error)
     return NextResponse.json(
-      { error: "Error al leer Google Sheets", detail: errorMsg },
-      { status: 500 },
-    );
+      { error: "Failed to read from Google Sheets", details: String(error) },
+      { status: 500 }
+    )
   }
 }
 
+// POST - Agregar filas a una hoja
 export async function POST(request: Request) {
   try {
-    const { sheetName, values } = await request.json();
-    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-    if (!sheetName || !values) {
+    const { sheetName, values } = await request.json()
+    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID
+
+    if (!sheetName || !values || !spreadsheetId) {
       return NextResponse.json(
-        { error: "Faltan campos requeridos (sheetName, values)" },
-        { status: 400 },
-      );
+        { error: "Missing required fields" },
+        { status: 400 }
+      )
     }
-    const sheets = getSheets();
+
+    const sheets = getSheets()
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: `${sheetName}!A:Z`,
       valueInputOption: "USER_ENTERED",
-      requestBody: { values },
-    });
-    return NextResponse.json({ success: true });
-  } catch (error: unknown) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+      requestBody: {
+        values,
+      },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error writing to Google Sheets:", error)
     return NextResponse.json(
-      { error: "Error al escribir en Google Sheets", detail: errorMsg },
-      { status: 500 },
-    );
+      { error: "Failed to write to Google Sheets", details: String(error) },
+      { status: 500 }
+    )
   }
 }
 
+// PUT - Actualizar una fila específica
 export async function PUT(request: Request) {
   try {
-    const { sheetName, rowIndex, values } = await request.json();
-    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-    if (!sheetName || rowIndex === undefined || !values) {
+    const { sheetName, rowIndex, values } = await request.json()
+    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID
+
+    if (!sheetName || rowIndex === undefined || !values || !spreadsheetId) {
       return NextResponse.json(
-        { error: "Faltan campos requeridos" },
-        { status: 400 },
-      );
+        { error: "Missing required fields" },
+        { status: 400 }
+      )
     }
-    const sheets = getSheets();
-    const range = `${sheetName}!A${rowIndex + 2}:Z${rowIndex + 2}`;
+
+    const sheets = getSheets()
+    // +2 porque las filas empiezan en 1 y hay header
+    const range = `${sheetName}!A${rowIndex + 2}:Z${rowIndex + 2}`
+    
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range,
       valueInputOption: "USER_ENTERED",
-      requestBody: { values: [values] },
-    });
-    return NextResponse.json({ success: true });
-  } catch (error: unknown) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+      requestBody: {
+        values: [values],
+      },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error updating Google Sheets:", error)
     return NextResponse.json(
-      { error: "Error al actualizar Google Sheets", detail: errorMsg },
-      { status: 500 },
-    );
+      { error: "Failed to update Google Sheets", details: String(error) },
+      { status: 500 }
+    )
   }
 }

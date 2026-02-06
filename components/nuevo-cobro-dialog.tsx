@@ -10,7 +10,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
 import {
@@ -20,14 +19,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { clientesIniciales, proveedoresIniciales } from "@/lib/store"
+import { clientesIniciales } from "@/lib/store"
 import type { Cobro } from "@/lib/types"
-import { useSheet } from "@/hooks/use-sheets"
 
 interface NuevoCobroDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSubmit: (cobro: Cobro, esProveedor?: boolean) => void
+  onSubmit: (cobro: Cobro) => void
 }
 
 export function NuevoCobroDialog({
@@ -35,23 +33,13 @@ export function NuevoCobroDialog({
   onOpenChange,
   onSubmit,
 }: NuevoCobroDialogProps) {
-  const sheetsClientes = useSheet("Clientes")
-  const sheetsProveedores = useSheet("Proveedores")
   const [clienteId, setClienteId] = useState("")
   const [fecha, setFecha] = useState(new Date().toISOString().split("T")[0])
   const [monto, setMonto] = useState("")
   const [metodoPago, setMetodoPago] = useState<"efectivo" | "transferencia" | "cheque" | "">("")
   const [observaciones, setObservaciones] = useState("")
 
-  const allClientes = sheetsClientes.rows.length > 0
-    ? sheetsClientes.rows.map((r, i) => ({ id: r.ID || String(i), nombre: r.Nombre || "", saldoActual: Number(r.Saldo) || 0 }))
-    : clientesIniciales.map((c) => ({ id: c.id, nombre: c.nombre, saldoActual: c.saldoActual }))
-
-  const allProveedores = sheetsProveedores.rows.length > 0
-    ? sheetsProveedores.rows.map((r, i) => ({ id: r.ID || String(i), nombre: r.Nombre || "" }))
-    : proveedoresIniciales.map((p) => ({ id: p.id, nombre: p.nombre }))
-
-  const cliente = allClientes.find((c) => c.id === clienteId)
+  const cliente = clientesIniciales.find((c) => c.id === clienteId)
 
   const handleSubmit = () => {
     if (!clienteId || !monto || !metodoPago) return
@@ -67,12 +55,7 @@ export function NuevoCobroDialog({
       createdAt: new Date(),
     }
 
-    // Check if cliente name matches a proveedor
-    const esProveedor = allProveedores.some(
-      (p) => p.nombre.toLowerCase().trim() === cliente?.nombre.toLowerCase().trim()
-    )
-
-    onSubmit(cobro, esProveedor)
+    onSubmit(cobro)
     resetForm()
   }
 
@@ -96,9 +79,6 @@ export function NuevoCobroDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Registrar Cobro</DialogTitle>
-          <DialogDescription>
-            Registre un cobro de cliente o pago a proveedor
-          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
@@ -110,7 +90,7 @@ export function NuevoCobroDialog({
                 <SelectValue placeholder="Seleccionar cliente" />
               </SelectTrigger>
               <SelectContent>
-                {allClientes.map((c) => (
+                {clientesIniciales.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     <div className="flex items-center justify-between gap-4">
                       <span>{c.nombre}</span>

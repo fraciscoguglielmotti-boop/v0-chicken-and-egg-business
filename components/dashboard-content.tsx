@@ -1,10 +1,5 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
-
-import { Badge } from "@/components/ui/badge"
-
-import { useMemo } from "react"
 import {
   ShoppingCart,
   Receipt,
@@ -15,44 +10,29 @@ import {
 import Link from "next/link"
 import { StatCard } from "./stat-card"
 import { DataTable } from "./data-table"
-import { SheetsStatus } from "./sheets-status"
-import { useSheet, type SheetRow } from "@/hooks/use-sheets"
-import { ventasIniciales, cobrosIniciales, calcularStats } from "@/lib/store"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import {
+  calcularStats,
+  ventasIniciales,
+  cobrosIniciales,
+} from "@/lib/store"
 import type { Venta, Cobro } from "@/lib/types"
-import { formatCurrency } from "@/lib/utils"
 
-function rowToVenta(row: SheetRow, i: number): Venta {
-  const cant = Number(row.Cantidad) || 0
-  const precio = Number(row.PrecioUnitario) || 0
-  const total = cant * precio
-  return {
-    id: row.ID || String(i),
-    fecha: new Date(row.Fecha || Date.now()),
-    clienteId: row.ClienteID || "",
-    clienteNombre: row.Cliente || "",
-    items: [{
-      productoId: "producto",
-      productoNombre: row.Productos || "Producto",
-      cantidad: cant,
-      precioUnitario: precio,
-      subtotal: total,
-    }],
-    total,
-    estado: "pendiente",
-    createdAt: new Date(row.Fecha || Date.now()),
-  }
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    minimumFractionDigits: 0,
+  }).format(amount)
 }
 
-function rowToCobro(row: SheetRow, i: number): Cobro {
-  return {
-    id: row.ID || String(i),
-    fecha: new Date(row.Fecha || Date.now()),
-    clienteId: row.ClienteID || "",
-    clienteNombre: row.Cliente || "",
-    monto: Number(row.Monto) || 0,
-    metodoPago: (row.MetodoPago as Cobro["metodoPago"]) || "efectivo",
-    createdAt: new Date(row.Fecha || Date.now()),
-  }
+function formatDate(date: Date): string {
+  return new Intl.DateTimeFormat("es-AR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(date))
 }
 
 const estadoColors = {
@@ -68,175 +48,129 @@ const estadoLabels = {
 }
 
 export function DashboardContent() {
-  const sheetsVentas = useSheet("Ventas")
-  const sheetsCobros = useSheet("Cobros")
-  const sheetsClientes = useSheet("Clientes")
-
-  const isLoading = sheetsVentas.isLoading || sheetsCobros.isLoading
-  const hasError = sheetsVentas.error || sheetsCobros.error
-  const isConnected = !hasError && !isLoading
-
-  // Calculate client balances: ventas - cobros
-  const clientBalances = useMemo(() => {
-    const balances = new Map<string, { nombre: string; saldo: number }>()
-
-    // Add ventas (debt)
-    sheetsVentas.rows.forEach((row) => {
-      const cliente = row.Cliente || ""
-      if (!cliente) return
-      const key = cliente.toLowerCase().trim()
-      const cant = Number(row.Cantidad) || 0
-      const precio = Number(row.PrecioUnitario) || 0
-      const total = cant * precio
-      const existing = balances.get(key) || { nombre: cliente, saldo: 0 }
-      existing.saldo += total
-      balances.set(key, existing)
-    })
-
-    // Subtract cobros (payments)
-    sheetsCobros.rows.forEach((row) => {
-      const cliente = row.Cliente || ""
-      if (!cliente) return
-      const key = cliente.toLowerCase().trim()
-      const existing = balances.get(key)
-      if (existing) {
-        existing.saldo -= Number(row.Monto) || 0
-      }
-    })
-
-    return Array.from(balances.values())
-      .filter((c) => c.saldo > 0)
-      .sort((a, b) => b.saldo - a.saldo)
-      .slice(0, 5)
-  }, [sheetsVentas.rows, sheetsCobros.rows])
-
-  const ventas: Venta[] = useMemo(() => {
-    if (isConnected && sheetsVentas.rows.length > 0) return sheetsVentas.rows.map(rowToVenta)
-    return ventasIniciales
-  }, [isConnected, sheetsVentas.rows])
-
-  const cobros: Cobro[] = useMemo(() => {
-    if (isConnected && sheetsCobros.rows.length > 0) return sheetsCobros.rows.map(rowToCobro)
-    return cobrosIniciales
-  }, [isConnected, sheetsCobros.rows])
-
-  const stats = useMemo(() => {
-    if (!isConnected) return calcularStats()
-
-    const totalVentas = ventas.reduce((acc, v) => acc + v.total, 0)
-    const totalCobros = cobros.reduce((acc, c) => acc + c.monto, 0)
-    const cuentasPorCobrar = sheetsClientes.rows.reduce(
-      (acc, r) => acc + (Number(r.Saldo) || 0),
-      0
-    )
-
-    return {
-      ventasHoy: totalVentas,
-      ventasMes: totalVentas,
-      cobrosHoy: totalCobros,
-      cobrosMes: totalCobros,
-      cuentasPorCobrar,
-      cuentasPorPagar: 0,
-    }
-  }, [isConnected, ventas, cobros, sheetsClientes.rows])
+  const stats = calcularStats()
 
   const ventasColumns = [
-    { key: "fecha", header: "Fecha", render: (v: Venta) => new Intl.DateTimeFormat("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(new Date(v.fecha)) },
-    { key: "clienteNombre", header: "Cliente" },
+    {
+      key: "fecha",
+      header: "Fecha",
+      render: (venta: Venta) => formatDate(venta.fecha),
+    },
+    {
+      key: "clienteNombre",
+      header: "Cliente",
+    },
     {
       key: "total",
       header: "Total",
-      render: (v: Venta) => <span className="font-semibold">{formatCurrency(v.total)}</span>,
+      render: (venta: Venta) => (
+        <span className="font-semibold">{formatCurrency(venta.total)}</span>
+      ),
     },
     {
       key: "estado",
       header: "Estado",
-      render: (v: Venta) => (
-        <Badge variant="outline" className={estadoColors[v.estado]}>{estadoLabels[v.estado]}</Badge>
+      render: (venta: Venta) => (
+        <Badge variant="outline" className={estadoColors[venta.estado]}>
+          {estadoLabels[venta.estado]}
+        </Badge>
       ),
     },
   ]
 
   const cobrosColumns = [
-    { key: "fecha", header: "Fecha", render: (c: Cobro) => new Intl.DateTimeFormat("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(new Date(c.fecha)) },
-    { key: "clienteNombre", header: "Cliente" },
+    {
+      key: "fecha",
+      header: "Fecha",
+      render: (cobro: Cobro) => formatDate(cobro.fecha),
+    },
+    {
+      key: "clienteNombre",
+      header: "Cliente",
+    },
     {
       key: "monto",
       header: "Monto",
-      render: (c: Cobro) => <span className="font-semibold text-primary">{formatCurrency(c.monto)}</span>,
+      render: (cobro: Cobro) => (
+        <span className="font-semibold text-primary">
+          {formatCurrency(cobro.monto)}
+        </span>
+      ),
     },
     {
       key: "metodoPago",
       header: "Metodo",
-      render: (c: Cobro) => <span className="capitalize">{c.metodoPago}</span>,
+      render: (cobro: Cobro) => (
+        <span className="capitalize">{cobro.metodoPago}</span>
+      ),
     },
   ]
 
   return (
     <div className="space-y-8">
-      {/* Connection Status */}
-      <div className="flex justify-end">
-        <SheetsStatus isLoading={isLoading} error={hasError} isConnected={isConnected} />
-      </div>
-
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Total Ventas"
-          value={formatCurrency(stats.ventasMes)}
-          subtitle="Registradas"
+          title="Ventas Hoy"
+          value={formatCurrency(stats.ventasHoy)}
+          subtitle="Total del dia"
           icon={ShoppingCart}
           variant="success"
+          trend={{ value: 12, isPositive: true }}
         />
         <StatCard
-          title="Total Cobros"
-          value={formatCurrency(stats.cobrosMes)}
-          subtitle="Recaudado"
+          title="Ventas del Mes"
+          value={formatCurrency(stats.ventasMes)}
+          subtitle="Acumulado mensual"
           icon={TrendingUp}
           variant="default"
         />
         <StatCard
-          title="Cobros"
+          title="Cobros Hoy"
           value={formatCurrency(stats.cobrosHoy)}
-          subtitle="Total cobrado"
+          subtitle="Recaudado hoy"
           icon={Receipt}
           variant="success"
         />
         <StatCard
           title="Por Cobrar"
           value={formatCurrency(stats.cuentasPorCobrar)}
-          subtitle="Saldo pendiente"
+          subtitle="Saldo pendiente clientes"
           icon={TrendingDown}
           variant="warning"
         />
       </div>
 
-      {/* Quick Actions + Top Deudores */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      {/* Quick Stats */}
+      <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-xl border bg-card p-6">
-          <h3 className="text-lg font-semibold text-foreground">Resumen</h3>
+          <h3 className="text-lg font-semibold text-foreground">
+            Resumen de Cuentas
+          </h3>
           <div className="mt-4 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Total Ventas</span>
-              <span className="font-semibold text-primary">{formatCurrency(stats.ventasMes)}</span>
+              <span className="text-muted-foreground">Cuentas por Cobrar</span>
+              <span className="font-semibold text-primary">
+                {formatCurrency(stats.cuentasPorCobrar)}
+              </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Total Cobros</span>
-              <span className="font-semibold text-foreground">{formatCurrency(stats.cobrosMes)}</span>
+              <span className="text-muted-foreground">Cuentas por Pagar</span>
+              <span className="font-semibold text-destructive">
+                {formatCurrency(stats.cuentasPorPagar)}
+              </span>
             </div>
             <div className="border-t pt-4">
               <div className="flex items-center justify-between">
-                <span className="font-medium text-foreground">Pendiente de Cobro</span>
-                <span className="text-lg font-bold text-accent">
-                  {formatCurrency(stats.ventasMes - stats.cobrosMes)}
+                <span className="font-medium text-foreground">Balance</span>
+                <span
+                  className={`text-lg font-bold ${
+                    stats.cuentasPorCobrar - stats.cuentasPorPagar >= 0
+                      ? "text-primary"
+                      : "text-destructive"
+                  }`}
+                >
+                  {formatCurrency(stats.cuentasPorCobrar - stats.cuentasPorPagar)}
                 </span>
               </div>
             </div>
@@ -244,43 +178,24 @@ export function DashboardContent() {
         </div>
 
         <div className="rounded-xl border bg-card p-6">
-          <h3 className="text-lg font-semibold text-foreground">Acciones Rapidas</h3>
+          <h3 className="text-lg font-semibold text-foreground">
+            Acciones Rapidas
+          </h3>
           <div className="mt-4 grid gap-3">
-            <Link href="/ventas">
+            <Link href="/ventas/nueva">
               <Button className="w-full justify-start gap-2 bg-transparent" variant="outline">
                 <ShoppingCart className="h-4 w-4" />
-                Ir a Ventas
+                Nueva Venta
                 <ArrowRight className="ml-auto h-4 w-4" />
               </Button>
             </Link>
-            <Link href="/cobros">
+            <Link href="/cobros/nuevo">
               <Button className="w-full justify-start gap-2 bg-transparent" variant="outline">
                 <Receipt className="h-4 w-4" />
-                Ir a Cobros
+                Registrar Cobro
                 <ArrowRight className="ml-auto h-4 w-4" />
               </Button>
             </Link>
-          </div>
-        </div>
-
-        <div className="rounded-xl border bg-card p-6">
-          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <TrendingDown className="h-5 w-5 text-destructive" />
-            Top Deudores
-          </h3>
-          <div className="mt-4 space-y-3">
-            {clientBalances.length > 0 ? (
-              clientBalances.map((client, idx) => (
-                <Link key={idx} href="/cuentas">
-                  <div className="flex items-center justify-between rounded-lg border bg-accent/5 p-3 hover:bg-accent/10 transition-colors cursor-pointer">
-                    <span className="text-sm font-medium text-foreground truncate">{client.nombre}</span>
-                    <span className="text-sm font-bold text-destructive">{formatCurrency(client.saldo)}</span>
-                  </div>
-                </Link>
-              ))
-            ) : (
-              <p className="text-sm text-muted-foreground">No hay deudas pendientes</p>
-            )}
           </div>
         </div>
       </div>
@@ -289,7 +204,9 @@ export function DashboardContent() {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-foreground">Ultimas Ventas</h3>
+            <h3 className="text-lg font-semibold text-foreground">
+              Ultimas Ventas
+            </h3>
             <Link href="/ventas">
               <Button variant="ghost" size="sm" className="gap-1">
                 Ver todas
@@ -297,19 +214,28 @@ export function DashboardContent() {
               </Button>
             </Link>
           </div>
-          <DataTable columns={ventasColumns} data={ventas.slice(0, 5)} emptyMessage={isLoading ? "Cargando..." : "Sin ventas"} />
+          <DataTable
+            columns={ventasColumns}
+            data={ventasIniciales.slice(0, 5)}
+          />
         </div>
+
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold text-foreground">Ultimos Cobros</h3>
+            <h3 className="text-lg font-semibold text-foreground">
+              Ultimos Cobros
+            </h3>
             <Link href="/cobros">
               <Button variant="ghost" size="sm" className="gap-1">
-                Ver todas
+                Ver todos
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
           </div>
-          <DataTable columns={cobrosColumns} data={cobros.slice(0, 5)} emptyMessage={isLoading ? "Cargando..." : "Sin cobros"} />
+          <DataTable
+            columns={cobrosColumns}
+            data={cobrosIniciales.slice(0, 5)}
+          />
         </div>
       </div>
     </div>

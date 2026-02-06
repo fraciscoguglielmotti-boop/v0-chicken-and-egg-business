@@ -91,29 +91,6 @@ export interface Pago {
   createdAt: Date
 }
 
-export interface StockMovement {
-  id: string
-  fecha: Date
-  productoId: ProductoTipo
-  productoNombre: string
-  tipo: 'compra' | 'venta' | 'ajuste'
-  cantidad: number // positive for entrada, negative for salida
-  cantidadAnterior: number
-  cantidadActual: number
-  referencia: string // ID de la compra/venta/ajuste
-  observaciones?: string
-}
-
-export interface StockActual {
-  productoId: ProductoTipo
-  productoNombre: string
-  cantidad: number
-  unidad: string
-  ultimaActualizacion: Date
-  stockMinimo?: number
-  alertaBajo: boolean
-}
-
 export interface MovimientoCuenta {
   id: string
   fecha: Date
