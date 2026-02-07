@@ -54,6 +54,12 @@ const CANONICAL_KEYS: Record<string, string> = {
   tipo: "Tipo",
   categoria: "Categoria",
   descripcion: "Descripcion",
+  tarjeta: "Tarjeta",
+  banco: "Banco",
+  cuotaactual: "CuotaActual",
+  cuotastotal: "CuotasTotal",
+  origenpdf: "OrigenPDF",
+  presupuesto: "Presupuesto",
 }
 
 function getCanonicalKey(header: string): string {

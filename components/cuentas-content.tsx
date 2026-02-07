@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { ArrowUpRight, ArrowDownRight, Search, Users, Filter, Download, Calendar } from "lucide-react"
+import { ArrowUpRight, ArrowDownRight, Search, Users, Filter, Download, Calendar, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -31,7 +31,8 @@ import {
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, type SheetRow } from "@/hooks/use-sheets"
-import { formatCurrency, formatDate, resolveEntityName } from "@/lib/utils"
+import { formatCurrency, formatDate, parseDate, resolveEntityName } from "@/lib/utils"
+import { ClientStatement } from "./client-statement"
 
 interface CuentaCliente {
   id: string
@@ -63,6 +64,7 @@ export function CuentasContent() {
   const [selectedCuenta, setSelectedCuenta] = useState<CuentaCliente | null>(null)
   const [tab, setTab] = useState("clientes")
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [statementOpen, setStatementOpen] = useState(false)
   const [rangoExport, setRangoExport] = useState<{ desde: string; hasta: string }>({
     desde: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
     hasta: new Date().toISOString().split("T")[0],
@@ -496,6 +498,10 @@ export function CuentasContent() {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
+                  <Button variant="outline" className="bg-primary/10 text-primary hover:bg-primary/20" onClick={() => setStatementOpen(true)}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Exportar Saldo
+                  </Button>
                   <Button variant="outline" onClick={() => setSelectedCuenta(null)}>Volver al listado</Button>
                 </div>
               </div>
@@ -549,6 +555,28 @@ export function CuentasContent() {
           <DataTable columns={proveedorColumns} data={filteredProveedores} emptyMessage="No hay cuentas de proveedores" />
         </TabsContent>
       </Tabs>
+
+      {/* Client Statement Dialog */}
+      {selectedCuenta && (
+        <ClientStatement
+          open={statementOpen}
+          onOpenChange={setStatementOpen}
+          clienteNombre={selectedCuenta.nombre}
+          vendedor={selectedCuenta.vendedor}
+          movimientos={(() => {
+            const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+            return movimientos.filter((m) => parseDate(m.fecha) >= weekAgo)
+          })()}
+          saldoAnterior={(() => {
+            const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+            const movsAntes = movimientos.filter((m) => parseDate(m.fecha) < weekAgo)
+            return movsAntes.length > 0 ? movsAntes[movsAntes.length - 1].saldoAcumulado : 0
+          })()}
+          saldoActual={selectedCuenta.saldo}
+          periodoDesde={new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]}
+          periodoHasta={new Date().toISOString().split("T")[0]}
+        />
+      )}
 
       {/* Export Dialog */}
       <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>

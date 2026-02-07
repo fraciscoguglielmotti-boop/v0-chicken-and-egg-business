@@ -46,7 +46,9 @@ const navSections = [
   {
     label: "Finanzas",
     items: [
+      { name: "Gastos", href: "/gastos", icon: Receipt },
       { name: "Contabilidad", href: "/contabilidad", icon: Calculator },
+      { name: "Rentabilidad", href: "/rentabilidad", icon: BarChart3 },
       { name: "Flujo de Fondos", href: "/flujo", icon: Wallet },
     ],
   },
