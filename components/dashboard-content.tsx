@@ -17,16 +17,17 @@ import { SheetsStatus } from "./sheets-status"
 import { useSheet, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales, cobrosIniciales, calcularStats } from "@/lib/store"
 import type { Venta, Cobro } from "@/lib/types"
-import { formatCurrency, resolveEntityName } from "@/lib/utils"
+import { formatCurrency, parseDate, resolveEntityName } from "@/lib/utils"
 
 function rowToVenta(row: SheetRow, i: number, clienteLookup: SheetRow[]): Venta {
   const cant = Number(row.Cantidad) || 0
   const precio = Number(row.PrecioUnitario) || 0
   const total = cant * precio
   const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
+  const fecha = parseDate(row.Fecha || "")
   return {
     id: row.ID || String(i),
-    fecha: new Date(row.Fecha || Date.now()),
+    fecha,
     clienteId: clienteNombre,
     clienteNombre,
     items: [{
@@ -38,20 +39,21 @@ function rowToVenta(row: SheetRow, i: number, clienteLookup: SheetRow[]): Venta 
     }],
     total,
     estado: "pendiente",
-    createdAt: new Date(row.Fecha || Date.now()),
+    createdAt: fecha,
   }
 }
 
 function rowToCobro(row: SheetRow, i: number, clienteLookup: SheetRow[]): Cobro {
   const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
+  const fecha = parseDate(row.Fecha || "")
   return {
     id: row.ID || String(i),
-    fecha: new Date(row.Fecha || Date.now()),
+    fecha,
     clienteId: clienteNombre,
     clienteNombre,
     monto: Number(row.Monto) || 0,
     metodoPago: (row.MetodoPago as Cobro["metodoPago"]) || "efectivo",
-    createdAt: new Date(row.Fecha || Date.now()),
+    createdAt: fecha,
   }
 }
 

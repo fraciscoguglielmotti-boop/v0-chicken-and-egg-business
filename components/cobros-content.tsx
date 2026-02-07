@@ -18,20 +18,21 @@ import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { cobrosIniciales } from "@/lib/store"
 import type { Cobro } from "@/lib/types"
 import { NuevoCobroDialog } from "./nuevo-cobro-dialog"
-import { formatCurrency, formatDate, formatDateForSheets, resolveEntityName } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets, parseDate, resolveEntityName } from "@/lib/utils"
 
 function sheetRowToCobro(row: SheetRow, index: number, clienteLookup: SheetRow[]): Cobro {
   // Resolve client name robustly (handles ID/name swaps from manual data entry)
   const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
+  const fecha = parseDate(row.Fecha || "")
   return {
     id: row.ID || String(index),
-    fecha: new Date(row.Fecha || Date.now()),
+    fecha,
     clienteId: clienteNombre,
     clienteNombre,
     monto: Number(row.Monto) || 0,
     metodoPago: (row.MetodoPago as Cobro["metodoPago"]) || "efectivo",
     observaciones: row.Observaciones || undefined,
-    createdAt: new Date(row.Fecha || Date.now()),
+    createdAt: fecha,
   }
 }
 

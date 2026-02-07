@@ -151,7 +151,7 @@ export function CuentasContent() {
       map.set(key, existing)
     })
 
-    // Add payments to providers
+    // Add payments to providers (from Pagos sheet - cash payments)
     sheetsPagos.rows.forEach((r) => {
       const proveedor = resolveEntityName(r.Proveedor || "", r.ProveedorID || "", sheetsProveedoresData.rows)
       if (!proveedor) return
@@ -167,10 +167,28 @@ export function CuentasContent() {
       map.set(key, existing)
     })
 
+    // Add cobros via transferencia to Agroaves as payments to Agroaves proveedor
+    sheetsCobros.rows.forEach((r) => {
+      if ((r.MetodoPago || "").toLowerCase() !== "transferencia") return
+      const obs = (r.Observaciones || "").toLowerCase()
+      if (!obs.includes("agroaves")) return
+      
+      const key = "agroaves srl"
+      const existing = map.get(key) || {
+        id: key,
+        nombre: "Agroaves SRL",
+        totalCompras: 0,
+        totalPagos: 0,
+        saldo: 0,
+      }
+      existing.totalPagos += Number(r.Monto) || 0
+      map.set(key, existing)
+    })
+
     return Array.from(map.values())
       .map((p) => ({ ...p, saldo: p.totalCompras - p.totalPagos }))
       .sort((a, b) => b.saldo - a.saldo)
-  }, [sheetsCompras.rows, sheetsPagos.rows, sheetsProveedoresData.rows])
+  }, [sheetsCompras.rows, sheetsPagos.rows, sheetsCobros.rows, sheetsProveedoresData.rows])
 
   // Filter by search and vendor
   const filteredClientes = cuentasClientes.filter((c) => {

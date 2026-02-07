@@ -19,14 +19,7 @@ import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { proveedoresIniciales } from "@/lib/store"
 import type { Proveedor } from "@/lib/types"
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-  }).format(amount)
-}
+import { formatCurrency } from "@/lib/utils"
 
 function sheetRowToProveedor(row: SheetRow, index: number): Proveedor {
   return {

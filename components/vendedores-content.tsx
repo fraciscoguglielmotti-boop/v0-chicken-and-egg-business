@@ -24,19 +24,13 @@ import {
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-  }).format(amount)
-}
+import { formatCurrency, parseDate } from "@/lib/utils"
 
 interface Vendedor {
   nombre: string
   comisionPct: number
   totalVentas: number
+  totalGanancia: number
   totalComisiones: number
   cantidadVentas: number
   clientes: string[]
@@ -44,6 +38,7 @@ interface Vendedor {
 
 export function VendedoresContent() {
   const sheetsVentas = useSheet("Ventas")
+  const sheetsCompras = useSheet("Compras")
   const sheetsVendedores = useSheet("Vendedores")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
@@ -51,7 +46,7 @@ export function VendedoresContent() {
   const [saving, setSaving] = useState(false)
   const [nuevoVendedor, setNuevoVendedor] = useState({ nombre: "", comision: "5" })
 
-  const isLoading = sheetsVentas.isLoading || sheetsVendedores.isLoading
+  const isLoading = sheetsVentas.isLoading || sheetsCompras.isLoading || sheetsVendedores.isLoading
   const hasError = sheetsVentas.error
   const isConnected = !hasError && !isLoading
 
@@ -66,12 +61,25 @@ export function VendedoresContent() {
     return map
   }, [sheetsVendedores.rows])
 
+  // Build cost price per product from Compras (latest price per product name)
+  const costosPorProducto = useMemo(() => {
+    const map = new Map<string, number>()
+    sheetsCompras.rows.forEach((r) => {
+      const producto = (r.Producto || r.Productos || "").toLowerCase().trim()
+      const precio = Number(r.PrecioUnitario) || Number(r["Precio Unitario"]) || 0
+      if (producto && precio > 0) {
+        map.set(producto, precio) // Last entry wins (most recent cost)
+      }
+    })
+    return map
+  }, [sheetsCompras.rows])
+
   // Filter sales by period
   const ventasFiltradas = useMemo(() => {
     const now = new Date()
     return sheetsVentas.rows.filter((r) => {
       if (periodoFilter === "todo") return true
-      const fecha = new Date(r.Fecha || "")
+      const fecha = parseDate(r.Fecha || "")
       if (periodoFilter === "mes") {
         return fecha.getMonth() === now.getMonth() && fecha.getFullYear() === now.getFullYear()
       }
@@ -94,16 +102,25 @@ export function VendedoresContent() {
         nombre: vendedor,
         comisionPct: comisionesConfig.get(key) || 5,
         totalVentas: 0,
+        totalGanancia: 0,
         totalComisiones: 0,
         cantidadVentas: 0,
         clientes: [],
       }
       const cant = Number(r.Cantidad) || 0
-      const precio = Number(r.PrecioUnitario) || 0
-      const total = cant * precio
+      const precioVenta = Number(r.PrecioUnitario) || 0
+      const total = cant * precioVenta
+      
+      // Get cost price for this product to calculate profit margin
+      const productoName = (r.Productos || "").toLowerCase().trim()
+      const precioCosto = costosPorProducto.get(productoName) || 0
+      const ganancia = (precioVenta - precioCosto) * cant
+      
       existing.totalVentas += total
+      existing.totalGanancia += Math.max(ganancia, 0) // No negative profits
       existing.cantidadVentas += 1
-      existing.totalComisiones += total * (existing.comisionPct / 100)
+      // Commission based on profit (ganancia), not total sale
+      existing.totalComisiones += Math.max(ganancia, 0) * (existing.comisionPct / 100)
 
       const cliente = r.Cliente || ""
       if (cliente && !existing.clientes.includes(cliente)) {
@@ -114,7 +131,7 @@ export function VendedoresContent() {
     })
 
     return Array.from(map.values()).sort((a, b) => b.totalVentas - a.totalVentas)
-  }, [ventasFiltradas, comisionesConfig])
+  }, [ventasFiltradas, comisionesConfig, costosPorProducto])
 
   const filteredVendedores = vendedores.filter((v) =>
     v.nombre.toLowerCase().includes(searchTerm.toLowerCase())
@@ -163,13 +180,20 @@ export function VendedoresContent() {
       ),
     },
     {
+      key: "totalGanancia",
+      header: "Ganancia",
+      render: (v: Vendedor) => (
+        <span className="font-medium text-foreground">{formatCurrency(v.totalGanancia)}</span>
+      ),
+    },
+    {
       key: "comisionPct",
       header: "% Comision",
       render: (v: Vendedor) => <Badge variant="outline">{v.comisionPct}%</Badge>,
     },
     {
       key: "totalComisiones",
-      header: "Comision",
+      header: "Comision (s/ganancia)",
       render: (v: Vendedor) => (
         <span className="font-bold text-primary">{formatCurrency(v.totalComisiones)}</span>
       ),

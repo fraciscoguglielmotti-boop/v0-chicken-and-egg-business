@@ -5,17 +5,48 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-// Centralized date formatting to prevent timezone issues
+/**
+ * Parse a date that could be in various formats:
+ * - "dd/MM/yyyy" (from Google Sheets es-AR locale)
+ * - ISO string "2025-01-15"
+ * - Date object
+ * Returns a Date object with correct date regardless of timezone.
+ */
+export function parseDate(date: Date | string): Date {
+  if (!date) return new Date()
+  if (date instanceof Date) return date
+  const str = String(date).trim()
+  
+  // Handle dd/MM/yyyy format from Sheets
+  const ddmmyyyy = str.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/)
+  if (ddmmyyyy) {
+    const [, day, month, year] = ddmmyyyy
+    // Use UTC to avoid timezone shifts
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0))
+  }
+  
+  // Handle yyyy-MM-dd (ISO)
+  const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (iso) {
+    const [, year, month, day] = iso
+    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0))
+  }
+  
+  // Fallback
+  const d = new Date(str)
+  return Number.isNaN(d.getTime()) ? new Date() : d
+}
+
+// Centralized date formatting - handles all date input formats correctly
 export function formatDate(date: Date | string): string {
   if (!date) return "-"
   try {
-    const d = new Date(date)
-    // Add timezone offset to prevent date shifting on mobile
-    d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
+    const d = parseDate(date)
     return new Intl.DateTimeFormat("es-AR", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
+      timeZone: "UTC",
     }).format(d)
   } catch {
     return String(date)

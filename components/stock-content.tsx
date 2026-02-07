@@ -26,29 +26,7 @@ import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { PRODUCTOS, type ProductoTipo, type StockActual, type StockMovement } from "@/lib/types"
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-  }).format(amount)
-}
-
-function formatDate(date: Date | string): string {
-  if (!date) return "-"
-  try {
-    const d = new Date(date)
-    d.setMinutes(d.getMinutes() + d.getTimezoneOffset())
-    return new Intl.DateTimeFormat("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(d)
-  } catch {
-    return String(date)
-  }
-}
+import { formatCurrency, formatDate, parseDate } from "@/lib/utils"
 
 export function StockContent() {
   const sheetsVentas = useSheet("Ventas")
@@ -213,9 +191,9 @@ export function StockContent() {
     const now = Date.now()
     const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000
     
-    const ventasRecientes = sheetsVentas.rows.filter((row) => {
-      const fecha = new Date(row.Fecha || "")
-      return fecha.getTime() >= sevenDaysAgo
+  const ventasRecientes = sheetsVentas.rows.filter((row) => {
+    const fecha = parseDate(row.Fecha || "")
+    return fecha.getTime() >= sevenDaysAgo
     })
 
     const ventasPorProducto = new Map<ProductoTipo, number>()

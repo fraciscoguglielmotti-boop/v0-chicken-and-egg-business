@@ -25,23 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    minimumFractionDigits: 0,
-  }).format(amount)
-}
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return "-"
-  try {
-    return new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(dateStr))
-  } catch {
-    return dateStr
-  }
-}
+import { formatCurrency, formatDate, parseDate } from "@/lib/utils"
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
@@ -113,18 +97,18 @@ export function FlujoContent() {
 
     // Income from sales (Cantidad x PrecioUnitario)
     sheetsVentas.rows.forEach((r) => {
-      const fecha = new Date(r.Fecha || "")
-      if (fecha.getFullYear() === anio) {
+      const fecha = parseDate(r.Fecha || "")
+      if (fecha.getUTCFullYear() === anio) {
         const cant = Number(r.Cantidad) || 0
         const precio = Number(r.PrecioUnitario) || 0
-        meses[fecha.getMonth()].ingresos += cant * precio
+        meses[fecha.getUTCMonth()].ingresos += cant * precio
       }
     })
 
     // Income from collections
     sheetsCobros.rows.forEach((r) => {
-      const fecha = new Date(r.Fecha || "")
-      if (fecha.getFullYear() === anio) {
+      const fecha = parseDate(r.Fecha || "")
+      if (fecha.getUTCFullYear() === anio) {
         // Cobros are already counted in ventas for accounting
         // but represent real cash inflow
       }
@@ -132,23 +116,23 @@ export function FlujoContent() {
 
     // Expenses from purchases (Cantidad x Precio)
     sheetsCompras.rows.forEach((r) => {
-      const fecha = new Date(r.Fecha || "")
-      if (fecha.getFullYear() === anio) {
+      const fecha = parseDate(r.Fecha || "")
+      if (fecha.getUTCFullYear() === anio) {
         const cant = Number(r.Cantidad) || 0
         const precio = Number(r.PrecioUnitario) || 0
         const total = cant * precio
-        meses[fecha.getMonth()].egresos += total
+        meses[fecha.getUTCMonth()].egresos += total
       }
     })
 
     // Expenses from Gastos sheet
     sheetsGastos.rows.forEach((r) => {
-      const fecha = new Date(r.Fecha || "")
-      if (fecha.getFullYear() === anio) {
+      const fecha = parseDate(r.Fecha || "")
+      if (fecha.getUTCFullYear() === anio) {
         if (r.Tipo?.toLowerCase() === "ingreso") {
-          meses[fecha.getMonth()].ingresos += Number(r.Monto) || 0
+          meses[fecha.getUTCMonth()].ingresos += Number(r.Monto) || 0
         } else {
-          meses[fecha.getMonth()].egresos += Number(r.Monto) || 0
+          meses[fecha.getUTCMonth()].egresos += Number(r.Monto) || 0
         }
       }
     })

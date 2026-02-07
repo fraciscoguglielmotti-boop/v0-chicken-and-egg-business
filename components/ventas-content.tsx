@@ -18,7 +18,7 @@ import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales } from "@/lib/store"
 import type { Venta, VentaConVendedor, VentaItem, ProductoTipo } from "@/lib/types"
 import { NuevaVentaDialog } from "./nueva-venta-dialog"
-import { formatCurrency, formatDate, formatDateForSheets, resolveEntityName } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets, parseDate, resolveEntityName } from "@/lib/utils"
 
 function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[]): VentaConVendedor {
   const cantidad = Number(row.Cantidad) || 0
@@ -80,16 +80,17 @@ function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[
 
   // Resolve client name using lookup table (handles ID/name swaps from manual entry)
   const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
+  const fecha = parseDate(row.Fecha || "")
 
   return {
     id: row.ID || String(_index),
-    fecha: new Date(row.Fecha || Date.now()),
+    fecha,
     clienteId: clienteNombre,
     clienteNombre,
     items,
     total,
     estado,
-    createdAt: new Date(row.Fecha || Date.now()),
+    createdAt: fecha,
     vendedor: row.Vendedor || "",
   }
 }

@@ -17,20 +17,21 @@ import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import type { Pago } from "@/lib/types"
 import { NuevoPagoDialog } from "./nuevo-pago-dialog"
-import { formatCurrency, formatDateForSheets, formatDate, resolveEntityName } from "@/lib/utils"
+import { formatCurrency, formatDateForSheets, formatDate, parseDate, resolveEntityName } from "@/lib/utils"
 
 function sheetRowToPago(row: SheetRow, index: number, proveedorLookup: SheetRow[]): Pago {
   // Resolve proveedor name robustly (handles ID/name swaps from manual data entry)
   const proveedorNombre = resolveEntityName(row.Proveedor || "", row.ProveedorID || "", proveedorLookup)
+  const fecha = parseDate(row.Fecha || "")
   return {
     id: row.ID || String(index),
-    fecha: new Date(row.Fecha || Date.now()),
+    fecha,
     proveedorId: proveedorNombre,
     proveedorNombre,
     monto: Number(row.Monto) || 0,
     metodoPago: (row.MetodoPago as Pago["metodoPago"]) || "efectivo",
     observaciones: row.Observaciones || undefined,
-    createdAt: new Date(row.Fecha || Date.now()),
+    createdAt: fecha,
   }
 }
 
@@ -44,8 +45,16 @@ const metodoPagoLabels: Record<string, string> = {
   transferencia: "Transferencia",
 }
 
+// Detect if a cobro row is a transfer to Agroaves (counts as pago to proveedor)
+function isCobroTransferenciaAgroaves(row: SheetRow): boolean {
+  if ((row.MetodoPago || "").toLowerCase() !== "transferencia") return false
+  const obs = (row.Observaciones || "").toLowerCase()
+  return obs.includes("agroaves")
+}
+
 export function PagosContent() {
   const { rows, isLoading, error, mutate } = useSheet("Pagos")
+  const sheetsCobros = useSheet("Cobros")
   const sheetsProveedores = useSheet("Proveedores")
   const [searchTerm, setSearchTerm] = useState("")
   const [metodoFilter, setMetodoFilter] = useState<string>("todos")
@@ -55,11 +64,43 @@ export function PagosContent() {
   const isConnected = !error && !isLoading && rows.length >= 0
 
   const pagos: Pago[] = useMemo(() => {
+    const result: Pago[] = []
+    
+    // 1. Pagos from the Pagos sheet (cash payments only per user request)
     if (isConnected && rows.length > 0) {
-      return rows.map((row, i) => sheetRowToPago(row, i, sheetsProveedores.rows))
+      rows.forEach((row, i) => {
+        result.push(sheetRowToPago(row, i, sheetsProveedores.rows))
+      })
     }
-    return []
-  }, [isConnected, rows, sheetsProveedores.rows])
+    
+    // 2. Add cobros that are transfers to Agroaves as pagos (virtual pagos)
+    if (isConnected && sheetsCobros.rows.length > 0) {
+      sheetsCobros.rows.forEach((row, i) => {
+        if (isCobroTransferenciaAgroaves(row)) {
+          const obs = row.Observaciones || ""
+          // Extract cuenta destino from observaciones "Cuenta: Agroaves SRL - ..."
+          const cuentaMatch = obs.match(/Cuenta:\s*([^-]+)/i)
+          const cuentaDestino = cuentaMatch ? cuentaMatch[1].trim() : "Agroaves SRL"
+          const clienteNombre = row.Cliente || row.ClienteID || ""
+          
+          const fechaCobro = parseDate(row.Fecha || "")
+          result.push({
+            id: `cobro-pago-${row.ID || i}`,
+            fecha: fechaCobro,
+            proveedorId: "Agroaves SRL",
+            proveedorNombre: "Agroaves SRL",
+            monto: Number(row.Monto) || 0,
+            metodoPago: "transferencia",
+            observaciones: `Transferencia de ${clienteNombre} a ${cuentaDestino}`,
+            createdAt: fechaCobro,
+          })
+        }
+      })
+    }
+    
+    // Sort by date descending
+    return result.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+  }, [isConnected, rows, sheetsProveedores.rows, sheetsCobros.rows])
 
   const filteredPagos = pagos.filter((pago) => {
     const matchesSearch = pago.proveedorNombre
