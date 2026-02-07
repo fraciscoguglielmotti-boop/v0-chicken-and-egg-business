@@ -223,7 +223,7 @@ export function VehiculosContent() {
       await addRow("Mantenimientos", [[
         id,
         selectedVehiculo.patente.toUpperCase(),
-        formatDateForSheets(new Date(nuevoMant.fecha)),
+        formatDateForSheets(parseDate(nuevoMant.fecha)),
         nuevoMant.tipo,
         nuevoMant.descripcion,
         nuevoMant.kilometraje || String(selectedVehiculo.kilometraje),

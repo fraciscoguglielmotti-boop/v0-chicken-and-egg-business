@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { parseDate, formatCurrency } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -64,7 +65,7 @@ export function NuevoCobroDialog({
 
     const cobro: Cobro = {
       id: Date.now().toString(),
-      fecha: new Date(fecha),
+      fecha: parseDate(fecha),
       clienteId: cliente?.nombre || "", // Use name, not numeric ID
       clienteNombre: cliente?.nombre || "",
       monto: Number.parseFloat(monto),
@@ -85,13 +86,6 @@ export function NuevoCobroDialog({
     setCuentaDestino("")
     setObservaciones("")
   }
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("es-AR", {
-      style: "currency",
-      currency: "ARS",
-      minimumFractionDigits: 0,
-    }).format(amount)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

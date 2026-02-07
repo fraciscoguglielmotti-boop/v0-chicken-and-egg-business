@@ -99,7 +99,7 @@ export function PagosContent() {
     }
     
     // Sort by date descending
-    return result.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+    return result.sort((a, b) => parseDate(b.fecha).getTime() - parseDate(a.fecha).getTime())
   }, [isConnected, rows, sheetsProveedores.rows, sheetsCobros.rows])
 
   const filteredPagos = pagos.filter((pago) => {

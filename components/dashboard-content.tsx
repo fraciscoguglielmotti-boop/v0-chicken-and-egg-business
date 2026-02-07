@@ -160,11 +160,7 @@ export function DashboardContent() {
   ]
 
   const cobrosColumns = [
-    { key: "fecha", header: "Fecha", render: (c: Cobro) => new Intl.DateTimeFormat("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(new Date(c.fecha)) },
+    { key: "fecha", header: "Fecha", render: (c: Cobro) => formatDate(c.fecha) },
     { key: "clienteNombre", header: "Cliente" },
     {
       key: "monto",

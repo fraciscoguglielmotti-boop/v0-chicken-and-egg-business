@@ -72,7 +72,7 @@ export function FlujoContent() {
     const set = new Set<number>()
     const addYear = (dateStr: string) => {
       try {
-        const y = new Date(dateStr).getFullYear()
+        const y = parseDate(dateStr).getUTCFullYear()
         if (y > 2020 && y < 2030) set.add(y)
       } catch { /* skip */ }
     }

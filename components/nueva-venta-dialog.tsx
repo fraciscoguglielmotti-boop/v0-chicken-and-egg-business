@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { parseDate, formatCurrency } from "@/lib/utils"
 import { Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -93,7 +94,7 @@ export function NuevaVentaDialog({
 
     const venta: Venta & { vendedor?: string } = {
       id: Date.now().toString(),
-      fecha: new Date(fecha),
+      fecha: parseDate(fecha),
       clienteId: cliente?.nombre || "", // Use name, not numeric ID
       clienteNombre: cliente?.nombre || "",
       items,
@@ -116,13 +117,6 @@ export function NuevaVentaDialog({
     setCantidad("")
     setPrecioUnitario("")
   }
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("es-AR", {
-      style: "currency",
-      currency: "ARS",
-      minimumFractionDigits: 0,
-    }).format(amount)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

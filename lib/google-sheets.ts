@@ -1,5 +1,6 @@
 // Google Sheets Integration
 // Para conectar con tus hojas de cálculo existentes
+import { parseDate } from "@/lib/utils"
 
 export interface SheetConfig {
   spreadsheetId: string
@@ -180,7 +181,7 @@ export function parseVentaFromRow(row: string[]): {
 } {
   return {
     id: row[0],
-    fecha: new Date(row[1]),
+    fecha: parseDate(row[1]),
     clienteNombre: row[2],
     producto: row[3],
     cantidad: Number.parseFloat(row[4]) || 0,
@@ -200,7 +201,7 @@ export function parseCobroFromRow(row: string[]): {
 } {
   return {
     id: row[0],
-    fecha: new Date(row[1]),
+    fecha: parseDate(row[1]),
     clienteNombre: row[2],
     monto: Number.parseFloat(row[3]) || 0,
     metodoPago: row[4] || "efectivo",
