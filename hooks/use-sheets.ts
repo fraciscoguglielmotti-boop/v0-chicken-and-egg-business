@@ -60,6 +60,20 @@ const CANONICAL_KEYS: Record<string, string> = {
   cuotastotal: "CuotasTotal",
   origenpdf: "OrigenPDF",
   presupuesto: "Presupuesto",
+  mes: "Mes",
+  anio: "Anio",
+  vehiculoid: "VehiculoID",
+  vehiculo: "Vehiculo",
+  patente: "Patente",
+  marca: "Marca",
+  modelo: "Modelo",
+  aniovehiculo: "AnioVehiculo",
+  kilometraje: "Kilometraje",
+  tipomantenimiento: "TipoMantenimiento",
+  costo: "Costo",
+  taller: "Taller",
+  proximokm: "ProximoKM",
+  proximafecha: "ProximaFecha",
 }
 
 function getCanonicalKey(header: string): string {

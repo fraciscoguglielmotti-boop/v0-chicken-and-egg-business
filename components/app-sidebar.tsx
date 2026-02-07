@@ -18,6 +18,8 @@ import {
   UserCheck,
   Wallet,
   DollarSign,
+  Target, // Added import for Target
+  Car, // Added import for Car
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -41,6 +43,7 @@ const navSections = [
       { name: "Cuentas Corrientes", href: "/cuentas", icon: BarChart3 },
       { name: "Vendedores", href: "/vendedores", icon: UserCheck },
       { name: "Inventario", href: "/stock", icon: Package },
+      { name: "Vehiculos", href: "/vehiculos", icon: Car },
     ],
   },
   {
@@ -49,6 +52,7 @@ const navSections = [
       { name: "Gastos", href: "/gastos", icon: Receipt },
       { name: "Contabilidad", href: "/contabilidad", icon: Calculator },
       { name: "Rentabilidad", href: "/rentabilidad", icon: BarChart3 },
+      { name: "Presupuestos", href: "/presupuestos", icon: Target },
       { name: "Flujo de Fondos", href: "/flujo", icon: Wallet },
     ],
   },

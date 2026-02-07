@@ -17,7 +17,7 @@ import { SheetsStatus } from "./sheets-status"
 import { useSheet, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales, cobrosIniciales, calcularStats } from "@/lib/store"
 import type { Venta, Cobro } from "@/lib/types"
-import { formatCurrency, parseDate, resolveEntityName } from "@/lib/utils"
+import { formatCurrency, formatDate, parseDate, resolveEntityName } from "@/lib/utils"
 
 function rowToVenta(row: SheetRow, i: number, clienteLookup: SheetRow[]): Venta {
   const cant = Number(row.Cantidad) || 0
@@ -143,11 +143,7 @@ export function DashboardContent() {
   }, [isConnected, ventas, cobros, sheetsClientes.rows])
 
   const ventasColumns = [
-    { key: "fecha", header: "Fecha", render: (v: Venta) => new Intl.DateTimeFormat("es-AR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(new Date(v.fecha)) },
+    { key: "fecha", header: "Fecha", render: (v: Venta) => formatDate(v.fecha) },
     { key: "clienteNombre", header: "Cliente" },
     {
       key: "total",

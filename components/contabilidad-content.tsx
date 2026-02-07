@@ -126,21 +126,21 @@ export function ContabilidadContent() {
       })
     })
 
-    return entries.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+    return entries.sort((a, b) => parseDate(b.fecha).getTime() - parseDate(a.fecha).getTime())
   }, [sheetsVentas.rows, sheetsCompras.rows, sheetsGastos.rows])
 
   // Filter
   const movimientosFiltrados = useMemo(() => {
     return movimientos.filter((m) => {
       if (mesFilter !== "todos") {
-        const fecha = new Date(m.fecha)
+        const fecha = parseDate(m.fecha)
         const mesActual = new Date()
         if (mesFilter === "este_mes") {
-          if (fecha.getMonth() !== mesActual.getMonth() || fecha.getFullYear() !== mesActual.getFullYear()) return false
+          if (fecha.getUTCMonth() !== mesActual.getMonth() || fecha.getUTCFullYear() !== mesActual.getFullYear()) return false
         }
         if (mesFilter === "mes_anterior") {
           const prev = new Date(mesActual.getFullYear(), mesActual.getMonth() - 1, 1)
-          if (fecha.getMonth() !== prev.getMonth() || fecha.getFullYear() !== prev.getFullYear()) return false
+          if (fecha.getUTCMonth() !== prev.getMonth() || fecha.getUTCFullYear() !== prev.getFullYear()) return false
         }
       }
       if (categoriaFilter !== "todas" && m.categoria !== categoriaFilter) return false

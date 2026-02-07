@@ -159,7 +159,7 @@ export function FlujoContent() {
       descripcion: r.Descripcion || "",
       tipo: r.Tipo?.toLowerCase() === "retorno" ? "retorno" as const : "inversion" as const,
       monto: Number(r.Monto) || 0,
-    })).sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+    })).sort((a, b) => parseDate(b.fecha).getTime() - parseDate(a.fecha).getTime())
   }, [sheetsInversiones.rows])
 
   const totalInvertido = inversiones.filter((i) => i.tipo === "inversion").reduce((a, i) => a + i.monto, 0)

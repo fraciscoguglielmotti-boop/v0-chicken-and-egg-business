@@ -19,7 +19,7 @@ import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { clientesIniciales } from "@/lib/store"
 import type { Cliente } from "@/lib/types"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, parseDate } from "@/lib/utils"
 
 function sheetRowToCliente(row: SheetRow, index: number): Cliente {
   return {
@@ -29,7 +29,7 @@ function sheetRowToCliente(row: SheetRow, index: number): Cliente {
     telefono: row.Telefono || undefined,
     direccion: row.Direccion || undefined,
     saldoActual: Number(row.Saldo) || 0,
-    createdAt: new Date(row.FechaAlta || Date.now()),
+    createdAt: parseDate(row.FechaAlta || ""),
   }
 }
 

@@ -216,16 +216,16 @@ export function CuentasContent() {
   const handleExportSemana = () => {
     if (!selectedCuenta) return
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-    const filtered = movimientos.filter(m => new Date(m.fecha) >= weekAgo)
+    const filtered = movimientos.filter(m => parseDate(m.fecha) >= weekAgo)
     exportMovimientos(filtered, `cuenta_corriente_${selectedCuenta.nombre}_semana`)
   }
 
   const handleExportRango = () => {
     if (!selectedCuenta) return
-    const desde = new Date(rangoExport.desde)
-    const hasta = new Date(rangoExport.hasta)
+    const desde = parseDate(rangoExport.desde)
+    const hasta = parseDate(rangoExport.hasta)
     const filtered = movimientos.filter(m => {
-      const fecha = new Date(m.fecha)
+      const fecha = parseDate(m.fecha)
       return fecha >= desde && fecha <= hasta
     })
     exportMovimientos(filtered, `cuenta_corriente_${selectedCuenta.nombre}_${rangoExport.desde}_${rangoExport.hasta}`)
@@ -288,7 +288,7 @@ export function CuentasContent() {
     })
 
     // Sort by date ascending for running balance
-    entries.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+    entries.sort((a, b) => parseDate(a.fecha).getTime() - parseDate(b.fecha).getTime())
 
     let saldoAcum = 0
     return entries.map((e) => {
