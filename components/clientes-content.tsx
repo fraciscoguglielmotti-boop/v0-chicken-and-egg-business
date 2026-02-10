@@ -1,11 +1,18 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Plus, Search, Phone, MapPin } from "lucide-react"
+import { Plus, Search, Phone, MapPin, ArrowUpDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -37,6 +44,7 @@ export function ClientesContent() {
   const { rows, isLoading, error, mutate } = useSheet("Clientes")
   const [localClientes] = useState(clientesIniciales)
   const [searchTerm, setSearchTerm] = useState("")
+  const [sortBy, setSortBy] = useState<"nombre" | "saldo">("nombre")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ nombre: "", cuit: "", telefono: "", direccion: "" })
@@ -50,11 +58,17 @@ export function ClientesContent() {
     return localClientes
   }, [isConnected, rows, localClientes])
 
-  const filteredClientes = clientes.filter(
-    (cliente) =>
-      cliente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      cliente.cuit?.includes(searchTerm)
-  )
+  const filteredClientes = useMemo(() => {
+    const filtered = clientes.filter(
+      (cliente) =>
+        cliente.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        cliente.cuit?.includes(searchTerm)
+    )
+    if (sortBy === "nombre") {
+      return [...filtered].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+    }
+    return [...filtered].sort((a, b) => b.saldoActual - a.saldoActual)
+  }, [clientes, searchTerm, sortBy])
 
   const totalPorCobrar = filteredClientes.reduce((acc, c) => acc + c.saldoActual, 0)
   const clientesConDeuda = filteredClientes.filter((c) => c.saldoActual > 0).length
@@ -149,6 +163,16 @@ export function ClientesContent() {
               className="pl-9"
             />
           </div>
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as "nombre" | "saldo")}>
+            <SelectTrigger className="w-48">
+              <ArrowUpDown className="mr-2 h-4 w-4" />
+              <SelectValue placeholder="Ordenar por" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="nombre">Nombre A - Z</SelectItem>
+              <SelectItem value="saldo">Mayor deuda</SelectItem>
+            </SelectContent>
+          </Select>
           <SheetsStatus isLoading={isLoading} error={error} isConnected={isConnected} />
         </div>
         <Button size="sm" onClick={() => setDialogOpen(true)}>
