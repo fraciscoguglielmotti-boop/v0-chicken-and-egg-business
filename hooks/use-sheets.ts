@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useRef } from "react"
 import useSWR, { mutate as globalMutate } from "swr"
 
 const fetcher = async (url: string) => {
@@ -83,10 +84,16 @@ function getCanonicalKey(header: string): string {
 
 function rowsToObjects(headers: string[], data: string[][]): SheetRow[] {
   const canonicalHeaders = headers.map(getCanonicalKey)
+  const colCount = canonicalHeaders.length
   return data.map((row) => {
     const obj: SheetRow = {}
+    // Pad the row to match header count - Google Sheets API omits trailing empty cells
+    const paddedRow = [...row]
+    while (paddedRow.length < colCount) {
+      paddedRow.push("")
+    }
     canonicalHeaders.forEach((h, i) => {
-      obj[h] = row[i] || ""
+      obj[h] = paddedRow[i] || ""
     })
     return obj
   })
@@ -104,6 +111,30 @@ export function useSheet(sheetName: string | null) {
 
   const rows: SheetRow[] =
     data?.headers && data?.data ? rowsToObjects(data.headers, data.data) : []
+
+  // Auto-assign IDs to rows without ID (for manually added rows in Sheets)
+  const autoIdSheets = ["Ventas", "Cobros", "Pagos", "Compras", "Gastos", "Mantenimientos"]
+  const hasAssignedRef = useRef(false)
+  
+  useEffect(() => {
+    if (
+      !sheetName ||
+      !autoIdSheets.includes(sheetName) ||
+      rows.length === 0 ||
+      hasAssignedRef.current ||
+      isLoading
+    ) return
+
+    // Check if any row is missing an ID
+    const hasMissingIds = rows.some((r) => !r.ID || r.ID.trim() === "")
+    if (hasMissingIds) {
+      hasAssignedRef.current = true
+      assignIds(sheetName).catch(() => {
+        // Reset on error so it can retry
+        hasAssignedRef.current = false
+      })
+    }
+  }, [sheetName, rows, isLoading])
 
   return {
     rows,
@@ -128,6 +159,25 @@ export async function addRow(sheetName: string, values: string[][]) {
   // Revalidate the sheet data
   await globalMutate(`/api/sheets?sheet=${encodeURIComponent(sheetName)}`)
   return res.json()
+}
+
+// Auto-assign IDs to rows that don't have one
+export async function assignIds(sheetName: string) {
+  const res = await fetch("/api/sheets/auto-id", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sheetName }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Error de red" }))
+    throw new Error(err.error || "Error al asignar IDs")
+  }
+  const result = await res.json()
+  if (result.updated > 0) {
+    // Revalidate the sheet data so new IDs show up
+    await globalMutate(`/api/sheets?sheet=${encodeURIComponent(sheetName)}`)
+  }
+  return result
 }
 
 export async function updateRow(

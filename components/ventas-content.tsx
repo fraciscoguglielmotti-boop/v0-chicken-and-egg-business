@@ -22,17 +22,13 @@ import { formatCurrency, formatDate, formatDateForSheets, parseDate, resolveEnti
 
 function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[]): VentaConVendedor {
   const cantidad = Number(row.Cantidad) || 0
-  // Try multiple column names for price (PrecioUnitario, Precio Unitario, P. Unit., etc.)
+  // Try multiple column names for price
   const precioUnitario = Number(row.PrecioUnitario) || Number(row["Precio Unitario"]) || Number(row["P. Unit."]) || Number(row.Precio) || 0
-  // Try to read Total directly from sheet if exists, otherwise calculate
+  // Try to read Total directly from sheet, otherwise calculate
   const totalFromSheet = Number(row.Total) || 0
   const total = totalFromSheet > 0 ? totalFromSheet : cantidad * precioUnitario
-  
-  // Debug: log when price is 0 to see available columns
-  if (precioUnitario === 0 && total === 0 && cantidad > 0) {
-    console.log("[v0] Venta sin precio detectada - Columnas disponibles:", Object.keys(row))
-    console.log("[v0] Valores: PrecioUnitario=", row.PrecioUnitario, ", Total=", row.Total, ", Cantidad=", row.Cantidad)
-  }
+  // If we have total from sheet but no price, derive price from total
+  const effectivePrecio = precioUnitario > 0 ? precioUnitario : (cantidad > 0 ? total / cantidad : 0)
 
   // Parse Productos field
   const productosStr = row.Productos || ""
@@ -49,7 +45,7 @@ function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[
           productoId: prodName.toLowerCase().replace(/\s+/g, "_") as ProductoTipo,
           productoNombre: prodName,
           cantidad: qty,
-          precioUnitario: total / cantidad,
+          precioUnitario: effectivePrecio,
           subtotal: (qty / cantidad) * total,
         })
       }
@@ -61,7 +57,7 @@ function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[
         productoId: match[2].trim().toLowerCase().replace(/\s+/g, "_") as ProductoTipo,
         productoNombre: match[2].trim(),
         cantidad: Number.parseFloat(match[1]),
-        precioUnitario,
+        precioUnitario: effectivePrecio,
         subtotal: total,
       })
     } else {
@@ -69,7 +65,7 @@ function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[
         productoId: "producto" as ProductoTipo,
         productoNombre: productosStr,
         cantidad,
-        precioUnitario,
+        precioUnitario: effectivePrecio,
         subtotal: total,
       })
     }
@@ -80,12 +76,14 @@ function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[
       productoId: "producto" as ProductoTipo,
       productoNombre: "Producto",
       cantidad,
-      precioUnitario,
+      precioUnitario: effectivePrecio,
       subtotal: total,
     })
   }
 
-  const estado: Venta["estado"] = total === 0 ? "pagada" : "pendiente"
+  // Only mark as "pagada" if total is 0 AND there's no quantity (truly empty)
+  // Otherwise default to "pendiente" - the real estado is calculated from cobros
+  const estado: Venta["estado"] = (total === 0 && cantidad === 0) ? "pagada" : "pendiente"
 
   // Resolve client name using lookup table (handles ID/name swaps from manual entry)
   const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
@@ -124,9 +122,11 @@ export function VentasContent() {
     rows.forEach((r) => {
       const cliente = resolveEntityName(r.Cliente || "", r.ClienteID || "", sheetsClientes.rows).toLowerCase().trim()
       if (!cliente) return
-      const cantidad = Number(r.Cantidad) || 0
-      const precio = Number(r.PrecioUnitario) || 0
-      ventasPorCliente.set(cliente, (ventasPorCliente.get(cliente) || 0) + cantidad * precio)
+      const cant = Number(r.Cantidad) || 0
+      const precio = Number(r.PrecioUnitario) || Number(r["Precio Unitario"]) || Number(r.Precio) || 0
+      const totalDirecto = Number(r.Total) || 0
+      const totalFila = totalDirecto > 0 ? totalDirecto : cant * precio
+      ventasPorCliente.set(cliente, (ventasPorCliente.get(cliente) || 0) + totalFila)
     })
 
     sheetsCobros.rows.forEach((r) => {
