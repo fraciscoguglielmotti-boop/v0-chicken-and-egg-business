@@ -86,6 +86,8 @@ export function formatDateForSheets(date: Date | string): string {
  * Resolve the total amount and unit price from a Ventas/Compras sheet row.
  * Handles all column name variants and derives missing values.
  * This is the SINGLE SOURCE OF TRUTH for calculating sale amounts from sheet rows.
+ *
+ * Strategy: First try known column names, then scan ALL keys for price/total patterns.
  */
 export function resolveVentaMonto(row: { [key: string]: string }): {
   cantidad: number
@@ -93,17 +95,53 @@ export function resolveVentaMonto(row: { [key: string]: string }): {
   total: number
 } {
   const cantidad = Number(row.Cantidad) || 0
-  const precio =
+
+  // 1. Try known canonical keys
+  let precio =
     Number(row.PrecioUnitario) ||
-    Number(row["Precio Unitario"]) ||
-    Number(row["P. Unit."]) ||
     Number(row.Precio) ||
     0
-  const totalDirecto = Number(row.Total) || 0
 
-  // Determine total: prefer direct total, otherwise calculate
+  // 2. Try known non-canonical variants (pre-canonicalization names)
+  if (precio === 0) {
+    precio =
+      Number(row["Precio Unitario"]) ||
+      Number(row["P. Unit."]) ||
+      Number(row["PU"]) ||
+      Number(row["Precio x Kg"]) ||
+      Number(row["PrecioXKg"]) ||
+      0
+  }
+
+  // 3. Scan ALL keys for any price-like column we might have missed
+  if (precio === 0) {
+    const priceKeys = Object.keys(row).filter(k => {
+      const lk = k.toLowerCase()
+      return (lk.includes("precio") || lk.includes("price") || lk.includes("p.u") || lk.includes("punit")) &&
+        !lk.includes("total")
+    })
+    for (const pk of priceKeys) {
+      const v = Number(row[pk])
+      if (v > 0) { precio = v; break }
+    }
+  }
+
+  // 4. Get total - try canonical then scan
+  let totalDirecto = Number(row.Total) || 0
+  if (totalDirecto === 0) {
+    const totalKeys = Object.keys(row).filter(k => {
+      const lk = k.toLowerCase()
+      return lk.includes("total") || lk === "monto" || lk === "importe" || lk === "subtotal"
+    })
+    for (const tk of totalKeys) {
+      const v = Number(row[tk])
+      if (v > 0) { totalDirecto = v; break }
+    }
+  }
+
+  // 5. Determine total: prefer direct total, otherwise calculate
   const total = totalDirecto > 0 ? totalDirecto : cantidad * precio
-  // Derive unit price if missing but total exists
+  // 6. Derive unit price if missing but total exists
   const precioUnitario = precio > 0 ? precio : (cantidad > 0 ? total / cantidad : 0)
 
   return { cantidad, precioUnitario, total }
