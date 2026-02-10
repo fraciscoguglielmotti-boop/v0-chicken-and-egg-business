@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/dialog"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow } from "@/hooks/use-sheets"
-import { formatCurrency, formatDate, formatDateForSheets, parseDate } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets, parseDate, parseSheetNumber } from "@/lib/utils"
 
 const TIPOS_MANTENIMIENTO = [
   "Cambio de aceite",
@@ -129,7 +129,7 @@ export function VehiculosContent() {
       tipo: r.TipoMantenimiento || r.Tipo || "",
       descripcion: r.Descripcion || r.Observaciones || "",
       kilometraje: Number(r.Kilometraje) || 0,
-      costo: Number(r.Costo) || Number(r.Monto) || 0,
+      costo: parseSheetNumber(r.Costo) || parseSheetNumber(r.Monto),
       taller: r.Taller || "",
       proximoKm: Number(r.ProximoKM) || 0,
       proximaFecha: r.ProximaFecha || "",

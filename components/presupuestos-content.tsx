@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dialog"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, updateRow } from "@/hooks/use-sheets"
-import { formatCurrency, parseDate } from "@/lib/utils"
+import { formatCurrency, parseDate, parseSheetNumber } from "@/lib/utils"
 
 const MESES_NOMBRES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -93,7 +93,7 @@ export function PresupuestosContent() {
     return sheetsPresupuestos.rows.map((r, i) => ({
       id: r.ID || `p-${i}`,
       categoria: r.Categoria || "",
-      montoPresupuestado: Number(r.Monto) || 0,
+      montoPresupuestado: parseSheetNumber(r.Monto),
       mes: Number(r.Mes) || 0,
       anio: Number(r.Anio) || new Date().getFullYear(),
       rowIndex: i,
@@ -111,7 +111,7 @@ export function PresupuestosContent() {
       const fecha = parseDate(r.Fecha || "")
       if (fecha.getUTCMonth() === mes && fecha.getUTCFullYear() === anio) {
         const cat = r.Categoria || "Otros"
-        map.set(cat, (map.get(cat) || 0) + (Number(r.Monto) || 0))
+        map.set(cat, (map.get(cat) || 0) + parseSheetNumber(r.Monto))
       }
     })
 

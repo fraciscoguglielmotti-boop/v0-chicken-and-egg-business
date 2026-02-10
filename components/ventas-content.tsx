@@ -18,14 +18,9 @@ import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales } from "@/lib/store"
 import type { Venta, VentaConVendedor, VentaItem, ProductoTipo } from "@/lib/types"
 import { NuevaVentaDialog } from "./nueva-venta-dialog"
-import { formatCurrency, formatDate, formatDateForSheets, parseDate, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets, parseDate, parseSheetNumber, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
 
 function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[]): VentaConVendedor {
-  // Debug: dump first 3 rows to see exact keys and values from Sheets
-  if (_index < 3) {
-    console.log(`[v0] Row ${_index} keys:`, Object.keys(row))
-    console.log(`[v0] Row ${_index} ALL values:`, JSON.stringify(row))
-  }
   const { cantidad, precioUnitario: effectivePrecio, total } = resolveVentaMonto(row)
 
   // Parse Productos field
@@ -127,7 +122,7 @@ export function VentasContent() {
     sheetsCobros.rows.forEach((r) => {
       const cliente = resolveEntityName(r.Cliente || "", r.ClienteID || "", sheetsClientes.rows).toLowerCase().trim()
       if (!cliente) return
-      cobrosPorCliente.set(cliente, (cobrosPorCliente.get(cliente) || 0) + (Number(r.Monto) || 0))
+      cobrosPorCliente.set(cliente, (cobrosPorCliente.get(cliente) || 0) + parseSheetNumber(r.Monto))
     })
 
     const estados = new Map<string, Venta["estado"]>()

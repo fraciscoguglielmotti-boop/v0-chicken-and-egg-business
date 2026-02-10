@@ -19,7 +19,7 @@ import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { proveedoresIniciales } from "@/lib/store"
 import type { Proveedor } from "@/lib/types"
-import { formatCurrency, parseDate } from "@/lib/utils"
+import { formatCurrency, parseDate, parseSheetNumber } from "@/lib/utils"
 
 function sheetRowToProveedor(row: SheetRow, index: number): Proveedor {
   return {
@@ -28,7 +28,7 @@ function sheetRowToProveedor(row: SheetRow, index: number): Proveedor {
     cuit: row.CUIT || undefined,
     telefono: row.Telefono || undefined,
     direccion: row.Direccion || undefined,
-    saldoActual: Number(row.Saldo) || 0,
+    saldoActual: parseSheetNumber(row.Saldo),
     createdAt: parseDate(row.FechaAlta || ""),
   }
 }

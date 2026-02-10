@@ -83,37 +83,79 @@ export function formatDateForSheets(date: Date | string): string {
 }
 
 /**
- * Resolve the total amount and unit price from a Ventas/Compras sheet row.
- * Handles all column name variants and derives missing values.
- * This is the SINGLE SOURCE OF TRUTH for calculating sale amounts from sheet rows.
+ * Parse a number from a Google Sheets cell that may have currency formatting.
+ * Handles: "$68,500", "$70.000", "68500", "68,500.50", "$1.234,56", etc.
  *
- * Strategy: First try known column names, then scan ALL keys for price/total patterns.
+ * Google Sheets currency format (es-AR): $70.000 or $70,000 depending on locale
+ */
+export function parseSheetNumber(val: string | number | undefined | null): number {
+  if (val === undefined || val === null || val === "") return 0
+  if (typeof val === "number") return val
+
+  let str = String(val).trim()
+
+  // Remove currency symbols and spaces
+  str = str.replace(/[$\s]/g, "")
+
+  // Detect format: if string has both . and , we need to figure out which is thousands/decimal
+  const hasComma = str.includes(",")
+  const hasDot = str.includes(".")
+
+  if (hasComma && hasDot) {
+    // Both present: determine which is last (that's the decimal separator)
+    const lastComma = str.lastIndexOf(",")
+    const lastDot = str.lastIndexOf(".")
+    if (lastComma > lastDot) {
+      // Format: 1.234,56 (European/AR) -> remove dots, replace comma with dot
+      str = str.replace(/\./g, "").replace(",", ".")
+    } else {
+      // Format: 1,234.56 (US) -> remove commas
+      str = str.replace(/,/g, "")
+    }
+  } else if (hasComma) {
+    // Only commas: could be "1,234" (thousands) or "1,5" (decimal)
+    // If there are multiple commas or the part after comma has 3 digits, it's thousands
+    const parts = str.split(",")
+    if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+      // Thousands separator: 1,234 or 1,234,567
+      str = str.replace(/,/g, "")
+    } else {
+      // Decimal separator: 1,5
+      str = str.replace(",", ".")
+    }
+  } else if (hasDot) {
+    // Only dots: could be "1.234" (thousands in AR) or "1.5" (decimal)
+    const parts = str.split(".")
+    if (parts.length > 2 || (parts.length === 2 && parts[1].length === 3)) {
+      // Thousands separator: 1.234 or 1.234.567
+      str = str.replace(/\./g, "")
+    }
+    // Otherwise it's a decimal: 1.5 -> leave as is
+  }
+
+  const num = Number(str)
+  return Number.isNaN(num) ? 0 : num
+}
+
+/**
+ * Resolve the total amount and unit price from a Ventas/Compras sheet row.
+ * Handles all column name variants, currency-formatted values, and derives missing values.
+ * This is the SINGLE SOURCE OF TRUTH for calculating sale amounts from sheet rows.
  */
 export function resolveVentaMonto(row: { [key: string]: string }): {
   cantidad: number
   precioUnitario: number
   total: number
 } {
-  const cantidad = Number(row.Cantidad) || 0
+  const cantidad = parseSheetNumber(row.Cantidad)
 
-  // 1. Try known canonical keys
+  // Try known canonical keys for price (all parsed with currency-aware parser)
   let precio =
-    Number(row.PrecioUnitario) ||
-    Number(row.Precio) ||
+    parseSheetNumber(row.PrecioUnitario) ||
+    parseSheetNumber(row.Precio) ||
     0
 
-  // 2. Try known non-canonical variants (pre-canonicalization names)
-  if (precio === 0) {
-    precio =
-      Number(row["Precio Unitario"]) ||
-      Number(row["P. Unit."]) ||
-      Number(row["PU"]) ||
-      Number(row["Precio x Kg"]) ||
-      Number(row["PrecioXKg"]) ||
-      0
-  }
-
-  // 3. Scan ALL keys for any price-like column we might have missed
+  // Scan ALL keys for any price-like column we might have missed
   if (precio === 0) {
     const priceKeys = Object.keys(row).filter(k => {
       const lk = k.toLowerCase()
@@ -121,27 +163,27 @@ export function resolveVentaMonto(row: { [key: string]: string }): {
         !lk.includes("total")
     })
     for (const pk of priceKeys) {
-      const v = Number(row[pk])
+      const v = parseSheetNumber(row[pk])
       if (v > 0) { precio = v; break }
     }
   }
 
-  // 4. Get total - try canonical then scan
-  let totalDirecto = Number(row.Total) || 0
+  // Get total - try canonical then scan
+  let totalDirecto = parseSheetNumber(row.Total)
   if (totalDirecto === 0) {
     const totalKeys = Object.keys(row).filter(k => {
       const lk = k.toLowerCase()
       return lk.includes("total") || lk === "monto" || lk === "importe" || lk === "subtotal"
     })
     for (const tk of totalKeys) {
-      const v = Number(row[tk])
+      const v = parseSheetNumber(row[tk])
       if (v > 0) { totalDirecto = v; break }
     }
   }
 
-  // 5. Determine total: prefer direct total, otherwise calculate
+  // Determine total: prefer direct total, otherwise calculate
   const total = totalDirecto > 0 ? totalDirecto : cantidad * precio
-  // 6. Derive unit price if missing but total exists
+  // Derive unit price if missing but total exists
   const precioUnitario = precio > 0 ? precio : (cantidad > 0 ? total / cantidad : 0)
 
   return { cantidad, precioUnitario, total }

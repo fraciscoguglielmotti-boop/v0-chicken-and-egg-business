@@ -177,14 +177,6 @@ export async function GET(request: Request) {
     const rows = response.data.values || [];
     const headers = rows.length > 0 ? rows[0] : [];
     const data = rows.length > 1 ? rows.slice(1) : [];
-    // Debug: log headers and first row for Ventas
-    if (sheetName === "Ventas") {
-      console.log(`[v0] SHEETS API - Sheet: ${sheetName}`);
-      console.log(`[v0] SHEETS API - Headers (${headers.length}):`, JSON.stringify(headers));
-      if (data.length > 0) {
-        console.log(`[v0] SHEETS API - Row 0 (${data[0].length} cols):`, JSON.stringify(data[0]));
-      }
-    }
     return NextResponse.json({ headers, data });
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);

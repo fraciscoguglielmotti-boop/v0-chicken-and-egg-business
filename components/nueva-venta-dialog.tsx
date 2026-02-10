@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { parseDate, formatCurrency } from "@/lib/utils"
+import { parseDate, parseSheetNumber, formatCurrency } from "@/lib/utils"
 import { Plus, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -51,7 +51,7 @@ export function NuevaVentaDialog({
     ? sheetsClientes.rows.map((r, i) => ({ 
         id: r.ID || String(i), 
         nombre: r.Nombre || "", 
-        saldo: Number(r.Saldo) || 0 
+        saldo: parseSheetNumber(r.Saldo) 
       }))
     : clientesIniciales.map((c) => ({ id: c.id, nombre: c.nombre, saldo: c.saldoActual || 0 }))
 

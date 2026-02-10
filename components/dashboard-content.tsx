@@ -17,7 +17,7 @@ import { SheetsStatus } from "./sheets-status"
 import { useSheet, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales, cobrosIniciales, calcularStats } from "@/lib/store"
 import type { Venta, Cobro } from "@/lib/types"
-import { formatCurrency, formatDate, parseDate, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
+import { formatCurrency, formatDate, parseDate, parseSheetNumber, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
 
 function rowToVenta(row: SheetRow, i: number, clienteLookup: SheetRow[]): Venta {
   const { cantidad, precioUnitario, total } = resolveVentaMonto(row)
@@ -49,7 +49,7 @@ function rowToCobro(row: SheetRow, i: number, clienteLookup: SheetRow[]): Cobro 
     fecha,
     clienteId: clienteNombre,
     clienteNombre,
-    monto: Number(row.Monto) || 0,
+      monto: parseSheetNumber(row.Monto),
     metodoPago: (row.MetodoPago as Cobro["metodoPago"]) || "efectivo",
     createdAt: fecha,
   }
@@ -98,7 +98,7 @@ export function DashboardContent() {
       const key = cliente.toLowerCase().trim()
       const existing = balances.get(key)
       if (existing) {
-        existing.saldo -= Number(row.Monto) || 0
+        existing.saldo -= parseSheetNumber(row.Monto)
       }
     })
 
@@ -124,7 +124,7 @@ export function DashboardContent() {
     const totalVentas = ventas.reduce((acc, v) => acc + v.total, 0)
     const totalCobros = cobros.reduce((acc, c) => acc + c.monto, 0)
     const cuentasPorCobrar = sheetsClientes.rows.reduce(
-      (acc, r) => acc + (Number(r.Saldo) || 0),
+      (acc, r) => acc + parseSheetNumber(r.Saldo),
       0
     )
 

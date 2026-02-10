@@ -18,7 +18,7 @@ import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { cobrosIniciales } from "@/lib/store"
 import type { Cobro } from "@/lib/types"
 import { NuevoCobroDialog } from "./nuevo-cobro-dialog"
-import { formatCurrency, formatDate, formatDateForSheets, parseDate, resolveEntityName } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets, parseDate, parseSheetNumber, resolveEntityName } from "@/lib/utils"
 
 function sheetRowToCobro(row: SheetRow, index: number, clienteLookup: SheetRow[]): Cobro {
   // Resolve client name robustly (handles ID/name swaps from manual data entry)
@@ -29,7 +29,7 @@ function sheetRowToCobro(row: SheetRow, index: number, clienteLookup: SheetRow[]
     fecha,
     clienteId: clienteNombre,
     clienteNombre,
-    monto: Number(row.Monto) || 0,
+    monto: parseSheetNumber(row.Monto),
     metodoPago: (row.MetodoPago as Cobro["metodoPago"]) || "efectivo",
     observaciones: row.Observaciones || undefined,
     createdAt: fecha,

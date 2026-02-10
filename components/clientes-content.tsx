@@ -26,7 +26,7 @@ import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { clientesIniciales } from "@/lib/store"
 import type { Cliente } from "@/lib/types"
-import { formatCurrency, parseDate } from "@/lib/utils"
+import { formatCurrency, parseDate, parseSheetNumber } from "@/lib/utils"
 
 function sheetRowToCliente(row: SheetRow, index: number): Cliente {
   return {
@@ -35,7 +35,7 @@ function sheetRowToCliente(row: SheetRow, index: number): Cliente {
     cuit: row.CUIT || undefined,
     telefono: row.Telefono || undefined,
     direccion: row.Direccion || undefined,
-    saldoActual: Number(row.Saldo) || 0,
+    saldoActual: parseSheetNumber(row.Saldo),
     createdAt: parseDate(row.FechaAlta || ""),
   }
 }

@@ -24,7 +24,7 @@ import {
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
-import { formatCurrency, parseDate, resolveVentaMonto } from "@/lib/utils"
+import { formatCurrency, parseDate, parseSheetNumber, resolveVentaMonto } from "@/lib/utils"
 
 interface Vendedor {
   nombre: string
@@ -55,7 +55,7 @@ export function VendedoresContent() {
     const map = new Map<string, number>()
     sheetsVendedores.rows.forEach((r) => {
       if (r.Nombre) {
-        map.set(r.Nombre.toLowerCase().trim(), Number(r.Comision) || 5)
+        map.set(r.Nombre.toLowerCase().trim(), parseSheetNumber(r.Comision) || 5)
       }
     })
     return map

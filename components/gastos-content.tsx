@@ -42,7 +42,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
-import { formatCurrency, formatDate, formatDateForSheets, parseDate } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets, parseDate, parseSheetNumber } from "@/lib/utils"
 
 // --- Constants ---
 
@@ -118,7 +118,7 @@ function sheetRowToGasto(row: SheetRow, index: number): Gasto {
     categoria: categoriaValue,
     categoriaLabel: catFound?.label || row.Categoria || "Otros",
     descripcion: row.Descripcion || "",
-    monto: Number(row.Monto) || 0,
+    monto: parseSheetNumber(row.Monto),
     medioPago: (row.MetodoPago || "").toLowerCase() === "tarjeta" ? "tarjeta" : "efectivo",
     tarjeta: row.Tarjeta || undefined,
     banco: row.Banco || undefined,

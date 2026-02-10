@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { parseDate, formatCurrency } from "@/lib/utils"
+import { parseDate, parseSheetNumber, formatCurrency } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -49,7 +49,7 @@ export function NuevoCobroDialog({
     ? sheetsClientes.rows.map((r, i) => ({ 
         id: r.ID || String(i), 
         nombre: r.Nombre || "", 
-        saldoActual: Number(r.Saldo) || 0 
+        saldoActual: parseSheetNumber(r.Saldo) 
       }))
     : clientesIniciales.map((c) => ({ id: c.id, nombre: c.nombre, saldoActual: c.saldoActual }))
 

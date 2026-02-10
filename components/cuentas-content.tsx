@@ -31,7 +31,7 @@ import {
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, type SheetRow } from "@/hooks/use-sheets"
-import { formatCurrency, formatDate, parseDate, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
+import { formatCurrency, formatDate, parseDate, parseSheetNumber, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
 import { ClientStatement } from "./client-statement"
 
 interface CuentaCliente {
@@ -121,7 +121,7 @@ export function CuentasContent() {
         totalCobros: 0,
         saldo: 0,
       }
-      existing.totalCobros += Number(r.Monto) || 0
+      existing.totalCobros += parseSheetNumber(r.Monto)
       if (r.Vendedor && !existing.vendedor) existing.vendedor = r.Vendedor
       map.set(key, existing)
     })
@@ -163,7 +163,7 @@ export function CuentasContent() {
         totalPagos: 0,
         saldo: 0,
       }
-      existing.totalPagos += Number(r.Monto) || 0
+      existing.totalPagos += parseSheetNumber(r.Monto)
       map.set(key, existing)
     })
 
@@ -181,7 +181,7 @@ export function CuentasContent() {
         totalPagos: 0,
         saldo: 0,
       }
-      existing.totalPagos += Number(r.Monto) || 0
+      existing.totalPagos += parseSheetNumber(r.Monto)
       map.set(key, existing)
     })
 
@@ -285,7 +285,7 @@ export function CuentasContent() {
           fecha: r.Fecha || "",
           tipo: "cobro",
           desc: `Cobro - ${r.MetodoPago || "Pago"}`,
-          monto: Number(r.Monto) || 0,
+          monto: parseSheetNumber(r.Monto),
         })
       }
     })

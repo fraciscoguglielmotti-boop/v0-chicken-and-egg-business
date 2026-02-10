@@ -25,7 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
-import { formatCurrency, formatDate, parseDate, resolveVentaMonto } from "@/lib/utils"
+import { formatCurrency, formatDate, parseDate, parseSheetNumber, resolveVentaMonto } from "@/lib/utils"
 
 interface MovimientoContable {
   id: string
@@ -117,7 +117,7 @@ export function ContabilidadContent() {
         tipo: (r.Tipo?.toLowerCase() === "ingreso" ? "ingreso" : "egreso"),
         categoria: r.Categoria || "Otros Gastos",
         descripcion: r.Descripcion || "",
-        monto: Number(r.Monto) || 0,
+        monto: parseSheetNumber(r.Monto),
         origen: "manual",
       })
     })

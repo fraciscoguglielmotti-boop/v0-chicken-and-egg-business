@@ -17,7 +17,7 @@ import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import type { Pago } from "@/lib/types"
 import { NuevoPagoDialog } from "./nuevo-pago-dialog"
-import { formatCurrency, formatDateForSheets, formatDate, parseDate, resolveEntityName } from "@/lib/utils"
+import { formatCurrency, formatDateForSheets, formatDate, parseDate, parseSheetNumber, resolveEntityName } from "@/lib/utils"
 
 function sheetRowToPago(row: SheetRow, index: number, proveedorLookup: SheetRow[]): Pago {
   // Resolve proveedor name robustly (handles ID/name swaps from manual data entry)
@@ -28,7 +28,7 @@ function sheetRowToPago(row: SheetRow, index: number, proveedorLookup: SheetRow[
     fecha,
     proveedorId: proveedorNombre,
     proveedorNombre,
-    monto: Number(row.Monto) || 0,
+    monto: parseSheetNumber(row.Monto),
     metodoPago: (row.MetodoPago as Pago["metodoPago"]) || "efectivo",
     observaciones: row.Observaciones || undefined,
     createdAt: fecha,
@@ -89,7 +89,7 @@ export function PagosContent() {
             fecha: fechaCobro,
             proveedorId: "Agroaves SRL",
             proveedorNombre: "Agroaves SRL",
-            monto: Number(row.Monto) || 0,
+            monto: parseSheetNumber(row.Monto),
             metodoPago: "transferencia",
             observaciones: `Transferencia de ${clienteNombre} a ${cuentaDestino}`,
             createdAt: fechaCobro,

@@ -31,6 +31,7 @@ const CANONICAL_KEYS: Record<string, string> = {
   id: "ID",
   fecha: "Fecha",
   clienteid: "ClienteID",
+  idcliente: "ClienteID",
   cliente: "Cliente",
   productos: "Productos",
   producto: "Producto",

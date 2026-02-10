@@ -34,7 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet } from "@/hooks/use-sheets"
-import { formatCurrency, parseDate, resolveVentaMonto } from "@/lib/utils"
+import { formatCurrency, parseDate, parseSheetNumber, resolveVentaMonto } from "@/lib/utils"
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
@@ -141,7 +141,7 @@ export function RentabilidadContent() {
       const fecha = parseDate(r.Fecha || "")
       if (fecha.getUTCFullYear() === anio) {
         if (r.Tipo?.toLowerCase() !== "ingreso") {
-          meses[fecha.getUTCMonth()].gastos += Number(r.Monto) || 0
+          meses[fecha.getUTCMonth()].gastos += parseSheetNumber(r.Monto)
         }
       }
     })

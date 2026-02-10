@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { parseDate, formatCurrency } from "@/lib/utils"
+import { parseDate, parseSheetNumber, formatCurrency } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -44,7 +44,7 @@ export function NuevoPagoDialog({
   const [observaciones, setObservaciones] = useState("")
 
   const allProveedores = sheetsProveedores.rows.length > 0
-    ? sheetsProveedores.rows.map((r, i) => ({ id: r.ID || String(i), nombre: r.Nombre || "", saldoActual: Number(r.Saldo) || 0 }))
+    ? sheetsProveedores.rows.map((r, i) => ({ id: r.ID || String(i), nombre: r.Nombre || "", saldoActual: parseSheetNumber(r.Saldo) }))
     : proveedoresIniciales.map((p) => ({ id: p.id, nombre: p.nombre, saldoActual: p.saldoActual }))
 
   const proveedor = allProveedores.find((p) => p.id === proveedorId)

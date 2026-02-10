@@ -25,7 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
-import { formatCurrency, formatDate, parseDate, resolveVentaMonto } from "@/lib/utils"
+import { formatCurrency, formatDate, parseDate, parseSheetNumber, resolveVentaMonto } from "@/lib/utils"
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
@@ -118,9 +118,9 @@ export function FlujoContent() {
       const fecha = parseDate(r.Fecha || "")
       if (fecha.getUTCFullYear() === anio) {
         if (r.Tipo?.toLowerCase() === "ingreso") {
-          meses[fecha.getUTCMonth()].ingresos += Number(r.Monto) || 0
+          meses[fecha.getUTCMonth()].ingresos += parseSheetNumber(r.Monto)
         } else {
-          meses[fecha.getUTCMonth()].egresos += Number(r.Monto) || 0
+          meses[fecha.getUTCMonth()].egresos += parseSheetNumber(r.Monto)
         }
       }
     })
@@ -146,7 +146,7 @@ export function FlujoContent() {
       fecha: r.Fecha || "",
       descripcion: r.Descripcion || "",
       tipo: r.Tipo?.toLowerCase() === "retorno" ? "retorno" as const : "inversion" as const,
-      monto: Number(r.Monto) || 0,
+      monto: parseSheetNumber(r.Monto),
     })).sort((a, b) => parseDate(b.fecha).getTime() - parseDate(a.fecha).getTime())
   }, [sheetsInversiones.rows])
 
