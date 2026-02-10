@@ -83,7 +83,7 @@ function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[
   const fecha = parseDate(row.Fecha || "")
 
   return {
-    id: row.ID || String(_index),
+    id: row.ID || `temp-${fecha.getTime()}-${clienteNombre.slice(0, 5)}-${total}`,
     fecha,
     clienteId: clienteNombre,
     clienteNombre,
@@ -206,10 +206,11 @@ export function VentasContent() {
       const precioPromedio = venta.items.length > 0 ? venta.items[0].precioUnitario : 0
 
       // Columns: ID, Fecha, ClienteID, Cliente, Productos, Cantidad, PrecioUnitario, Vendedor
+      // Leave ID empty - Sheets will auto-generate sequential IDs (1, 2, 3...)
       // ClienteID = internal ID, Cliente = display name (NOMBRE)
       const sheetValues = [
         [
-          venta.id,
+          "", // Empty ID - let Sheets auto-increment
           formatDateForSheets(venta.fecha),
           venta.clienteNombre, // Use nombre as ClienteID for consistency
           venta.clienteNombre, // Cliente name
