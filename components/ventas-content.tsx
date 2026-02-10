@@ -22,8 +22,17 @@ import { formatCurrency, formatDate, formatDateForSheets, parseDate, resolveEnti
 
 function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[]): VentaConVendedor {
   const cantidad = Number(row.Cantidad) || 0
-  const precioUnitario = Number(row.PrecioUnitario) || 0
-  const total = cantidad * precioUnitario
+  // Try multiple column names for price (PrecioUnitario, Precio Unitario, P. Unit., etc.)
+  const precioUnitario = Number(row.PrecioUnitario) || Number(row["Precio Unitario"]) || Number(row["P. Unit."]) || Number(row.Precio) || 0
+  // Try to read Total directly from sheet if exists, otherwise calculate
+  const totalFromSheet = Number(row.Total) || 0
+  const total = totalFromSheet > 0 ? totalFromSheet : cantidad * precioUnitario
+  
+  // Debug: log when price is 0 to see available columns
+  if (precioUnitario === 0 && total === 0 && cantidad > 0) {
+    console.log("[v0] Venta sin precio detectada - Columnas disponibles:", Object.keys(row))
+    console.log("[v0] Valores: PrecioUnitario=", row.PrecioUnitario, ", Total=", row.Total, ", Cantidad=", row.Cantidad)
+  }
 
   // Parse Productos field
   const productosStr = row.Productos || ""
