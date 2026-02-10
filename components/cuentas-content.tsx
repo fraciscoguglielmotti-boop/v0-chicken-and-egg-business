@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { ArrowUpRight, ArrowDownRight, Search, Users, Filter, Download, Calendar, FileText } from "lucide-react"
+import { ArrowUpRight, ArrowDownRight, Search, Users, Filter, Download, Calendar, FileText, ArrowUpDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -63,6 +63,7 @@ export function CuentasContent() {
   const [vendedorFilter, setVendedorFilter] = useState<string>("todos")
   const [selectedCuenta, setSelectedCuenta] = useState<CuentaCliente | null>(null)
   const [tab, setTab] = useState("clientes")
+  const [sortClientes, setSortClientes] = useState<"deuda" | "nombre">("deuda")
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
   const [statementOpen, setStatementOpen] = useState(false)
   const [rangoExport, setRangoExport] = useState<{ desde: string; hasta: string }>({
@@ -192,12 +193,18 @@ export function CuentasContent() {
       .sort((a, b) => b.saldo - a.saldo)
   }, [sheetsCompras.rows, sheetsPagos.rows, sheetsCobros.rows, sheetsProveedoresData.rows])
 
-  // Filter by search and vendor
-  const filteredClientes = cuentasClientes.filter((c) => {
-    const matchesSearch = c.nombre.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesVendedor = vendedorFilter === "todos" || c.vendedor === vendedorFilter
-    return matchesSearch && matchesVendedor
-  })
+  // Filter by search and vendor, then sort
+  const filteredClientes = useMemo(() => {
+    const filtered = cuentasClientes.filter((c) => {
+      const matchesSearch = c.nombre.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesVendedor = vendedorFilter === "todos" || c.vendedor === vendedorFilter
+      return matchesSearch && matchesVendedor
+    })
+    if (sortClientes === "nombre") {
+      return [...filtered].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"))
+    }
+    return [...filtered].sort((a, b) => b.saldo - a.saldo)
+  }, [cuentasClientes, searchTerm, vendedorFilter, sortClientes])
 
   const filteredProveedores = cuentasProveedores.filter((p) =>
     p.nombre.toLowerCase().includes(searchTerm.toLowerCase())
@@ -434,6 +441,16 @@ export function CuentasContent() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input placeholder="Buscar cuenta..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
         </div>
+        <Select value={sortClientes} onValueChange={(v) => setSortClientes(v as "deuda" | "nombre")}>
+          <SelectTrigger className="w-48">
+            <ArrowUpDown className="mr-2 h-4 w-4" />
+            <SelectValue placeholder="Ordenar por" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="deuda">Mayor deuda primero</SelectItem>
+            <SelectItem value="nombre">Nombre A - Z</SelectItem>
+          </SelectContent>
+        </Select>
         {vendedores.length > 0 && (
           <Select value={vendedorFilter} onValueChange={setVendedorFilter}>
             <SelectTrigger className="w-48">
