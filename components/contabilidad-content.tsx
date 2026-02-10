@@ -25,7 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
-import { formatCurrency, formatDate, parseDate } from "@/lib/utils"
+import { formatCurrency, formatDate, parseDate, resolveVentaMonto } from "@/lib/utils"
 
 interface MovimientoContable {
   id: string
@@ -81,11 +81,9 @@ export function ContabilidadContent() {
   const movimientos: MovimientoContable[] = useMemo(() => {
     const entries: MovimientoContable[] = []
 
-    // Sales as income (Total = Cantidad x PrecioUnitario)
+    // Sales as income
     sheetsVentas.rows.forEach((r, i) => {
-      const cant = Number(r.Cantidad) || 0
-      const precio = Number(r.PrecioUnitario) || 0
-      const total = cant * precio
+      const { cantidad: cant, precioUnitario: precio, total } = resolveVentaMonto(r)
       entries.push({
         id: `v-${i}`,
         fecha: r.Fecha || "",
@@ -97,11 +95,9 @@ export function ContabilidadContent() {
       })
     })
 
-    // Purchases as expenses (Total = Cantidad x Precio)
+    // Purchases as expenses
     sheetsCompras.rows.forEach((r, i) => {
-      const cant = Number(r.Cantidad) || 0
-      const precio = Number(r.PrecioUnitario) || 0
-      const total = cant * precio
+      const { cantidad: cant, precioUnitario: precio, total } = resolveVentaMonto(r)
       entries.push({
         id: `c-${i}`,
         fecha: r.Fecha || "",

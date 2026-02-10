@@ -25,12 +25,10 @@ import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { PRODUCTOS, type Compra, type ProductoTipo } from "@/lib/types"
-import { formatCurrency, formatDate, formatDateForSheets, parseDate, resolveEntityName } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets, parseDate, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
 
 function sheetRowToCompra(row: SheetRow, index: number, proveedorLookup: SheetRow[]): Compra {
-  const cantidad = Number(row.Cantidad) || 0
-  const precioUnitario = Number(row.PrecioUnitario) || Number(row["Precio Unitario"]) || 0
-  const total = cantidad * precioUnitario
+  const { cantidad, precioUnitario, total } = resolveVentaMonto(row)
   const fecha = parseDate(row.Fecha || "")
 
   const proveedorNombre = resolveEntityName(row.Proveedor || "", row.ProveedorID || "", proveedorLookup)

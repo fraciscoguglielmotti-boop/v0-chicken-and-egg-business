@@ -17,12 +17,10 @@ import { SheetsStatus } from "./sheets-status"
 import { useSheet, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales, cobrosIniciales, calcularStats } from "@/lib/store"
 import type { Venta, Cobro } from "@/lib/types"
-import { formatCurrency, formatDate, parseDate, resolveEntityName } from "@/lib/utils"
+import { formatCurrency, formatDate, parseDate, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
 
 function rowToVenta(row: SheetRow, i: number, clienteLookup: SheetRow[]): Venta {
-  const cant = Number(row.Cantidad) || 0
-  const precio = Number(row.PrecioUnitario) || 0
-  const total = cant * precio
+  const { cantidad, precioUnitario, total } = resolveVentaMonto(row)
   const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
   const fecha = parseDate(row.Fecha || "")
   return {
@@ -33,8 +31,8 @@ function rowToVenta(row: SheetRow, i: number, clienteLookup: SheetRow[]): Venta 
     items: [{
       productoId: "producto",
       productoNombre: row.Productos || "Producto",
-      cantidad: cant,
-      precioUnitario: precio,
+      cantidad,
+      precioUnitario,
       subtotal: total,
     }],
     total,
@@ -87,9 +85,7 @@ export function DashboardContent() {
       const cliente = resolveEntityName(row.Cliente || "", row.ClienteID || "", sheetsClientes.rows)
       if (!cliente) return
       const key = cliente.toLowerCase().trim()
-      const cant = Number(row.Cantidad) || 0
-      const precio = Number(row.PrecioUnitario) || 0
-      const total = cant * precio
+      const { total } = resolveVentaMonto(row)
       const existing = balances.get(key) || { nombre: cliente, saldo: 0 }
       existing.saldo += total
       balances.set(key, existing)

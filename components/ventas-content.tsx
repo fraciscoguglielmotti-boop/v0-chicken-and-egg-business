@@ -18,17 +18,10 @@ import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales } from "@/lib/store"
 import type { Venta, VentaConVendedor, VentaItem, ProductoTipo } from "@/lib/types"
 import { NuevaVentaDialog } from "./nueva-venta-dialog"
-import { formatCurrency, formatDate, formatDateForSheets, parseDate, resolveEntityName } from "@/lib/utils"
+import { formatCurrency, formatDate, formatDateForSheets, parseDate, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
 
 function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[]): VentaConVendedor {
-  const cantidad = Number(row.Cantidad) || 0
-  // Try multiple column names for price
-  const precioUnitario = Number(row.PrecioUnitario) || Number(row["Precio Unitario"]) || Number(row["P. Unit."]) || Number(row.Precio) || 0
-  // Try to read Total directly from sheet, otherwise calculate
-  const totalFromSheet = Number(row.Total) || 0
-  const total = totalFromSheet > 0 ? totalFromSheet : cantidad * precioUnitario
-  // If we have total from sheet but no price, derive price from total
-  const effectivePrecio = precioUnitario > 0 ? precioUnitario : (cantidad > 0 ? total / cantidad : 0)
+  const { cantidad, precioUnitario: effectivePrecio, total } = resolveVentaMonto(row)
 
   // Parse Productos field
   const productosStr = row.Productos || ""
@@ -122,10 +115,7 @@ export function VentasContent() {
     rows.forEach((r) => {
       const cliente = resolveEntityName(r.Cliente || "", r.ClienteID || "", sheetsClientes.rows).toLowerCase().trim()
       if (!cliente) return
-      const cant = Number(r.Cantidad) || 0
-      const precio = Number(r.PrecioUnitario) || Number(r["Precio Unitario"]) || Number(r.Precio) || 0
-      const totalDirecto = Number(r.Total) || 0
-      const totalFila = totalDirecto > 0 ? totalDirecto : cant * precio
+      const { total: totalFila } = resolveVentaMonto(r)
       ventasPorCliente.set(cliente, (ventasPorCliente.get(cliente) || 0) + totalFila)
     })
 

@@ -34,7 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet } from "@/hooks/use-sheets"
-import { formatCurrency, parseDate } from "@/lib/utils"
+import { formatCurrency, parseDate, resolveVentaMonto } from "@/lib/utils"
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
@@ -70,6 +70,12 @@ interface MesData {
   gananciasNetas: number
   margenBruto: number
   margenNeto: number
+}
+
+interface CompraRow {
+  Fecha: string
+  Producto: string
+  Monto: number
 }
 
 export function RentabilidadContent() {
@@ -116,9 +122,8 @@ export function RentabilidadContent() {
     sheetsVentas.rows.forEach((r) => {
       const fecha = parseDate(r.Fecha || "")
       if (fecha.getUTCFullYear() === anio) {
-        const cant = Number(r.Cantidad) || 0
-        const precio = Number(r.PrecioUnitario) || 0
-        meses[fecha.getUTCMonth()].ingresos += cant * precio
+        const { total } = resolveVentaMonto(r)
+        meses[fecha.getUTCMonth()].ingresos += total
       }
     })
 
@@ -126,9 +131,8 @@ export function RentabilidadContent() {
     sheetsCompras.rows.forEach((r) => {
       const fecha = parseDate(r.Fecha || "")
       if (fecha.getUTCFullYear() === anio) {
-        const cant = Number(r.Cantidad) || 0
-        const precio = Number(r.PrecioUnitario) || 0
-        meses[fecha.getUTCMonth()].costoMercaderia += cant * precio
+        const { total } = resolveVentaMonto(r)
+        meses[fecha.getUTCMonth()].costoMercaderia += total
       }
     })
 
@@ -171,33 +175,31 @@ export function RentabilidadContent() {
       const fecha = parseDate(r.Fecha || "")
       if (fecha.getUTCFullYear() !== anio) return
       const producto = r.Productos || "Otros"
-      const cant = Number(r.Cantidad) || 0
-      const precio = Number(r.PrecioUnitario) || 0
+      const { total } = resolveVentaMonto(r)
       const existing = map.get(producto) || { producto, ingresos: 0, costos: 0 }
-      existing.ingresos += cant * precio
+      existing.ingresos += total
       map.set(producto, existing)
     })
 
     // Distribute purchase costs proportionally or by product matching
-    sheetsCompras.rows.forEach((r) => {
+    sheetsCompras.rows.forEach((r: CompraRow) => {
       const fecha = parseDate(r.Fecha || "")
       if (fecha.getUTCFullYear() !== anio) return
       const producto = r.Producto || "Otros"
-      const cant = Number(r.Cantidad) || 0
-      const precio = Number(r.PrecioUnitario) || 0
+      const { total: totalCompra } = resolveVentaMonto(r)
 
       // Try to match with sales product
       let matched = false
       for (const [key, val] of map) {
         if (key.toLowerCase().includes(producto.toLowerCase()) || producto.toLowerCase().includes(key.toLowerCase())) {
-          val.costos += cant * precio
+          val.costos += totalCompra
           matched = true
           break
         }
       }
       if (!matched) {
         const existing = map.get(producto) || { producto, ingresos: 0, costos: 0 }
-        existing.costos += cant * precio
+        existing.costos += totalCompra
         map.set(producto, existing)
       }
     })

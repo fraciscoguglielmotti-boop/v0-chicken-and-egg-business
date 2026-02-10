@@ -25,7 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
-import { formatCurrency, formatDate, parseDate } from "@/lib/utils"
+import { formatCurrency, formatDate, parseDate, resolveVentaMonto } from "@/lib/utils"
 
 const MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 
@@ -95,32 +95,20 @@ export function FlujoContent() {
       acumulado: 0,
     }))
 
-    // Income from sales (Cantidad x PrecioUnitario)
+    // Income from sales
     sheetsVentas.rows.forEach((r) => {
       const fecha = parseDate(r.Fecha || "")
       if (fecha.getUTCFullYear() === anio) {
-        const cant = Number(r.Cantidad) || 0
-        const precio = Number(r.PrecioUnitario) || 0
-        meses[fecha.getUTCMonth()].ingresos += cant * precio
+        const { total } = resolveVentaMonto(r)
+        meses[fecha.getUTCMonth()].ingresos += total
       }
     })
 
-    // Income from collections
-    sheetsCobros.rows.forEach((r) => {
-      const fecha = parseDate(r.Fecha || "")
-      if (fecha.getUTCFullYear() === anio) {
-        // Cobros are already counted in ventas for accounting
-        // but represent real cash inflow
-      }
-    })
-
-    // Expenses from purchases (Cantidad x Precio)
+    // Expenses from purchases
     sheetsCompras.rows.forEach((r) => {
       const fecha = parseDate(r.Fecha || "")
       if (fecha.getUTCFullYear() === anio) {
-        const cant = Number(r.Cantidad) || 0
-        const precio = Number(r.PrecioUnitario) || 0
-        const total = cant * precio
+        const { total } = resolveVentaMonto(r)
         meses[fecha.getUTCMonth()].egresos += total
       }
     })

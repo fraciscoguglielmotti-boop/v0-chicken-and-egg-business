@@ -82,6 +82,33 @@ export function formatDateForSheets(date: Date | string): string {
   }
 }
 
+/**
+ * Resolve the total amount and unit price from a Ventas/Compras sheet row.
+ * Handles all column name variants and derives missing values.
+ * This is the SINGLE SOURCE OF TRUTH for calculating sale amounts from sheet rows.
+ */
+export function resolveVentaMonto(row: { [key: string]: string }): {
+  cantidad: number
+  precioUnitario: number
+  total: number
+} {
+  const cantidad = Number(row.Cantidad) || 0
+  const precio =
+    Number(row.PrecioUnitario) ||
+    Number(row["Precio Unitario"]) ||
+    Number(row["P. Unit."]) ||
+    Number(row.Precio) ||
+    0
+  const totalDirecto = Number(row.Total) || 0
+
+  // Determine total: prefer direct total, otherwise calculate
+  const total = totalDirecto > 0 ? totalDirecto : cantidad * precio
+  // Derive unit price if missing but total exists
+  const precioUnitario = precio > 0 ? precio : (cantidad > 0 ? total / cantidad : 0)
+
+  return { cantidad, precioUnitario, total }
+}
+
 // Helper to check if a string looks like a numeric ID (not a name)
 function looksLikeId(val: string): boolean {
   if (!val || val === "-") return true

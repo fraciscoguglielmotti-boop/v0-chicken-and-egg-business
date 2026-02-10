@@ -31,7 +31,7 @@ import {
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, type SheetRow } from "@/hooks/use-sheets"
-import { formatCurrency, formatDate, parseDate, resolveEntityName } from "@/lib/utils"
+import { formatCurrency, formatDate, parseDate, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
 import { ClientStatement } from "./client-statement"
 
 interface CuentaCliente {
@@ -103,10 +103,8 @@ export function CuentasContent() {
         totalCobros: 0,
         saldo: 0,
       }
-      // Calculate total as Cantidad x PrecioUnitario
-      const cant = Number(r.Cantidad) || 0
-      const precio = Number(r.PrecioUnitario) || 0
-      existing.totalVentas += cant * precio
+      const { total: totalFila } = resolveVentaMonto(r)
+      existing.totalVentas += totalFila
       if (r.Vendedor && !existing.vendedor) existing.vendedor = r.Vendedor
       map.set(key, existing)
     })
@@ -148,9 +146,8 @@ export function CuentasContent() {
         totalPagos: 0,
         saldo: 0,
       }
-      const cant = Number(r.Cantidad) || 0
-      const precio = Number(r.PrecioUnitario) || 0
-      existing.totalCompras += cant * precio
+      const { total: totalFila } = resolveVentaMonto(r)
+      existing.totalCompras += totalFila
       map.set(key, existing)
     })
 
@@ -271,13 +268,12 @@ export function CuentasContent() {
     sheetsVentas.rows.forEach((r) => {
       const c = resolveEntityName(r.Cliente || "", r.ClienteID || "", sheetsClientes.rows).toLowerCase().trim()
       if (c === clienteKey) {
-        const cant = Number(r.Cantidad) || 0
-        const precio = Number(r.PrecioUnitario) || 0
+        const { cantidad: cant, precioUnitario: precioDisplay, total: montoFila } = resolveVentaMonto(r)
         entries.push({
           fecha: r.Fecha || "",
           tipo: "venta",
-          desc: `Venta - ${r.Productos || "Productos"} (${cant} x ${formatCurrency(precio)})`,
-          monto: cant * precio,
+          desc: `Venta - ${r.Productos || "Productos"} (${cant} x ${formatCurrency(precioDisplay)})`,
+          monto: montoFila,
         })
       }
     })

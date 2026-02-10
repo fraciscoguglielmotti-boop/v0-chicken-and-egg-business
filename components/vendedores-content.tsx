@@ -24,7 +24,7 @@ import {
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
 import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
-import { formatCurrency, parseDate } from "@/lib/utils"
+import { formatCurrency, parseDate, resolveVentaMonto } from "@/lib/utils"
 
 interface Vendedor {
   nombre: string
@@ -66,7 +66,7 @@ export function VendedoresContent() {
     const map = new Map<string, number>()
     sheetsCompras.rows.forEach((r) => {
       const producto = (r.Producto || r.Productos || "").toLowerCase().trim()
-      const precio = Number(r.PrecioUnitario) || Number(r["Precio Unitario"]) || 0
+      const { precioUnitario: precio } = resolveVentaMonto(r)
       if (producto && precio > 0) {
         map.set(producto, precio) // Last entry wins (most recent cost)
       }
@@ -107,9 +107,7 @@ export function VendedoresContent() {
         cantidadVentas: 0,
         clientes: [],
       }
-      const cant = Number(r.Cantidad) || 0
-      const precioVenta = Number(r.PrecioUnitario) || 0
-      const total = cant * precioVenta
+      const { cantidad: cant, precioUnitario: precioVenta, total } = resolveVentaMonto(r)
       
       // Get cost price for this product to calculate profit margin
       const productoName = (r.Productos || "").toLowerCase().trim()
