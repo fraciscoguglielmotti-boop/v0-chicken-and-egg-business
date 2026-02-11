@@ -89,10 +89,12 @@ export function formatDateForSheets(date: Date | string): string {
  * Google Sheets currency format (es-AR): $70.000 or $70,000 depending on locale
  */
 export function parseSheetNumber(val: string | number | undefined | null): number {
+  const originalVal = val
   if (val === undefined || val === null || val === "") return 0
   if (typeof val === "number") return val
 
   let str = String(val).trim()
+  const beforeClean = str
 
   // Remove currency symbols and spaces
   str = str.replace(/[$\s]/g, "")
@@ -134,7 +136,14 @@ export function parseSheetNumber(val: string | number | undefined | null): numbe
   }
 
   const num = Number(str)
-  return Number.isNaN(num) ? 0 : num
+  const result = Number.isNaN(num) ? 0 : num
+  
+  // Debug: log all non-zero parsing attempts
+  if (beforeClean && result === 0 && beforeClean !== "0") {
+    console.log(`[v0] parseSheetNumber FAILED: "${originalVal}" -> cleaned: "${str}" -> ${result}`)
+  }
+  
+  return result
 }
 
 /**
@@ -185,6 +194,18 @@ export function resolveVentaMonto(row: { [key: string]: string }): {
   const total = totalDirecto > 0 ? totalDirecto : cantidad * precio
   // Derive unit price if missing but total exists
   const precioUnitario = precio > 0 ? precio : (cantidad > 0 ? total / cantidad : 0)
+
+  // Debug: log first 3 rows with issues
+  const rowId = row.ID || "?"
+  if (total === 0 && cantidad > 0) {
+    console.log(`[v0] resolveVentaMonto ZERO TOTAL for row ${rowId}:`)
+    console.log(`  Cantidad: ${row.Cantidad} -> ${cantidad}`)
+    console.log(`  PrecioUnitario: "${row.PrecioUnitario}" -> ${parseSheetNumber(row.PrecioUnitario)}`)
+    console.log(`  Precio: "${row.Precio}" -> ${parseSheetNumber(row.Precio)}`)
+    console.log(`  Total: "${row.Total}" -> ${totalDirecto}`)
+    console.log(`  Available keys:`, Object.keys(row))
+    console.log(`  Result: cantidad=${cantidad}, precio=${precio}, total=${total}`)
+  }
 
   return { cantidad, precioUnitario, total }
 }

@@ -269,6 +269,17 @@ export function CuentasContent() {
       const c = resolveEntityName(r.Cliente || "", r.ClienteID || "", sheetsClientes.rows).toLowerCase().trim()
       if (c === clienteKey) {
         const { cantidad: cant, precioUnitario: precioDisplay, total: montoFila } = resolveVentaMonto(r)
+        // Debug: log when monto is zero for this client
+        if (montoFila === 0 && cant > 0) {
+          console.log(`[v0] Cuenta corriente ${clienteKey}: venta con monto 0:`, {
+            ID: r.ID,
+            Cliente: r.Cliente,
+            Cantidad: r.Cantidad,
+            PrecioUnitario: r.PrecioUnitario,
+            Total: r.Total,
+            computed: { cant, precioDisplay, montoFila }
+          })
+        }
         entries.push({
           fecha: r.Fecha || "",
           tipo: "venta",

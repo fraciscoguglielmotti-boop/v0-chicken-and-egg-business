@@ -21,6 +21,18 @@ import { NuevaVentaDialog } from "./nueva-venta-dialog"
 import { formatCurrency, formatDate, formatDateForSheets, parseDate, parseSheetNumber, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
 
 function sheetRowToVenta(row: SheetRow, _index: number, clienteLookup: SheetRow[]): VentaConVendedor {
+  // Debug: log first 3 rows to see exact data structure
+  if (_index < 3) {
+    console.log(`[v0] Ventas row ${_index} keys:`, Object.keys(row))
+    console.log(`[v0] Ventas row ${_index} RAW values:`, {
+      ID: row.ID,
+      Cantidad: row.Cantidad,
+      PrecioUnitario: row.PrecioUnitario,
+      Precio: row.Precio,
+      Total: row.Total,
+      Cliente: row.Cliente,
+    })
+  }
   const { cantidad, precioUnitario: effectivePrecio, total } = resolveVentaMonto(row)
 
   // Parse Productos field
