@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Plus, Filter, Download, Search, Pencil } from "lucide-react"
+import { Plus, Filter, Download, Search, Pencil, CheckCircle2, Circle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -20,9 +21,15 @@ import type { Cobro } from "@/lib/types"
 import { NuevoCobroDialog, type CobroEditData } from "./nuevo-cobro-dialog"
 import { formatCurrency, formatDate, formatDateForSheets, formatDateInput, parseDate, parseSheetNumber, resolveEntityName } from "@/lib/utils"
 
-function sheetRowToCobro(row: SheetRow, index: number, clienteLookup: SheetRow[]): Cobro & { _rowIndex: number } {
+interface CobroRow extends Cobro {
+  _rowIndex: number
+  verificado: boolean
+}
+
+function sheetRowToCobro(row: SheetRow, index: number, clienteLookup: SheetRow[]): CobroRow {
   const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
   const fecha = parseDate(row.Fecha || "")
+  const verif = (row.VerificadoAgroaves || "").toString().toLowerCase()
   return {
     id: row.ID || String(index),
     fecha,
@@ -33,6 +40,7 @@ function sheetRowToCobro(row: SheetRow, index: number, clienteLookup: SheetRow[]
     observaciones: row.Observaciones || undefined,
     createdAt: fecha,
     _rowIndex: index,
+    verificado: verif === "true" || verif === "si" || verif === "1" || verif === "verdadero",
   }
 }
 
@@ -51,9 +59,11 @@ export function CobrosContent() {
   const [localCobros, setLocalCobros] = useState(cobrosIniciales)
   const [searchTerm, setSearchTerm] = useState("")
   const [metodoFilter, setMetodoFilter] = useState<string>("todos")
+  const [verificadoFilter, setVerificadoFilter] = useState<string>("todos")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editData, setEditData] = useState<CobroEditData | null>(null)
   const [saving, setSaving] = useState(false)
+  const [togglingVerif, setTogglingVerif] = useState<number | null>(null)
 
   const isConnected = !error && !isLoading && rows.length >= 0
 
@@ -61,13 +71,17 @@ export function CobrosContent() {
     if (isConnected && rows.length > 0) {
       return rows.map((row, i) => sheetRowToCobro(row, i, sheetsClientes.rows))
     }
-    return localCobros.map((c, i) => ({ ...c, _rowIndex: i }))
+    return localCobros.map((c, i) => ({ ...c, _rowIndex: i, verificado: false }))
   }, [isConnected, rows, localCobros, sheetsClientes.rows])
 
   const filteredCobros = cobros.filter((cobro) => {
     const matchesSearch = cobro.clienteNombre.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesMetodo = metodoFilter === "todos" || cobro.metodoPago === metodoFilter
-    return matchesSearch && matchesMetodo
+    const matchesVerif =
+      verificadoFilter === "todos" ||
+      (verificadoFilter === "verificados" && cobro.verificado) ||
+      (verificadoFilter === "no_verificados" && !cobro.verificado)
+    return matchesSearch && matchesMetodo && matchesVerif
   })
 
   const totalCobros = filteredCobros.reduce((acc, c) => acc + c.monto, 0)
@@ -75,12 +89,40 @@ export function CobrosContent() {
     efectivo: filteredCobros.filter((c) => c.metodoPago === "efectivo").reduce((acc, c) => acc + c.monto, 0),
     transferencia: filteredCobros.filter((c) => c.metodoPago === "transferencia").reduce((acc, c) => acc + c.monto, 0),
   }
+  const verificadosCount = cobros.filter((c) => c.verificado).length
+  const noVerificadosCount = cobros.filter((c) => !c.verificado).length
+
+  const handleToggleVerificado = async (cobro: CobroRow) => {
+    setTogglingVerif(cobro._rowIndex)
+    try {
+      const row = rows[cobro._rowIndex]
+      if (!row) return
+      // Build values array preserving all existing columns, updating VerificadoAgroaves
+      const newVerif = cobro.verificado ? "FALSE" : "TRUE"
+      const values = [
+        row.ID || "",
+        formatDateForSheets(parseDate(row.Fecha || "")),
+        row.Cliente || "",
+        row.ClienteID || row.Cliente || "",
+        row.Monto || "",
+        row.MetodoPago || "",
+        row.Observaciones || "",
+        newVerif,
+      ]
+      await updateRow("Cobros", cobro._rowIndex, values)
+      await mutate()
+    } catch {
+      // silent
+    } finally {
+      setTogglingVerif(null)
+    }
+  }
 
   const handleExportar = () => {
-    const headers = ["Fecha", "Cliente", "Monto", "Metodo de Pago", "Observaciones"]
+    const headers = ["Fecha", "Cliente", "Monto", "Metodo de Pago", "Observaciones", "Verificado Agroaves"]
     const csvRows = [headers.join(",")]
     filteredCobros.forEach((c) => {
-      csvRows.push([formatDateForSheets(c.fecha), `"${c.clienteNombre}"`, String(c.monto), c.metodoPago, `"${c.observaciones || ""}"`].join(","))
+      csvRows.push([formatDateForSheets(c.fecha), `"${c.clienteNombre}"`, String(c.monto), c.metodoPago, `"${c.observaciones || ""}"`, c.verificado ? "SI" : "NO"].join(","))
     })
     const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
@@ -98,7 +140,7 @@ export function CobrosContent() {
       if (cobro.metodoPago === "transferencia" && cuentaDestino) {
         obs = `Cuenta: ${cuentaDestino}${obs ? ` - ${obs}` : ""}`
       }
-      const sheetValues = [[cobro.id, formatDateForSheets(cobro.fecha), cobro.clienteNombre, cobro.clienteNombre, String(cobro.monto), cobro.metodoPago, obs, ""]]
+      const sheetValues = [[cobro.id, formatDateForSheets(cobro.fecha), cobro.clienteNombre, cobro.clienteNombre, String(cobro.monto), cobro.metodoPago, obs, "FALSE"]]
       await addRow("Cobros", sheetValues)
       if (esProveedor || (cobro.metodoPago === "transferencia" && cuentaDestino?.toLowerCase().includes("agroaves"))) {
         const proveedorName = cuentaDestino?.toLowerCase().includes("agroaves") ? "Agroaves SRL" : cobro.clienteNombre
@@ -113,7 +155,8 @@ export function CobrosContent() {
   const handleUpdateCobro = async (rowIndex: number, cobro: Cobro) => {
     setSaving(true)
     try {
-      const values = [rows[rowIndex]?.ID || "", formatDateForSheets(cobro.fecha), cobro.clienteNombre, cobro.clienteNombre, String(cobro.monto), cobro.metodoPago, cobro.observaciones || "", ""]
+      const existingRow = rows[rowIndex]
+      const values = [existingRow?.ID || "", formatDateForSheets(cobro.fecha), cobro.clienteNombre, cobro.clienteNombre, String(cobro.monto), cobro.metodoPago, cobro.observaciones || "", existingRow?.VerificadoAgroaves || "FALSE"]
       await updateRow("Cobros", rowIndex, values)
       await mutate()
     } catch { /* silent */ } finally { setSaving(false) }
@@ -125,7 +168,7 @@ export function CobrosContent() {
     catch { /* silent */ } finally { setSaving(false) }
   }
 
-  const handleEdit = (cobro: Cobro & { _rowIndex: number }) => {
+  const handleEdit = (cobro: CobroRow) => {
     setEditData({
       rowIndex: cobro._rowIndex,
       fecha: formatDateInput(cobro.fecha),
@@ -139,19 +182,40 @@ export function CobrosContent() {
   }
 
   const columns = [
-    { key: "fecha", header: "Fecha", render: (c: Cobro & { _rowIndex: number }) => <span className="font-medium">{formatDate(c.fecha)}</span> },
+    { key: "fecha", header: "Fecha", render: (c: CobroRow) => <span className="font-medium">{formatDate(c.fecha)}</span> },
     {
-      key: "clienteNombre", header: "Cliente", render: (c: Cobro & { _rowIndex: number }) => (
+      key: "clienteNombre", header: "Cliente", render: (c: CobroRow) => (
         <div>
           <p className="font-medium text-foreground">{c.clienteNombre}</p>
           {c.observaciones && <p className="text-xs text-muted-foreground truncate max-w-xs">{c.observaciones}</p>}
         </div>
       ),
     },
-    { key: "monto", header: "Monto", render: (c: Cobro & { _rowIndex: number }) => <span className="font-semibold text-primary">{formatCurrency(c.monto)}</span> },
-    { key: "metodoPago", header: "Metodo", render: (c: Cobro & { _rowIndex: number }) => <Badge variant="outline" className={metodoPagoColors[c.metodoPago]}>{metodoPagoLabels[c.metodoPago]}</Badge> },
+    { key: "monto", header: "Monto", render: (c: CobroRow) => <span className="font-semibold text-primary">{formatCurrency(c.monto)}</span> },
+    { key: "metodoPago", header: "Metodo", render: (c: CobroRow) => <Badge variant="outline" className={metodoPagoColors[c.metodoPago]}>{metodoPagoLabels[c.metodoPago]}</Badge> },
     {
-      key: "acciones", header: "", render: (c: Cobro & { _rowIndex: number }) => (
+      key: "verificado",
+      header: "Verif. Agroaves",
+      render: (c: CobroRow) => (
+        <button
+          type="button"
+          className="flex items-center gap-1.5 disabled:opacity-50"
+          disabled={togglingVerif === c._rowIndex}
+          onClick={(e) => { e.stopPropagation(); handleToggleVerificado(c) }}
+        >
+          <Checkbox
+            checked={c.verificado}
+            className="pointer-events-none"
+            aria-label={`Verificado por Agroaves: ${c.verificado ? "Si" : "No"}`}
+          />
+          <span className={`text-xs ${c.verificado ? "text-primary font-medium" : "text-muted-foreground"}`}>
+            {c.verificado ? "Si" : "No"}
+          </span>
+        </button>
+      ),
+    },
+    {
+      key: "acciones", header: "", render: (c: CobroRow) => (
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); handleEdit(c) }}>
           <Pencil className="h-4 w-4 text-muted-foreground" />
           <span className="sr-only">Editar cobro</span>
@@ -162,7 +226,7 @@ export function CobrosContent() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border bg-card p-4">
           <p className="text-sm text-muted-foreground">Total Cobrado</p>
           <p className="text-2xl font-bold text-primary">{formatCurrency(totalCobros)}</p>
@@ -175,10 +239,19 @@ export function CobrosContent() {
           <p className="text-sm text-muted-foreground">Transferencias</p>
           <p className="text-2xl font-bold text-foreground">{formatCurrency(cobrosPorMetodo.transferencia)}</p>
         </div>
+        <div className="rounded-xl border bg-card p-4">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-primary" />
+            <p className="text-sm text-muted-foreground">Verificados</p>
+          </div>
+          <p className="text-2xl font-bold text-foreground">
+            {verificadosCount}<span className="text-sm font-normal text-muted-foreground">/{cobros.length}</span>
+          </p>
+        </div>
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 items-center gap-3">
+        <div className="flex flex-1 flex-wrap items-center gap-3">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input placeholder="Buscar por cliente..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
@@ -189,9 +262,20 @@ export function CobrosContent() {
               <SelectValue placeholder="Metodo" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todos">Todos</SelectItem>
+              <SelectItem value="todos">Todos los metodos</SelectItem>
               <SelectItem value="efectivo">Efectivo</SelectItem>
               <SelectItem value="transferencia">Transferencia</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={verificadoFilter} onValueChange={setVerificadoFilter}>
+            <SelectTrigger className="w-48">
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              <SelectValue placeholder="Verificacion" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              <SelectItem value="verificados">Verificados ({verificadosCount})</SelectItem>
+              <SelectItem value="no_verificados">No verificados ({noVerificadosCount})</SelectItem>
             </SelectContent>
           </Select>
           <SheetsStatus isLoading={isLoading} error={error} isConnected={isConnected} />
@@ -199,7 +283,7 @@ export function CobrosContent() {
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleExportar}>
             <Download className="mr-2 h-4 w-4" />
-            Exportar CSV
+            CSV
           </Button>
           <Button size="sm" onClick={() => { setEditData(null); setDialogOpen(true) }} disabled={saving}>
             <Plus className="mr-2 h-4 w-4" />

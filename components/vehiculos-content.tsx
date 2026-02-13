@@ -11,6 +11,8 @@ import {
   AlertTriangle,
   ChevronLeft,
   MapPin,
+  Pencil,
+  Trash2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -32,9 +34,19 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow } from "@/hooks/use-sheets"
-import { formatCurrency, formatDate, formatDateForSheets, parseDate, parseSheetNumber } from "@/lib/utils"
+import { useSheet, addRow, updateRow, deleteRow } from "@/hooks/use-sheets"
+import { formatCurrency, formatDate, formatDateForSheets, formatDateInput, parseDate, parseSheetNumber } from "@/lib/utils"
 
 const TIPOS_MANTENIMIENTO = [
   "Cambio de aceite",
@@ -61,6 +73,7 @@ interface Vehiculo {
   modelo: string
   anio: string
   kilometraje: number
+  _rowIndex: number
 }
 
 interface Mantenimiento {
@@ -74,6 +87,7 @@ interface Mantenimiento {
   taller: string
   proximoKm: number
   proximaFecha: string
+  _rowIndex: number
 }
 
 export function VehiculosContent() {
@@ -84,6 +98,10 @@ export function VehiculosContent() {
   const [dialogVehiculo, setDialogVehiculo] = useState(false)
   const [dialogMant, setDialogMant] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [editVehiculoIdx, setEditVehiculoIdx] = useState<number | null>(null)
+  const [editMantIdx, setEditMantIdx] = useState<number | null>(null)
+  const [deleteMant, setDeleteMant] = useState<Mantenimiento | null>(null)
+  const [deleteVehiculoConfirm, setDeleteVehiculoConfirm] = useState<Vehiculo | null>(null)
 
   const [nuevoVehiculo, setNuevoVehiculo] = useState({
     patente: "",
@@ -117,6 +135,7 @@ export function VehiculosContent() {
       modelo: r.Modelo || "",
       anio: r.AnioVehiculo || r.Anio || "",
       kilometraje: Number(r.Kilometraje) || 0,
+      _rowIndex: i,
     }))
   }, [sheetsVehiculos.rows])
 
@@ -133,6 +152,7 @@ export function VehiculosContent() {
       taller: r.Taller || "",
       proximoKm: Number(r.ProximoKM) || 0,
       proximaFecha: r.ProximaFecha || "",
+      _rowIndex: i,
     }))
   }, [sheetsMantenimientos.rows])
 
@@ -167,7 +187,7 @@ export function VehiculosContent() {
     return map
   }, [mantenimientos])
 
-  // Alertas: proximo mantenimiento vencido o cercano
+  // Alertas
   const alertas = useMemo(() => {
     const now = new Date()
     const alerts: Array<{ vehiculo: Vehiculo; mant: Mantenimiento; tipo: "km" | "fecha" }> = []
@@ -192,22 +212,69 @@ export function VehiculosContent() {
     return alerts
   }, [vehiculos, mantenimientos])
 
+  const resetVehiculoForm = () => {
+    setNuevoVehiculo({ patente: "", marca: "", modelo: "", anio: "", kilometraje: "" })
+    setEditVehiculoIdx(null)
+  }
+
+  const resetMantForm = () => {
+    setNuevoMant({ fecha: new Date().toISOString().split("T")[0], tipo: "", descripcion: "", kilometraje: "", costo: "", taller: "", proximoKm: "", proximaFecha: "" })
+    setEditMantIdx(null)
+  }
+
+  const handleCloseVehiculoDialog = () => {
+    setDialogVehiculo(false)
+    resetVehiculoForm()
+  }
+
+  const handleCloseMantDialog = () => {
+    setDialogMant(false)
+    resetMantForm()
+  }
+
+  const handleEditVehiculo = (v: Vehiculo) => {
+    setEditVehiculoIdx(v._rowIndex)
+    setNuevoVehiculo({
+      patente: v.patente,
+      marca: v.marca,
+      modelo: v.modelo,
+      anio: v.anio,
+      kilometraje: String(v.kilometraje),
+    })
+    setDialogVehiculo(true)
+  }
+
   const handleGuardarVehiculo = async () => {
     if (!nuevoVehiculo.patente || !nuevoVehiculo.marca) return
     setSaving(true)
     try {
       const id = nuevoVehiculo.patente.toUpperCase().replace(/\s/g, "")
-      await addRow("Vehiculos", [[
-        id,
+      const rowData = [
+        editVehiculoIdx !== null ? (sheetsVehiculos.rows[editVehiculoIdx]?.ID || id) : id,
         nuevoVehiculo.patente.toUpperCase(),
         nuevoVehiculo.marca,
         nuevoVehiculo.modelo,
         nuevoVehiculo.anio,
         nuevoVehiculo.kilometraje || "0",
-      ]])
+      ]
+      if (editVehiculoIdx !== null) {
+        await updateRow("Vehiculos", editVehiculoIdx, rowData)
+        // Update selectedVehiculo if we're editing the currently selected one
+        if (selectedVehiculo && selectedVehiculo._rowIndex === editVehiculoIdx) {
+          setSelectedVehiculo({
+            ...selectedVehiculo,
+            patente: nuevoVehiculo.patente.toUpperCase(),
+            marca: nuevoVehiculo.marca,
+            modelo: nuevoVehiculo.modelo,
+            anio: nuevoVehiculo.anio,
+            kilometraje: Number(nuevoVehiculo.kilometraje) || 0,
+          })
+        }
+      } else {
+        await addRow("Vehiculos", [rowData])
+      }
       await sheetsVehiculos.mutate()
-      setNuevoVehiculo({ patente: "", marca: "", modelo: "", anio: "", kilometraje: "" })
-      setDialogVehiculo(false)
+      handleCloseVehiculoDialog()
     } catch {
       // silent
     } finally {
@@ -215,13 +282,54 @@ export function VehiculosContent() {
     }
   }
 
+  const handleDeleteVehiculo = async () => {
+    if (!deleteVehiculoConfirm) return
+    setSaving(true)
+    try {
+      await deleteRow("Vehiculos", deleteVehiculoConfirm._rowIndex)
+      await sheetsVehiculos.mutate()
+      if (selectedVehiculo?.id === deleteVehiculoConfirm.id) {
+        setSelectedVehiculo(null)
+      }
+    } catch { /* silent */ } finally {
+      setSaving(false)
+      setDeleteVehiculoConfirm(null)
+    }
+  }
+
+  const handleEditMant = (m: Mantenimiento) => {
+    setEditMantIdx(m._rowIndex)
+    setNuevoMant({
+      fecha: formatDateInput(m.fecha),
+      tipo: m.tipo,
+      descripcion: m.descripcion,
+      kilometraje: m.kilometraje > 0 ? String(m.kilometraje) : "",
+      costo: m.costo > 0 ? String(m.costo) : "",
+      taller: m.taller,
+      proximoKm: m.proximoKm > 0 ? String(m.proximoKm) : "",
+      proximaFecha: m.proximaFecha ? formatDateInput(m.proximaFecha) : "",
+    })
+    setDialogMant(true)
+  }
+
+  const handleDeleteMant = async () => {
+    if (!deleteMant) return
+    setSaving(true)
+    try {
+      await deleteRow("Mantenimientos", deleteMant._rowIndex)
+      await sheetsMantenimientos.mutate()
+    } catch { /* silent */ } finally {
+      setSaving(false)
+      setDeleteMant(null)
+    }
+  }
+
   const handleGuardarMant = async () => {
     if (!selectedVehiculo || !nuevoMant.tipo) return
     setSaving(true)
     try {
-      const id = `M${Date.now()}`
-      await addRow("Mantenimientos", [[
-        id,
+      const rowData = [
+        editMantIdx !== null ? (sheetsMantenimientos.rows[editMantIdx]?.ID || `M${Date.now()}`) : `M${Date.now()}`,
         selectedVehiculo.patente.toUpperCase(),
         formatDateForSheets(parseDate(nuevoMant.fecha)),
         nuevoMant.tipo,
@@ -230,32 +338,37 @@ export function VehiculosContent() {
         nuevoMant.costo || "0",
         nuevoMant.taller,
         nuevoMant.proximoKm || "",
-        nuevoMant.proximaFecha || "",
-      ]])
-      // Update vehicle km if provided
-      if (nuevoMant.kilometraje && Number(nuevoMant.kilometraje) > selectedVehiculo.kilometraje) {
+        nuevoMant.proximaFecha ? formatDateForSheets(parseDate(nuevoMant.proximaFecha)) : "",
+      ]
+
+      if (editMantIdx !== null) {
+        await updateRow("Mantenimientos", editMantIdx, rowData)
+      } else {
+        await addRow("Mantenimientos", [rowData])
+      }
+
+      // Update vehicle km if provided and higher
+      const newKm = Number(nuevoMant.kilometraje)
+      if (newKm > selectedVehiculo.kilometraje) {
         const vIdx = sheetsVehiculos.rows.findIndex(
           (r) => (r.Patente || "").toUpperCase() === selectedVehiculo.patente.toUpperCase()
         )
         if (vIdx >= 0) {
-          const { updateRow: updRow } = await import("@/hooks/use-sheets")
-          await updRow("Vehiculos", vIdx, [
+          await updateRow("Vehiculos", vIdx, [
             selectedVehiculo.id,
             selectedVehiculo.patente,
             selectedVehiculo.marca,
             selectedVehiculo.modelo,
             selectedVehiculo.anio,
-            nuevoMant.kilometraje,
+            String(newKm),
           ])
           await sheetsVehiculos.mutate()
+          setSelectedVehiculo({ ...selectedVehiculo, kilometraje: newKm })
         }
       }
+
       await sheetsMantenimientos.mutate()
-      setNuevoMant({
-        fecha: new Date().toISOString().split("T")[0],
-        tipo: "", descripcion: "", kilometraje: "", costo: "", taller: "", proximoKm: "", proximaFecha: "",
-      })
-      setDialogMant(false)
+      handleCloseMantDialog()
     } catch {
       // silent
     } finally {
@@ -288,10 +401,16 @@ export function VehiculosContent() {
               </div>
             </div>
           </div>
-          <Button size="sm" onClick={() => setDialogMant(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Nuevo Mantenimiento
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => handleEditVehiculo(selectedVehiculo)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Editar Vehiculo
+            </Button>
+            <Button size="sm" onClick={() => { resetMantForm(); setDialogMant(true) }}>
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo Mantenimiento
+            </Button>
+          </div>
         </div>
 
         {/* Summary cards */}
@@ -320,18 +439,18 @@ export function VehiculosContent() {
               <Wrench className="mx-auto h-10 w-10 text-muted-foreground/30 mb-3" />
               <p className="font-medium text-foreground">Sin registros de mantenimiento</p>
               <p className="text-sm text-muted-foreground mt-1">
-                Crea la hoja "Mantenimientos" con: ID, VehiculoID, Fecha, TipoMantenimiento, Descripcion, Kilometraje, Costo, Taller, ProximoKM, ProximaFecha
+                Crea la hoja &quot;Mantenimientos&quot; con: ID, VehiculoID, Fecha, TipoMantenimiento, Descripcion, Kilometraje, Costo, Taller, ProximoKM, ProximaFecha
               </p>
             </div>
           ) : (
             <div className="relative space-y-4 pl-6 before:absolute before:left-[11px] before:top-2 before:bottom-2 before:w-px before:bg-border">
               {mantVehiculo.map((m) => (
-                <div key={m.id} className="relative rounded-xl border bg-card p-4">
+                <div key={m.id} className="group relative rounded-xl border bg-card p-4">
                   <div className="absolute -left-6 top-5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-primary bg-card">
                     <div className="h-2 w-2 rounded-full bg-primary" />
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="space-y-1">
+                    <div className="space-y-1 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-foreground">{m.tipo}</span>
                         <Badge variant="outline" className="text-[10px]">
@@ -360,8 +479,18 @@ export function VehiculosContent() {
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="flex items-center gap-2">
                       <span className="text-lg font-bold text-foreground">{formatCurrency(m.costo)}</span>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditMant(m)}>
+                          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="sr-only">Editar mantenimiento</span>
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteMant(m)}>
+                          <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="sr-only">Eliminar mantenimiento</span>
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -370,11 +499,11 @@ export function VehiculosContent() {
           )}
         </div>
 
-        {/* New Mantenimiento Dialog */}
-        <Dialog open={dialogMant} onOpenChange={setDialogMant}>
-          <DialogContent className="max-w-md">
+        {/* New/Edit Mantenimiento Dialog */}
+        <Dialog open={dialogMant} onOpenChange={handleCloseMantDialog}>
+          <DialogContent className="max-w-md" onEscapeKeyDown={handleCloseMantDialog}>
             <DialogHeader>
-              <DialogTitle>Nuevo Mantenimiento</DialogTitle>
+              <DialogTitle>{editMantIdx !== null ? "Editar Mantenimiento" : "Nuevo Mantenimiento"}</DialogTitle>
               <DialogDescription>
                 {selectedVehiculo.marca} {selectedVehiculo.modelo} - {selectedVehiculo.patente}
               </DialogDescription>
@@ -427,13 +556,104 @@ export function VehiculosContent() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogMant(false)}>Cancelar</Button>
+              <Button variant="outline" onClick={handleCloseMantDialog}>Cancelar</Button>
               <Button onClick={handleGuardarMant} disabled={saving || !nuevoMant.tipo}>
-                {saving ? "Guardando..." : "Guardar"}
+                {saving ? "Guardando..." : editMantIdx !== null ? "Guardar Cambios" : "Guardar"}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Delete Mantenimiento Confirm */}
+        <AlertDialog open={!!deleteMant} onOpenChange={(open) => { if (!open) setDeleteMant(null) }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Eliminar mantenimiento</AlertDialogTitle>
+              <AlertDialogDescription>
+                Eliminar registro de &quot;{deleteMant?.tipo}&quot; del {deleteMant ? formatDate(deleteMant.fecha) : ""}? Esta accion no se puede deshacer.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteMant} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                {saving ? "Eliminando..." : "Eliminar"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Edit Vehicle Dialog (reused) */}
+        <Dialog open={dialogVehiculo} onOpenChange={handleCloseVehiculoDialog}>
+          <DialogContent className="max-w-md" onEscapeKeyDown={handleCloseVehiculoDialog}>
+            <DialogHeader>
+              <DialogTitle>Editar Vehiculo</DialogTitle>
+              <DialogDescription>Modifique los datos del vehiculo</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Patente</Label>
+                  <Input
+                    placeholder="ABC 123"
+                    value={nuevoVehiculo.patente}
+                    onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, patente: e.target.value.toUpperCase() })}
+                    className="font-mono"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Anio</Label>
+                  <Input type="number" placeholder="2020" value={nuevoVehiculo.anio} onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, anio: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Marca</Label>
+                  <Input placeholder="Ford, Fiat, etc." value={nuevoVehiculo.marca} onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, marca: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Modelo</Label>
+                  <Input placeholder="Ranger, Ducato, etc." value={nuevoVehiculo.modelo} onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, modelo: e.target.value })} />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Kilometraje Actual</Label>
+                <Input type="number" placeholder="50000" value={nuevoVehiculo.kilometraje} onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, kilometraje: e.target.value })} />
+              </div>
+            </div>
+            <DialogFooter className="flex-col gap-2 sm:flex-row">
+              {editVehiculoIdx !== null && (
+                <Button variant="destructive" className="sm:mr-auto" onClick={() => {
+                  const v = vehiculos.find((vh) => vh._rowIndex === editVehiculoIdx)
+                  if (v) { setDeleteVehiculoConfirm(v); handleCloseVehiculoDialog() }
+                }}>
+                  Eliminar Vehiculo
+                </Button>
+              )}
+              <Button variant="outline" onClick={handleCloseVehiculoDialog}>Cancelar</Button>
+              <Button onClick={handleGuardarVehiculo} disabled={saving || !nuevoVehiculo.patente || !nuevoVehiculo.marca}>
+                {saving ? "Guardando..." : editVehiculoIdx !== null ? "Guardar Cambios" : "Guardar"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Vehicle Confirm */}
+        <AlertDialog open={!!deleteVehiculoConfirm} onOpenChange={(open) => { if (!open) setDeleteVehiculoConfirm(null) }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Eliminar vehiculo</AlertDialogTitle>
+              <AlertDialogDescription>
+                Eliminar {deleteVehiculoConfirm?.marca} {deleteVehiculoConfirm?.modelo} ({deleteVehiculoConfirm?.patente})? Los registros de mantenimiento asociados no se eliminaran.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteVehiculo} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                {saving ? "Eliminando..." : "Eliminar"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     )
   }
@@ -510,7 +730,7 @@ export function VehiculosContent() {
           </div>
           <SheetsStatus isLoading={isLoading} error={hasError} isConnected={isConnected} />
         </div>
-        <Button size="sm" onClick={() => setDialogVehiculo(true)}>
+        <Button size="sm" onClick={() => { resetVehiculoForm(); setDialogVehiculo(true) }}>
           <Plus className="mr-2 h-4 w-4" />
           Nuevo Vehiculo
         </Button>
@@ -522,7 +742,7 @@ export function VehiculosContent() {
           <Car className="mx-auto h-10 w-10 text-muted-foreground/30 mb-3" />
           <p className="font-medium text-foreground">Sin vehiculos registrados</p>
           <p className="text-sm text-muted-foreground mt-1">
-            Crea la hoja "Vehiculos" con: ID, Patente, Marca, Modelo, AnioVehiculo, Kilometraje
+            Crea la hoja &quot;Vehiculos&quot; con: ID, Patente, Marca, Modelo, AnioVehiculo, Kilometraje
           </p>
         </div>
       ) : (
@@ -576,12 +796,12 @@ export function VehiculosContent() {
         </div>
       )}
 
-      {/* New Vehicle Dialog */}
-      <Dialog open={dialogVehiculo} onOpenChange={setDialogVehiculo}>
-        <DialogContent className="max-w-md">
+      {/* New Vehicle Dialog (main view) */}
+      <Dialog open={dialogVehiculo} onOpenChange={handleCloseVehiculoDialog}>
+        <DialogContent className="max-w-md" onEscapeKeyDown={handleCloseVehiculoDialog}>
           <DialogHeader>
-            <DialogTitle>Nuevo Vehiculo</DialogTitle>
-            <DialogDescription>Agrega un vehiculo a la flota</DialogDescription>
+            <DialogTitle>{editVehiculoIdx !== null ? "Editar Vehiculo" : "Nuevo Vehiculo"}</DialogTitle>
+            <DialogDescription>{editVehiculoIdx !== null ? "Modifique los datos del vehiculo" : "Agrega un vehiculo a la flota"}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="grid grid-cols-2 gap-3">
@@ -596,50 +816,50 @@ export function VehiculosContent() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Anio</Label>
-                <Input
-                  type="number"
-                  placeholder="2020"
-                  value={nuevoVehiculo.anio}
-                  onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, anio: e.target.value })}
-                />
+                <Input type="number" placeholder="2020" value={nuevoVehiculo.anio} onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, anio: e.target.value })} />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs">Marca</Label>
-                <Input
-                  placeholder="Ford, Fiat, etc."
-                  value={nuevoVehiculo.marca}
-                  onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, marca: e.target.value })}
-                />
+                <Input placeholder="Ford, Fiat, etc." value={nuevoVehiculo.marca} onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, marca: e.target.value })} />
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">Modelo</Label>
-                <Input
-                  placeholder="Ranger, Ducato, etc."
-                  value={nuevoVehiculo.modelo}
-                  onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, modelo: e.target.value })}
-                />
+                <Input placeholder="Ranger, Ducato, etc." value={nuevoVehiculo.modelo} onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, modelo: e.target.value })} />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Kilometraje Actual</Label>
-              <Input
-                type="number"
-                placeholder="50000"
-                value={nuevoVehiculo.kilometraje}
-                onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, kilometraje: e.target.value })}
-              />
+              <Input type="number" placeholder="50000" value={nuevoVehiculo.kilometraje} onChange={(e) => setNuevoVehiculo({ ...nuevoVehiculo, kilometraje: e.target.value })} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogVehiculo(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={handleCloseVehiculoDialog}>Cancelar</Button>
             <Button onClick={handleGuardarVehiculo} disabled={saving || !nuevoVehiculo.patente || !nuevoVehiculo.marca}>
-              {saving ? "Guardando..." : "Guardar"}
+              {saving ? "Guardando..." : editVehiculoIdx !== null ? "Guardar Cambios" : "Guardar"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Vehicle Confirm (main view) */}
+      <AlertDialog open={!!deleteVehiculoConfirm} onOpenChange={(open) => { if (!open) setDeleteVehiculoConfirm(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar vehiculo</AlertDialogTitle>
+            <AlertDialogDescription>
+              Eliminar {deleteVehiculoConfirm?.marca} {deleteVehiculoConfirm?.modelo} ({deleteVehiculoConfirm?.patente})? Los registros de mantenimiento asociados no se eliminaran.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteVehiculo} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              {saving ? "Eliminando..." : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

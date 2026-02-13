@@ -86,6 +86,8 @@ const CANONICAL_KEYS: Record<string, string> = {
   taller: "Taller",
   proximokm: "ProximoKM",
   proximafecha: "ProximaFecha",
+  verificadoagroaves: "VerificadoAgroaves",
+  verificado: "VerificadoAgroaves",
 }
 
 function getCanonicalKey(header: string): string {
