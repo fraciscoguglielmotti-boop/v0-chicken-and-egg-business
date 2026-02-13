@@ -6,35 +6,70 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Google Sheets epoch: December 30, 1899 (serial day 0).
+ * Serial number 1 = 1900-01-01. Sheets incorrectly treats 1900 as a leap year
+ * (Lotus 1-2-3 bug), so serial 60 = Feb 29 1900 (fake). For dates >= 61, we
+ * subtract 1 to correct. Modern dates (2020+) are ~43831+.
+ */
+const SHEETS_EPOCH = Date.UTC(1899, 11, 30, 12, 0, 0) // 1899-12-30 12:00 UTC
+const MS_PER_DAY = 86400000
+
+function fromSheetSerial(serial: number): Date {
+  // Correct for the Lotus 1-2-3 leap year bug
+  const corrected = serial > 60 ? serial - 1 : serial
+  return new Date(SHEETS_EPOCH + corrected * MS_PER_DAY)
+}
+
+function isValidDateRange(d: Date): boolean {
+  const y = d.getUTCFullYear()
+  return y >= 1990 && y <= 2100
+}
+
+/**
  * Parse a date that could be in various formats:
+ * - Number (Google Sheets serial date via UNFORMATTED_VALUE, e.g. 46067 = 10/02/2026)
  * - "dd/MM/yyyy" (from Google Sheets es-AR locale)
+ * - "dd/MM/yy" (short year)
  * - ISO string "2025-01-15"
  * - Date object
  * Returns a Date object with correct date regardless of timezone.
  */
-export function parseDate(date: Date | string): Date {
-  if (!date) return new Date()
+export function parseDate(date: Date | string | number): Date {
+  if (!date && date !== 0) return new Date()
   if (date instanceof Date) return date
+
+  // Handle numeric serial dates from Google Sheets (UNFORMATTED_VALUE)
+  // Sheets serial dates for modern dates are typically 40000-60000
+  const num = typeof date === "number" ? date : Number(date)
+  if (!Number.isNaN(num) && num > 30000 && num < 80000) {
+    const d = fromSheetSerial(num)
+    if (isValidDateRange(d)) return d
+  }
+
   const str = String(date).trim()
-  
-  // Handle dd/MM/yyyy format from Sheets
-  const ddmmyyyy = str.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})$/)
+
+  // Handle dd/MM/yyyy or dd/MM/yy format from Sheets
+  const ddmmyyyy = str.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/)
   if (ddmmyyyy) {
-    const [, day, month, year] = ddmmyyyy
-    // Use UTC to avoid timezone shifts
-    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0))
+    const [, day, month, rawYear] = ddmmyyyy
+    let year = Number(rawYear)
+    if (year < 100) year += 2000 // "26" -> 2026
+    const d = new Date(Date.UTC(year, Number(month) - 1, Number(day), 12, 0, 0))
+    if (isValidDateRange(d)) return d
   }
   
   // Handle yyyy-MM-dd (ISO)
   const iso = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
   if (iso) {
     const [, year, month, day] = iso
-    return new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0))
+    const d = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0))
+    if (isValidDateRange(d)) return d
   }
   
   // Fallback
   const d = new Date(str)
-  return Number.isNaN(d.getTime()) ? new Date() : d
+  if (!Number.isNaN(d.getTime()) && isValidDateRange(d)) return d
+  return new Date()
 }
 
 // Centralized date formatting - handles all date input formats correctly
@@ -63,22 +98,29 @@ export function formatCurrency(amount: number): string {
 }
 
 // Date for input fields (yyyy-MM-dd)
-export function formatDateInput(date: Date | string): string {
+export function formatDateInput(date: Date | string | number): string {
   try {
-    const d = new Date(date)
-    return d.toISOString().split("T")[0]
+    const d = parseDate(date)
+    const y = d.getUTCFullYear()
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0")
+    const day = String(d.getUTCDate()).padStart(2, "0")
+    return `${y}-${m}-${day}`
   } catch {
     return new Date().toISOString().split("T")[0]
   }
 }
 
-// Date for Sheets (dd/MM/yyyy)
-export function formatDateForSheets(date: Date | string): string {
+// Date for Sheets (dd/MM/yyyy) - always outputs Argentine format
+export function formatDateForSheets(date: Date | string | number): string {
   try {
-    const d = new Date(date)
-    return d.toLocaleDateString("es-AR")
+    const d = parseDate(date)
+    const day = String(d.getUTCDate()).padStart(2, "0")
+    const m = String(d.getUTCMonth() + 1).padStart(2, "0")
+    const y = d.getUTCFullYear()
+    return `${day}/${m}/${y}`
   } catch {
-    return new Date().toLocaleDateString("es-AR")
+    const now = new Date()
+    return `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`
   }
 }
 
@@ -89,12 +131,10 @@ export function formatDateForSheets(date: Date | string): string {
  * Google Sheets currency format (es-AR): $70.000 or $70,000 depending on locale
  */
 export function parseSheetNumber(val: string | number | undefined | null): number {
-  const originalVal = val
   if (val === undefined || val === null || val === "") return 0
   if (typeof val === "number") return val
 
   let str = String(val).trim()
-  const beforeClean = str
 
   // Remove currency symbols and spaces
   str = str.replace(/[$\s]/g, "")
@@ -136,14 +176,7 @@ export function parseSheetNumber(val: string | number | undefined | null): numbe
   }
 
   const num = Number(str)
-  const result = Number.isNaN(num) ? 0 : num
-  
-  // Debug: log all non-zero parsing attempts
-  if (beforeClean && result === 0 && beforeClean !== "0") {
-    console.log(`[v0] parseSheetNumber FAILED: "${originalVal}" -> cleaned: "${str}" -> ${result}`)
-  }
-  
-  return result
+  return Number.isNaN(num) ? 0 : num
 }
 
 /**
@@ -194,18 +227,6 @@ export function resolveVentaMonto(row: { [key: string]: string }): {
   const total = totalDirecto > 0 ? totalDirecto : cantidad * precio
   // Derive unit price if missing but total exists
   const precioUnitario = precio > 0 ? precio : (cantidad > 0 ? total / cantidad : 0)
-
-  // Debug: log first 3 rows with issues
-  const rowId = row.ID || "?"
-  if (total === 0 && cantidad > 0) {
-    console.log(`[v0] resolveVentaMonto ZERO TOTAL for row ${rowId}:`)
-    console.log(`  Cantidad: ${row.Cantidad} -> ${cantidad}`)
-    console.log(`  PrecioUnitario: "${row.PrecioUnitario}" -> ${parseSheetNumber(row.PrecioUnitario)}`)
-    console.log(`  Precio: "${row.Precio}" -> ${parseSheetNumber(row.Precio)}`)
-    console.log(`  Total: "${row.Total}" -> ${totalDirecto}`)
-    console.log(`  Available keys:`, Object.keys(row))
-    console.log(`  Result: cantidad=${cantidad}, precio=${precio}, total=${total}`)
-  }
 
   return { cantidad, precioUnitario, total }
 }
