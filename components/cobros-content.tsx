@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select"
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow, updateRow, deleteRow, type SheetRow } from "@/hooks/use-sheets"
+import { useSheet, addRow, updateRow, updateCell, deleteRow, type SheetRow } from "@/hooks/use-sheets"
 import { cobrosIniciales } from "@/lib/store"
 import type { Cobro } from "@/lib/types"
 import { NuevoCobroDialog, type CobroEditData } from "./nuevo-cobro-dialog"
@@ -95,21 +95,10 @@ export function CobrosContent() {
   const handleToggleVerificado = async (cobro: CobroRow) => {
     setTogglingVerif(cobro._rowIndex)
     try {
-      const row = rows[cobro._rowIndex]
-      if (!row) return
-      // Build values array preserving all existing columns, updating VerificadoAgroaves
       const newVerif = cobro.verificado ? "FALSE" : "TRUE"
-      const values = [
-        row.ID || "",
-        formatDateForSheets(parseDate(row.Fecha || "")),
-        row.Cliente || "",
-        row.ClienteID || row.Cliente || "",
-        row.Monto || "",
-        row.MetodoPago || "",
-        row.Observaciones || "",
-        newVerif,
-      ]
-      await updateRow("Cobros", cobro._rowIndex, values)
+      // Use updateCell to only touch the VerificadoAgroaves column
+      // If the column doesn't exist in the sheet, the API will create it automatically
+      await updateCell("Cobros", cobro._rowIndex, "Verificado Agroaves", newVerif)
       await mutate()
     } catch {
       // silent

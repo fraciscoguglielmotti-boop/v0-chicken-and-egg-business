@@ -211,6 +211,25 @@ export async function updateRow(
   return res.json()
 }
 
+export async function updateCell(
+  sheetName: string,
+  rowIndex: number,
+  column: string,
+  value: string,
+) {
+  const res = await fetch("/api/sheets", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sheetName, rowIndex, column, value }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Error de red" }))
+    throw new Error(err.error || "Error al actualizar celda")
+  }
+  await globalMutate(`/api/sheets?sheet=${encodeURIComponent(sheetName)}`)
+  return res.json()
+}
+
 export async function deleteRow(sheetName: string, rowIndex: number) {
   const res = await fetch("/api/sheets", {
     method: "DELETE",

@@ -256,6 +256,72 @@ export async function PUT(request: Request) {
   }
 }
 
+function colIndexToLetter(idx: number): string {
+  let letter = "";
+  let n = idx;
+  while (n >= 0) {
+    letter = String.fromCharCode(65 + (n % 26)) + letter;
+    n = Math.floor(n / 26) - 1;
+  }
+  return letter;
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const { sheetName, rowIndex, column, value } = await request.json();
+    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
+    if (!sheetName || rowIndex === undefined || !column) {
+      return NextResponse.json(
+        { error: "Faltan campos requeridos" },
+        { status: 400 },
+      );
+    }
+    const sheets = getSheets();
+
+    // Get headers to find the target column
+    const headerRes = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!1:1`,
+      valueRenderOption: "FORMATTED_VALUE",
+    });
+    const headers = headerRes.data.values?.[0] || [];
+    const normalizeCol = (s: string) => s.trim().toLowerCase().replace(/[\s_]/g, "");
+
+    // Find column index (case-insensitive, normalized)
+    let colIdx = headers.findIndex(
+      (h: string) => normalizeCol(h) === normalizeCol(column),
+    );
+
+    // If column doesn't exist, append it as a new header
+    if (colIdx === -1) {
+      colIdx = headers.length;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `${sheetName}!${colIndexToLetter(colIdx)}1`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [[column]] },
+      });
+    }
+
+    // Update the specific cell
+    const cellRange = `${sheetName}!${colIndexToLetter(colIdx)}${rowIndex + 2}`;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: cellRange,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [[value]] },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json(
+      { error: "Error al actualizar celda", detail: errorMsg },
+      { status: 500 },
+    );
+  }
+}
+
 export async function DELETE(request: Request) {
   try {
     const { sheetName, rowIndex } = await request.json();
