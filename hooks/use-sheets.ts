@@ -208,3 +208,17 @@ export async function updateRow(
   await globalMutate(`/api/sheets?sheet=${encodeURIComponent(sheetName)}`)
   return res.json()
 }
+
+export async function deleteRow(sheetName: string, rowIndex: number) {
+  const res = await fetch("/api/sheets", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sheetName, rowIndex }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Error de red" }))
+    throw new Error(err.error || "Error al eliminar")
+  }
+  await globalMutate(`/api/sheets?sheet=${encodeURIComponent(sheetName)}`)
+  return res.json()
+}

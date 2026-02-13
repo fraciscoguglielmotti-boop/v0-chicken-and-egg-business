@@ -255,3 +255,55 @@ export async function PUT(request: Request) {
     );
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const { sheetName, rowIndex } = await request.json();
+    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
+    if (!sheetName || rowIndex === undefined) {
+      return NextResponse.json(
+        { error: "Faltan campos requeridos" },
+        { status: 400 },
+      );
+    }
+    const sheets = getSheets();
+
+    // Get the sheetId (numeric) for the given sheet name
+    const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
+    const sheetMeta = spreadsheet.data.sheets?.find(
+      (s) => s.properties?.title === sheetName,
+    );
+    if (!sheetMeta?.properties?.sheetId && sheetMeta?.properties?.sheetId !== 0) {
+      return NextResponse.json(
+        { error: `Hoja "${sheetName}" no encontrada` },
+        { status: 404 },
+      );
+    }
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId: sheetMeta.properties.sheetId,
+                dimension: "ROWS",
+                startIndex: rowIndex + 1, // +1 for header row
+                endIndex: rowIndex + 2,
+              },
+            },
+          },
+        ],
+      },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json(
+      { error: "Error al eliminar fila", detail: errorMsg },
+      { status: 500 },
+    );
+  }
+}

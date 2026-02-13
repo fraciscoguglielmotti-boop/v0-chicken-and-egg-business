@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Plus, Filter, Download, Search } from "lucide-react"
+import { Plus, Filter, Download, Search, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -14,14 +14,13 @@ import {
 } from "@/components/ui/select"
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
+import { useSheet, addRow, updateRow, deleteRow, type SheetRow } from "@/hooks/use-sheets"
 import { cobrosIniciales } from "@/lib/store"
 import type { Cobro } from "@/lib/types"
-import { NuevoCobroDialog } from "./nuevo-cobro-dialog"
-import { formatCurrency, formatDate, formatDateForSheets, parseDate, parseSheetNumber, resolveEntityName } from "@/lib/utils"
+import { NuevoCobroDialog, type CobroEditData } from "./nuevo-cobro-dialog"
+import { formatCurrency, formatDate, formatDateForSheets, formatDateInput, parseDate, parseSheetNumber, resolveEntityName } from "@/lib/utils"
 
-function sheetRowToCobro(row: SheetRow, index: number, clienteLookup: SheetRow[]): Cobro {
-  // Resolve client name robustly (handles ID/name swaps from manual data entry)
+function sheetRowToCobro(row: SheetRow, index: number, clienteLookup: SheetRow[]): Cobro & { _rowIndex: number } {
   const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
   const fecha = parseDate(row.Fecha || "")
   return {
@@ -33,6 +32,7 @@ function sheetRowToCobro(row: SheetRow, index: number, clienteLookup: SheetRow[]
     metodoPago: (row.MetodoPago as Cobro["metodoPago"]) || "efectivo",
     observaciones: row.Observaciones || undefined,
     createdAt: fecha,
+    _rowIndex: index,
   }
 }
 
@@ -40,7 +40,6 @@ const metodoPagoColors: Record<string, string> = {
   efectivo: "bg-primary/20 text-primary border-primary/30",
   transferencia: "bg-blue-500/20 text-blue-700 border-blue-500/30",
 }
-
 const metodoPagoLabels: Record<string, string> = {
   efectivo: "Efectivo",
   transferencia: "Transferencia",
@@ -53,39 +52,35 @@ export function CobrosContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [metodoFilter, setMetodoFilter] = useState<string>("todos")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editData, setEditData] = useState<CobroEditData | null>(null)
   const [saving, setSaving] = useState(false)
 
   const isConnected = !error && !isLoading && rows.length >= 0
 
-  const cobros: Cobro[] = useMemo(() => {
+  const cobros = useMemo(() => {
     if (isConnected && rows.length > 0) {
       return rows.map((row, i) => sheetRowToCobro(row, i, sheetsClientes.rows))
     }
-    return localCobros
+    return localCobros.map((c, i) => ({ ...c, _rowIndex: i }))
   }, [isConnected, rows, localCobros, sheetsClientes.rows])
 
   const filteredCobros = cobros.filter((cobro) => {
-    const matchesSearch = cobro.clienteNombre
-      .toLowerCase()
-      .includes(searchTerm.toLowerCase())
-    const matchesMetodo =
-      metodoFilter === "todos" || cobro.metodoPago === metodoFilter
+    const matchesSearch = cobro.clienteNombre.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesMetodo = metodoFilter === "todos" || cobro.metodoPago === metodoFilter
     return matchesSearch && matchesMetodo
   })
 
   const totalCobros = filteredCobros.reduce((acc, c) => acc + c.monto, 0)
+  const cobrosPorMetodo = {
+    efectivo: filteredCobros.filter((c) => c.metodoPago === "efectivo").reduce((acc, c) => acc + c.monto, 0),
+    transferencia: filteredCobros.filter((c) => c.metodoPago === "transferencia").reduce((acc, c) => acc + c.monto, 0),
+  }
 
   const handleExportar = () => {
     const headers = ["Fecha", "Cliente", "Monto", "Metodo de Pago", "Observaciones"]
     const csvRows = [headers.join(",")]
     filteredCobros.forEach((c) => {
-      csvRows.push([
-        formatDateForSheets(c.fecha),
-        `"${c.clienteNombre}"`,
-        String(c.monto),
-        c.metodoPago,
-        `"${c.observaciones || ""}"`,
-      ].join(","))
+      csvRows.push([formatDateForSheets(c.fecha), `"${c.clienteNombre}"`, String(c.monto), c.metodoPago, `"${c.observaciones || ""}"`].join(","))
     })
     const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
@@ -96,141 +91,97 @@ export function CobrosContent() {
     URL.revokeObjectURL(url)
   }
 
-  const cobrosPorMetodo = {
-    efectivo: filteredCobros
-      .filter((c) => c.metodoPago === "efectivo")
-      .reduce((acc, c) => acc + c.monto, 0),
-    transferencia: filteredCobros
-      .filter((c) => c.metodoPago === "transferencia")
-      .reduce((acc, c) => acc + c.monto, 0),
-  }
-
   const handleNuevoCobro = async (cobro: Cobro, esProveedor?: boolean, cuentaDestino?: string) => {
     setSaving(true)
     try {
-      // Build observaciones with cuenta destino for transferencias
       let obs = cobro.observaciones || ""
       if (cobro.metodoPago === "transferencia" && cuentaDestino) {
         obs = `Cuenta: ${cuentaDestino}${obs ? ` - ${obs}` : ""}`
       }
-
-      const sheetValues = [
-        [
-          cobro.id,
-          formatDateForSheets(cobro.fecha),
-          cobro.clienteNombre, // Use nombre as ClienteID for consistency
-          cobro.clienteNombre,
-          String(cobro.monto),
-          cobro.metodoPago,
-          obs,
-          "", // Vendedor column
-        ],
-      ]
+      const sheetValues = [[cobro.id, formatDateForSheets(cobro.fecha), cobro.clienteNombre, cobro.clienteNombre, String(cobro.monto), cobro.metodoPago, obs, ""]]
       await addRow("Cobros", sheetValues)
-
-      // If transferencia to Agroaves SRL, also register as Pago to proveedor Agroaves
       if (esProveedor || (cobro.metodoPago === "transferencia" && cuentaDestino?.toLowerCase().includes("agroaves"))) {
         const proveedorName = cuentaDestino?.toLowerCase().includes("agroaves") ? "Agroaves SRL" : cobro.clienteNombre
-        const pagoValues = [
-          [
-            `pago-${Date.now()}`,
-            formatDateForSheets(cobro.fecha),
-            proveedorName,
-            proveedorName,
-            String(cobro.monto),
-            cobro.metodoPago,
-            `Cobro de ${cobro.clienteNombre} transferido a ${cuentaDestino || proveedorName}`,
-          ],
-        ]
-        await addRow("Pagos", pagoValues)
+        await addRow("Pagos", [[`pago-${Date.now()}`, formatDateForSheets(cobro.fecha), proveedorName, proveedorName, String(cobro.monto), cobro.metodoPago, `Cobro de ${cobro.clienteNombre} transferido a ${cuentaDestino || proveedorName}`]])
       }
-
       await mutate()
     } catch {
       setLocalCobros((prev) => [cobro, ...prev])
-    } finally {
-      setSaving(false)
-      setDialogOpen(false)
-    }
+    } finally { setSaving(false) }
+  }
+
+  const handleUpdateCobro = async (rowIndex: number, cobro: Cobro) => {
+    setSaving(true)
+    try {
+      const values = [rows[rowIndex]?.ID || "", formatDateForSheets(cobro.fecha), cobro.clienteNombre, cobro.clienteNombre, String(cobro.monto), cobro.metodoPago, cobro.observaciones || "", ""]
+      await updateRow("Cobros", rowIndex, values)
+      await mutate()
+    } catch { /* silent */ } finally { setSaving(false) }
+  }
+
+  const handleDeleteCobro = async (rowIndex: number) => {
+    setSaving(true)
+    try { await deleteRow("Cobros", rowIndex); await mutate() }
+    catch { /* silent */ } finally { setSaving(false) }
+  }
+
+  const handleEdit = (cobro: Cobro & { _rowIndex: number }) => {
+    setEditData({
+      rowIndex: cobro._rowIndex,
+      fecha: formatDateInput(cobro.fecha),
+      clienteId: cobro.clienteId,
+      clienteNombre: cobro.clienteNombre,
+      monto: cobro.monto,
+      metodoPago: cobro.metodoPago,
+      observaciones: cobro.observaciones || "",
+    })
+    setDialogOpen(true)
   }
 
   const columns = [
+    { key: "fecha", header: "Fecha", render: (c: Cobro & { _rowIndex: number }) => <span className="font-medium">{formatDate(c.fecha)}</span> },
     {
-      key: "fecha",
-      header: "Fecha",
-      render: (cobro: Cobro) => (
-        <span className="font-medium">{formatDate(cobro.fecha)}</span>
-      ),
-    },
-    {
-      key: "clienteNombre",
-      header: "Cliente",
-      render: (cobro: Cobro) => (
+      key: "clienteNombre", header: "Cliente", render: (c: Cobro & { _rowIndex: number }) => (
         <div>
-          <p className="font-medium text-foreground">{cobro.clienteNombre}</p>
-          {cobro.observaciones && (
-            <p className="text-xs text-muted-foreground truncate max-w-xs">
-              {cobro.observaciones}
-            </p>
-          )}
+          <p className="font-medium text-foreground">{c.clienteNombre}</p>
+          {c.observaciones && <p className="text-xs text-muted-foreground truncate max-w-xs">{c.observaciones}</p>}
         </div>
       ),
     },
+    { key: "monto", header: "Monto", render: (c: Cobro & { _rowIndex: number }) => <span className="font-semibold text-primary">{formatCurrency(c.monto)}</span> },
+    { key: "metodoPago", header: "Metodo", render: (c: Cobro & { _rowIndex: number }) => <Badge variant="outline" className={metodoPagoColors[c.metodoPago]}>{metodoPagoLabels[c.metodoPago]}</Badge> },
     {
-      key: "monto",
-      header: "Monto",
-      render: (cobro: Cobro) => (
-        <span className="font-semibold text-primary">
-          {formatCurrency(cobro.monto)}
-        </span>
-      ),
-    },
-    {
-      key: "metodoPago",
-      header: "Metodo",
-      render: (cobro: Cobro) => (
-        <Badge variant="outline" className={metodoPagoColors[cobro.metodoPago]}>
-          {metodoPagoLabels[cobro.metodoPago]}
-        </Badge>
+      key: "acciones", header: "", render: (c: Cobro & { _rowIndex: number }) => (
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); handleEdit(c) }}>
+          <Pencil className="h-4 w-4 text-muted-foreground" />
+          <span className="sr-only">Editar cobro</span>
+        </Button>
       ),
     },
   ]
 
   return (
     <div className="space-y-6">
-      {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border bg-card p-4">
           <p className="text-sm text-muted-foreground">Total Cobrado</p>
-          <p className="text-2xl font-bold text-primary">
-            {formatCurrency(totalCobros)}
-          </p>
+          <p className="text-2xl font-bold text-primary">{formatCurrency(totalCobros)}</p>
         </div>
         <div className="rounded-xl border bg-card p-4">
           <p className="text-sm text-muted-foreground">Efectivo</p>
-          <p className="text-2xl font-bold text-foreground">
-            {formatCurrency(cobrosPorMetodo.efectivo)}
-          </p>
+          <p className="text-2xl font-bold text-foreground">{formatCurrency(cobrosPorMetodo.efectivo)}</p>
         </div>
         <div className="rounded-xl border bg-card p-4">
           <p className="text-sm text-muted-foreground">Transferencias</p>
-          <p className="text-2xl font-bold text-foreground">
-            {formatCurrency(cobrosPorMetodo.transferencia)}
-          </p>
+          <p className="text-2xl font-bold text-foreground">{formatCurrency(cobrosPorMetodo.transferencia)}</p>
         </div>
       </div>
 
-      {/* Toolbar */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 items-center gap-3">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por cliente..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9"
-            />
+            <Input placeholder="Buscar por cliente..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pl-9" />
           </div>
           <Select value={metodoFilter} onValueChange={setMetodoFilter}>
             <SelectTrigger className="w-44">
@@ -250,25 +201,22 @@ export function CobrosContent() {
             <Download className="mr-2 h-4 w-4" />
             Exportar CSV
           </Button>
-          <Button size="sm" onClick={() => setDialogOpen(true)} disabled={saving}>
+          <Button size="sm" onClick={() => { setEditData(null); setDialogOpen(true) }} disabled={saving}>
             <Plus className="mr-2 h-4 w-4" />
             {saving ? "Guardando..." : "Nuevo Cobro"}
           </Button>
         </div>
       </div>
 
-      {/* Table */}
-      <DataTable
-        columns={columns}
-        data={filteredCobros}
-        emptyMessage={isLoading ? "Cargando cobros..." : "No hay cobros registrados"}
-      />
+      <DataTable columns={columns} data={filteredCobros} emptyMessage={isLoading ? "Cargando cobros..." : "No hay cobros registrados"} />
 
-      {/* Dialog */}
       <NuevoCobroDialog
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={(v) => { setDialogOpen(v); if (!v) setEditData(null) }}
         onSubmit={handleNuevoCobro}
+        onUpdate={handleUpdateCobro}
+        onDelete={handleDeleteCobro}
+        editData={editData}
       />
     </div>
   )

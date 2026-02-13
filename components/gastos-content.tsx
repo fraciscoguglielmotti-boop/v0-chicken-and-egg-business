@@ -18,6 +18,7 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
+  Pencil,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,7 +42,7 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow, type SheetRow } from "@/hooks/use-sheets"
+import { useSheet, addRow, updateRow, deleteRow, type SheetRow } from "@/hooks/use-sheets"
 import { formatCurrency, formatDate, formatDateForSheets, parseDate, parseSheetNumber } from "@/lib/utils"
 
 // --- Constants ---
@@ -144,6 +145,9 @@ export function GastosContent() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [editRowIndex, setEditRowIndex] = useState<number | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
   // New expense form
   const [nuevoGasto, setNuevoGasto] = useState({
@@ -170,10 +174,10 @@ export function GastosContent() {
   const hasError = error
 
   // Parse all gastos from sheets
-  const gastos: Gasto[] = useMemo(() => {
+  const gastos: (Gasto & { _rowIndex: number })[] = useMemo(() => {
     if (!isConnected || rows.length === 0) return []
     return rows
-      .map((row, i) => sheetRowToGasto(row, i))
+      .map((row, i) => ({ ...sheetRowToGasto(row, i), _rowIndex: i }))
       .sort((a, b) => b.fecha.getTime() - a.fecha.getTime())
   }, [isConnected, rows])
 
@@ -247,14 +251,33 @@ export function GastosContent() {
 
   // --- Handlers ---
 
+  const resetGastoForm = () => {
+    setNuevoGasto({ categoria: "", descripcion: "", monto: "", medioPago: "efectivo", tarjeta: "", banco: "", cuotaActual: "1", cuotasTotal: "1", fecha: new Date().toISOString().split("T")[0] })
+    setEditRowIndex(null)
+    setConfirmDelete(false)
+    setFormErrors({})
+  }
+
+  const handleCloseDialog = () => {
+    setDialogOpen(false)
+    resetGastoForm()
+  }
+
+  const validateGasto = (): boolean => {
+    const errs: Record<string, string> = {}
+    if (!nuevoGasto.categoria) errs.categoria = "Seleccione una categoria"
+    if (!nuevoGasto.monto || Number(nuevoGasto.monto) <= 0) errs.monto = "Monto debe ser mayor a 0"
+    setFormErrors(errs)
+    return Object.keys(errs).length === 0
+  }
+
   const handleGuardar = async () => {
-    if (!nuevoGasto.monto || !nuevoGasto.categoria) return
+    if (!validateGasto()) return
     setSaving(true)
     try {
-      const id = `G${Date.now()}`
       const fechaSheets = formatDateForSheets(nuevoGasto.fecha)
-      await addRow("Gastos", [[
-        id,
+      const rowData = [
+        editRowIndex !== null ? (rows[editRowIndex]?.ID || "") : `G${Date.now()}`,
         fechaSheets,
         "Egreso",
         getCategoriaLabel(nuevoGasto.categoria),
@@ -266,25 +289,43 @@ export function GastosContent() {
         nuevoGasto.cuotaActual || "1",
         nuevoGasto.cuotasTotal || "1",
         "",
-      ]])
+      ]
+      if (editRowIndex !== null) {
+        await updateRow("Gastos", editRowIndex, rowData)
+      } else {
+        await addRow("Gastos", [rowData])
+      }
       await mutate()
-      setNuevoGasto({
-        categoria: "",
-        descripcion: "",
-        monto: "",
-        medioPago: "efectivo",
-        tarjeta: "",
-        banco: "",
-        cuotaActual: "1",
-        cuotasTotal: "1",
-        fecha: new Date().toISOString().split("T")[0],
-      })
-      setDialogOpen(false)
+      handleCloseDialog()
     } catch {
       // Handle silently
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleDeleteGasto = async () => {
+    if (!confirmDelete) { setConfirmDelete(true); return }
+    if (editRowIndex === null) return
+    setSaving(true)
+    try { await deleteRow("Gastos", editRowIndex); await mutate(); handleCloseDialog() }
+    catch { /* silent */ } finally { setSaving(false) }
+  }
+
+  const handleEditGasto = (gasto: Gasto, rowIdx: number) => {
+    setEditRowIndex(rowIdx)
+    setNuevoGasto({
+      categoria: gasto.categoria,
+      descripcion: gasto.descripcion,
+      monto: String(gasto.monto),
+      medioPago: gasto.medioPago,
+      tarjeta: gasto.tarjeta || "",
+      banco: gasto.banco || "",
+      cuotaActual: String(gasto.cuotaActual || "1"),
+      cuotasTotal: String(gasto.cuotasTotal || "1"),
+      fecha: formatDateInput(gasto.fecha),
+    })
+    setDialogOpen(true)
   }
 
   const handlePdfUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -473,6 +514,7 @@ export function GastosContent() {
                   <th className="px-4 py-2 text-left font-medium text-muted-foreground">Medio</th>
                   <th className="px-4 py-2 text-left font-medium text-muted-foreground">Cuotas</th>
                   <th className="px-4 py-2 text-right font-medium text-muted-foreground">Monto</th>
+                  <th className="px-4 py-2 w-10" />
                 </tr>
               </thead>
               <tbody>
@@ -519,6 +561,12 @@ export function GastosContent() {
                       </td>
                       <td className="px-4 py-2.5 text-right font-semibold text-destructive">
                         {formatCurrency(g.monto)}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleEditGasto(g, g._rowIndex)}>
+                          <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="sr-only">Editar gasto</span>
+                        </Button>
                       </td>
                     </tr>
                   ))
@@ -626,12 +674,12 @@ export function GastosContent() {
         </TabsContent>
       </Tabs>
 
-      {/* --- New Expense Dialog --- */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+      {/* --- New / Edit Expense Dialog --- */}
+      <Dialog open={dialogOpen} onOpenChange={handleCloseDialog}>
+        <DialogContent className="max-w-lg" onEscapeKeyDown={handleCloseDialog}>
           <DialogHeader>
-            <DialogTitle>Nuevo Gasto</DialogTitle>
-            <DialogDescription>Registra un gasto en efectivo o tarjeta de credito</DialogDescription>
+            <DialogTitle>{editRowIndex !== null ? "Editar Gasto" : "Nuevo Gasto"}</DialogTitle>
+            <DialogDescription>{editRowIndex !== null ? "Modifique los datos del gasto" : "Registra un gasto en efectivo o tarjeta de credito"}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-3">
@@ -662,8 +710,8 @@ export function GastosContent() {
 
             <div className="space-y-2">
               <Label>Categoria</Label>
-              <Select value={nuevoGasto.categoria} onValueChange={(v) => setNuevoGasto({ ...nuevoGasto, categoria: v })}>
-                <SelectTrigger>
+              <Select value={nuevoGasto.categoria} onValueChange={(v) => { setNuevoGasto({ ...nuevoGasto, categoria: v }); setFormErrors((e) => ({ ...e, categoria: "" })) }}>
+                <SelectTrigger className={formErrors.categoria ? "border-destructive" : ""}>
                   <SelectValue placeholder="Seleccionar categoria" />
                 </SelectTrigger>
                 <SelectContent>
@@ -681,10 +729,14 @@ export function GastosContent() {
                 <Input
                   type="number"
                   value={nuevoGasto.monto}
-                  onChange={(e) => setNuevoGasto({ ...nuevoGasto, monto: e.target.value })}
+                  onChange={(e) => { setNuevoGasto({ ...nuevoGasto, monto: e.target.value }); setFormErrors((er) => ({ ...er, monto: "" })) }}
                   placeholder="0"
+                  className={formErrors.monto ? "border-destructive" : ""}
+                  min="0.01"
+                  step="any"
                 />
               </div>
+              {formErrors.monto && <p className="text-xs text-destructive">{formErrors.monto}</p>}
             </div>
 
             {nuevoGasto.medioPago === "tarjeta" && (
@@ -751,10 +803,15 @@ export function GastosContent() {
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleGuardar} disabled={saving || !nuevoGasto.monto || !nuevoGasto.categoria}>
-              {saving ? "Guardando..." : "Guardar Gasto"}
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            {editRowIndex !== null && (
+              <Button variant="destructive" onClick={handleDeleteGasto} className="sm:mr-auto">
+                {confirmDelete ? "Confirmar Eliminacion" : "Eliminar"}
+              </Button>
+            )}
+            <Button variant="outline" onClick={handleCloseDialog}>Cancelar</Button>
+            <Button onClick={handleGuardar} disabled={saving}>
+              {saving ? "Guardando..." : editRowIndex !== null ? "Guardar Cambios" : "Guardar Gasto"}
             </Button>
           </DialogFooter>
         </DialogContent>
