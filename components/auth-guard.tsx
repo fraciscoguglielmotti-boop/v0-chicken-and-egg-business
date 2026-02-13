@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, createContext, useContext, useCallback } from "react"
 import { useRouter, usePathname } from "next/navigation"
+import { Loader2 } from "lucide-react"
 
 interface AuthUser {
   id: string
@@ -28,58 +29,73 @@ export function useAuth() {
   return useContext(AuthContext)
 }
 
+const AUTO_USER: AuthUser = { id: "auto", nombre: "Usuario", usuario: "auto", rol: "admin" }
+
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [isChecking, setIsChecking] = useState(true)
+  const [ready, setReady] = useState(false)
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loginActivo, setLoginActivo] = useState(true)
 
   const checkAuth = useCallback(async () => {
-    // Skip auth check for login page
+    // Login page never blocks
     if (pathname === "/login") {
-      setIsChecking(false)
+      setReady(true)
       return
     }
 
     try {
-      // Check if login is enabled
       const res = await fetch("/api/auth?action=check")
+      if (!res.ok) throw new Error("API error")
       const data = await res.json()
-      const isLoginActive = data.loginActivo !== false
+      const isActive = data.loginActivo !== false
 
-      setLoginActivo(isLoginActive)
+      setLoginActivo(isActive)
 
-      if (!isLoginActive) {
-        // Login disabled - auto-authenticate with generic user
-        setUser({ id: "auto", nombre: "Usuario", usuario: "auto", rol: "admin" })
-        setIsChecking(false)
+      if (!isActive) {
+        // Login disabled - auto-authenticate
+        setUser(AUTO_USER)
+        setReady(true)
         return
       }
 
-      // Login is active - check session
+      // Login is active - check sessionStorage
+      const stored = sessionStorage.getItem("avigest_user")
+      if (stored) {
+        const parsed = JSON.parse(stored) as AuthUser
+        if (parsed && parsed.id && parsed.usuario) {
+          setUser(parsed)
+          setReady(true)
+          return
+        }
+      }
+
+      // No valid session - redirect to login
+      router.replace("/login")
+    } catch {
+      // API failed - fall back to sessionStorage check
       const stored = sessionStorage.getItem("avigest_user")
       if (stored) {
         try {
-          const parsed = JSON.parse(stored)
-          setUser(parsed)
-          setIsChecking(false)
-        } catch {
-          sessionStorage.removeItem("avigest_user")
-          sessionStorage.removeItem("avigest_logged_in")
-          router.push("/login")
-        }
-      } else {
-        router.push("/login")
+          const parsed = JSON.parse(stored) as AuthUser
+          if (parsed && parsed.id) {
+            setUser(parsed)
+            setReady(true)
+            return
+          }
+        } catch { /* invalid JSON */ }
       }
-    } catch {
-      // If API fails, fall back to session check
-      const isLoggedIn = sessionStorage.getItem("avigest_logged_in") === "true"
-      if (!isLoggedIn) {
-        router.push("/login")
-      } else {
-        setIsChecking(false)
+
+      // If session also has the old format (just logged_in flag)
+      if (sessionStorage.getItem("avigest_logged_in") === "true") {
+        setUser({ id: "legacy", nombre: "Admin", usuario: "admin", rol: "admin" })
+        setReady(true)
+        return
       }
+
+      // Nothing works - redirect to login
+      router.replace("/login")
     }
   }, [pathname, router])
 
@@ -91,18 +107,31 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     sessionStorage.removeItem("avigest_user")
     sessionStorage.removeItem("avigest_logged_in")
     setUser(null)
-    router.push("/login")
+    setReady(false)
+    router.replace("/login")
   }, [router])
 
   const refreshAuth = useCallback(() => {
-    setIsChecking(true)
+    setReady(false)
     checkAuth()
   }, [checkAuth])
 
-  if (isChecking && pathname !== "/login") {
+  // Don't block login page
+  if (pathname === "/login") {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-muted-foreground">Verificando sesion...</p>
+      <AuthContext.Provider value={{ user, loginActivo, logout, refreshAuth }}>
+        {children}
+      </AuthContext.Provider>
+    )
+  }
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Verificando sesion...</p>
+        </div>
       </div>
     )
   }

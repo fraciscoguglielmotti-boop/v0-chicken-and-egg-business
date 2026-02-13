@@ -118,8 +118,9 @@ export async function POST(request: Request) {
       range: "Configuracion!A:B",
     });
     const configRows = configRes.data.values || [];
-    const loginRow = configRows.find((r) => r[0] === "login_activo");
-    const loginActivo = loginRow ? loginRow[1]?.toUpperCase() === "TRUE" : true;
+    const loginRow = configRows.find((r) => String(r[0]).trim().toLowerCase() === "login_activo");
+    const loginVal = loginRow ? String(loginRow[1] || "TRUE").trim().toUpperCase() : "TRUE";
+    const loginActivo = loginVal === "TRUE" || loginVal === "1" || loginVal === "SI";
 
     if (!loginActivo) {
       // Login disabled - auto-authenticate
@@ -153,12 +154,16 @@ export async function POST(request: Request) {
     const activoIdx = headers.indexOf("Activo");
 
     const inputHash = hashPassword(contrasena);
+    console.log("[v0] Login attempt - usuario:", usuario, "inputHash:", inputHash.substring(0, 10) + "...");
+    console.log("[v0] Login - headers:", headers, "userIdx:", userIdx, "passIdx:", passIdx);
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
       const rowUser = row[userIdx]?.trim();
       const rowPass = row[passIdx]?.trim();
-      const rowActivo = activoIdx >= 0 ? row[activoIdx]?.toUpperCase() : "TRUE";
+      const rowActivo = activoIdx >= 0 ? String(row[activoIdx] || "TRUE").trim().toUpperCase() : "TRUE";
+
+      console.log("[v0] Login - checking row", i, "user:", rowUser, "passHash:", (rowPass || "").substring(0, 10) + "...", "activo:", rowActivo, "match:", rowUser === usuario && rowPass === inputHash);
 
       if (rowActivo !== "TRUE") continue;
 
@@ -203,8 +208,10 @@ export async function GET(request: Request) {
         range: "Configuracion!A:B",
       });
       const configRows = configRes.data.values || [];
-      const loginRow = configRows.find((r) => r[0] === "login_activo");
-      const loginActivo = loginRow ? loginRow[1]?.toUpperCase() === "TRUE" : true;
+      const loginRow = configRows.find((r) => String(r[0]).trim().toLowerCase() === "login_activo");
+      const rawValue = loginRow ? String(loginRow[1] || "").trim().toUpperCase() : "TRUE";
+      const loginActivo = rawValue === "TRUE" || rawValue === "1" || rawValue === "SI";
+      console.log("[v0] Auth check - configRows:", JSON.stringify(configRows), "loginRow:", loginRow, "rawValue:", rawValue, "loginActivo:", loginActivo);
       return NextResponse.json({ loginActivo });
     }
 
@@ -253,7 +260,7 @@ export async function PUT(request: Request) {
         range: "Configuracion!A:B",
       });
       const configRows = configRes.data.values || [];
-      let rowIdx = configRows.findIndex((r) => r[0] === "login_activo");
+      let rowIdx = configRows.findIndex((r) => String(r[0]).trim().toLowerCase() === "login_activo");
 
       if (rowIdx < 0) {
         // Append

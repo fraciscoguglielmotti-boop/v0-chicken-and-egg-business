@@ -16,26 +16,39 @@ export default function LoginPage() {
   const [checkingLogin, setCheckingLogin] = useState(true)
 
   useEffect(() => {
-    // Check if login is disabled - auto redirect
+    let cancelled = false
     async function check() {
       try {
+        // If already logged in, go to dashboard
+        const stored = sessionStorage.getItem("avigest_user")
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (parsed?.id && parsed?.usuario) {
+            router.replace("/")
+            return
+          }
+        }
+
+        // Check if login is disabled
         const res = await fetch("/api/auth?action=check")
-        const data = await res.json()
-        if (data.loginActivo === false) {
-          // Login disabled, go straight to dashboard
-          sessionStorage.setItem("avigest_logged_in", "true")
-          sessionStorage.setItem("avigest_user", JSON.stringify({
-            id: "auto", nombre: "Usuario", usuario: "auto", rol: "admin"
-          }))
-          router.push("/")
-          return
+        if (res.ok) {
+          const data = await res.json()
+          if (data.loginActivo === false) {
+            sessionStorage.setItem("avigest_logged_in", "true")
+            sessionStorage.setItem("avigest_user", JSON.stringify({
+              id: "auto", nombre: "Usuario", usuario: "auto", rol: "admin"
+            }))
+            router.replace("/")
+            return
+          }
         }
       } catch {
-        // API not available, show login form
+        // API not available yet, show login form
       }
-      setCheckingLogin(false)
+      if (!cancelled) setCheckingLogin(false)
     }
     check()
+    return () => { cancelled = true }
   }, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -47,15 +60,15 @@ export default function LoginPage() {
       const res = await fetch("/api/auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ usuario, contrasena }),
+        body: JSON.stringify({ usuario: usuario.trim(), contrasena }),
       })
 
       const data = await res.json()
 
-      if (data.success) {
+      if (data.success && data.user) {
         sessionStorage.setItem("avigest_logged_in", "true")
         sessionStorage.setItem("avigest_user", JSON.stringify(data.user))
-        router.push("/")
+        router.replace("/")
       } else {
         setError(data.error || "Usuario o contrasena incorrectos")
       }
@@ -94,6 +107,7 @@ export default function LoginPage() {
               value={usuario}
               onChange={(e) => setUsuario(e.target.value)}
               placeholder="Ingresa tu usuario"
+              autoComplete="username"
               required
               disabled={loading}
             />
@@ -107,6 +121,7 @@ export default function LoginPage() {
               value={contrasena}
               onChange={(e) => setContrasena(e.target.value)}
               placeholder="Ingresa tu contrasena"
+              autoComplete="current-password"
               required
               disabled={loading}
             />
