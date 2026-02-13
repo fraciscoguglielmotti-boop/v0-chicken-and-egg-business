@@ -1,8 +1,8 @@
 "use client"
 
-import { Menu, LogOut } from "lucide-react"
+import { Menu, LogOut, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { useRouter } from "next/navigation"
+import { useAuth } from "./auth-guard"
 
 interface AppHeaderProps {
   title: string
@@ -11,12 +11,7 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ title, subtitle, onMenuClick }: AppHeaderProps) {
-  const router = useRouter()
-
-  const handleLogout = () => {
-    sessionStorage.removeItem("avigest_logged_in")
-    router.push("/login")
-  }
+  const { user, loginActivo, logout } = useAuth()
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:px-6">
@@ -35,10 +30,20 @@ export function AppHeader({ title, subtitle, onMenuClick }: AppHeaderProps) {
           <p className="truncate text-sm text-muted-foreground leading-none">{subtitle}</p>
         )}
       </div>
-      <Button variant="ghost" size="sm" onClick={handleLogout} className="gap-2">
-        <LogOut className="h-4 w-4" />
-        <span className="hidden sm:inline">Salir</span>
-      </Button>
+      <div className="flex items-center gap-3">
+        {user && loginActivo && user.usuario !== "auto" && (
+          <div className="hidden items-center gap-2 sm:flex">
+            <User className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">{user.nombre}</span>
+          </div>
+        )}
+        {loginActivo && (
+          <Button variant="ghost" size="sm" onClick={logout} className="gap-2">
+            <LogOut className="h-4 w-4" />
+            <span className="hidden sm:inline">Salir</span>
+          </Button>
+        )}
+      </div>
     </header>
   )
 }

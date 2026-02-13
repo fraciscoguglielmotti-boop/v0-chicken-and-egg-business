@@ -1,32 +1,77 @@
 "use client"
 
-import React from "react"
-
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Egg } from "lucide-react"
+import { Egg, Loader2 } from "lucide-react"
 
 export default function LoginPage() {
   const router = useRouter()
   const [usuario, setUsuario] = useState("")
   const [contrasena, setContrasena] = useState("")
   const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [checkingLogin, setCheckingLogin] = useState(true)
 
-  const handleLogin = (e: React.FormEvent) => {
+  useEffect(() => {
+    // Check if login is disabled - auto redirect
+    async function check() {
+      try {
+        const res = await fetch("/api/auth?action=check")
+        const data = await res.json()
+        if (data.loginActivo === false) {
+          // Login disabled, go straight to dashboard
+          sessionStorage.setItem("avigest_logged_in", "true")
+          sessionStorage.setItem("avigest_user", JSON.stringify({
+            id: "auto", nombre: "Usuario", usuario: "auto", rol: "admin"
+          }))
+          router.push("/")
+          return
+        }
+      } catch {
+        // API not available, show login form
+      }
+      setCheckingLogin(false)
+    }
+    check()
+  }, [router])
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setLoading(true)
 
-    // Simple hardcoded auth - you can replace with real auth later
-    if (usuario === "admin" && contrasena === "admin") {
-      // Store auth in sessionStorage
-      sessionStorage.setItem("avigest_logged_in", "true")
-      router.push("/")
-    } else {
-      setError("Usuario o contraseña incorrectos")
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ usuario, contrasena }),
+      })
+
+      const data = await res.json()
+
+      if (data.success) {
+        sessionStorage.setItem("avigest_logged_in", "true")
+        sessionStorage.setItem("avigest_user", JSON.stringify(data.user))
+        router.push("/")
+      } else {
+        setError(data.error || "Usuario o contrasena incorrectos")
+      }
+    } catch {
+      setError("Error de conexion. Intenta de nuevo.")
+    } finally {
+      setLoading(false)
     }
+  }
+
+  if (checkingLogin) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
   }
 
   return (
@@ -50,18 +95,20 @@ export default function LoginPage() {
               onChange={(e) => setUsuario(e.target.value)}
               placeholder="Ingresa tu usuario"
               required
+              disabled={loading}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="contrasena">Contraseña</Label>
+            <Label htmlFor="contrasena">Contrasena</Label>
             <Input
               id="contrasena"
               type="password"
               value={contrasena}
               onChange={(e) => setContrasena(e.target.value)}
-              placeholder="Ingresa tu contraseña"
+              placeholder="Ingresa tu contrasena"
               required
+              disabled={loading}
             />
           </div>
 
@@ -69,13 +116,20 @@ export default function LoginPage() {
             <p className="text-sm text-destructive">{error}</p>
           )}
 
-          <Button type="submit" className="w-full">
-            Ingresar
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Verificando...
+              </>
+            ) : (
+              "Ingresar"
+            )}
           </Button>
         </form>
 
         <p className="text-center text-xs text-muted-foreground">
-          Usuario: admin | Contraseña: admin
+          Por defecto: admin / admin
         </p>
       </div>
     </div>
