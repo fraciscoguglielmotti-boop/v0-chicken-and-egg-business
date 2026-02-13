@@ -170,13 +170,27 @@ export async function GET(request: Request) {
       );
     }
     const sheets = getSheets();
-    const response = await sheets.spreadsheets.values.get({
+
+    // Get headers as formatted text (column names)
+    const headerRes = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `${sheetName}!A:Z`,
+      range: `${sheetName}!1:1`,
+      valueRenderOption: "FORMATTED_VALUE",
     });
-    const rows = response.data.values || [];
-    const headers = rows.length > 0 ? rows[0] : [];
-    const data = rows.length > 1 ? rows.slice(1) : [];
+    const headers = headerRes.data.values?.[0] || [];
+
+    // Get data rows as unformatted values (raw numbers, not "$68,500")
+    const dataRes = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `${sheetName}!A2:Z`,
+      valueRenderOption: "UNFORMATTED_VALUE",
+    });
+    const rawData = dataRes.data.values || [];
+    // Convert all values to strings for consistent handling downstream
+    const data = rawData.map((row: unknown[]) =>
+      row.map((cell) => (cell === null || cell === undefined) ? "" : String(cell))
+    );
+
     return NextResponse.json({ headers, data });
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);
