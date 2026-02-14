@@ -1,3 +1,4 @@
+import { AppShell } from "@/components/app-shell"
 import { VehiculosContent } from "@/components/vehiculos-content"
 
 export const metadata = {
@@ -6,5 +7,9 @@ export const metadata = {
 }
 
 export default function VehiculosPage() {
-  return <VehiculosContent />
+  return (
+    <AppShell title="Vehiculos" subtitle="Gestion de flota y mantenimiento">
+      <VehiculosContent />
+    </AppShell>
+  )
 }

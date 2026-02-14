@@ -1,3 +1,4 @@
+import { AppShell } from "@/components/app-shell"
 import { PresupuestosContent } from "@/components/presupuestos-content"
 
 export const metadata = {
@@ -6,5 +7,9 @@ export const metadata = {
 }
 
 export default function PresupuestosPage() {
-  return <PresupuestosContent />
+  return (
+    <AppShell title="Presupuestos" subtitle="Control de presupuestos mensuales por categoria">
+      <PresupuestosContent />
+    </AppShell>
+  )
 }
