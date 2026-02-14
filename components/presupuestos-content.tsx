@@ -30,7 +30,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow, updateRow } from "@/hooks/use-sheets"
+import { useSheet, addRow, updateRowData } from "@/hooks/use-sheets"
 import { formatCurrency, parseDate, parseSheetNumber } from "@/lib/utils"
 
 const MESES_NOMBRES = [
@@ -172,13 +172,12 @@ export function PresupuestosContent() {
         // Update existing
         const pres = presupuestos.find((p) => p.id === editingId)
         if (pres) {
-          await updateRow("Presupuestos", pres.rowIndex, [
-            pres.id,
-            nuevoPres.categoria,
-            nuevoPres.monto,
-            nuevoPres.mes,
-            nuevoPres.anio,
-          ])
+          await updateRowData("Presupuestos", pres.rowIndex, {
+            "Categoria": nuevoPres.categoria,
+            "Monto": nuevoPres.monto,
+            "Mes": nuevoPres.mes,
+            "Anio": nuevoPres.anio,
+          })
         }
       } else {
         // New
@@ -216,7 +215,7 @@ export function PresupuestosContent() {
   const handleDelete = async (p: PresupuestoConGasto) => {
     // Update with zero to "delete"
     try {
-      await updateRow("Presupuestos", p.rowIndex, [p.id, p.categoria, "0", String(p.mes), String(p.anio)])
+      await updateRowData("Presupuestos", p.rowIndex, { "Monto": "0" })
       await sheetsPresupuestos.mutate()
     } catch {
       // Handle silently

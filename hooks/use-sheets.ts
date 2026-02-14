@@ -213,6 +213,24 @@ export async function updateRow(
   return res.json()
 }
 
+export async function updateRowData(
+  sheetName: string,
+  rowIndex: number,
+  data: Record<string, string>,
+) {
+  const res = await fetch("/api/sheets", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sheetName, rowIndex, data }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Error de red" }))
+    throw new Error(err.error || "Error al actualizar")
+  }
+  await globalMutate(`/api/sheets?sheet=${encodeURIComponent(sheetName)}`)
+  return res.json()
+}
+
 export async function updateCell(
   sheetName: string,
   rowIndex: number,

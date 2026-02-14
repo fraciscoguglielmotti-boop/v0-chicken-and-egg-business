@@ -42,7 +42,7 @@ import {
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow, updateRow, deleteRow, type SheetRow } from "@/hooks/use-sheets"
+import { useSheet, addRow, updateRowData, deleteRow, type SheetRow } from "@/hooks/use-sheets"
 import { formatCurrency, formatDate, formatDateForSheets, parseDate, parseSheetNumber } from "@/lib/utils"
 
 // --- Constants ---
@@ -276,23 +276,34 @@ export function GastosContent() {
     setSaving(true)
     try {
       const fechaSheets = formatDateForSheets(nuevoGasto.fecha)
-      const rowData = [
-        editRowIndex !== null ? (rows[editRowIndex]?.ID || "") : `G${Date.now()}`,
-        fechaSheets,
-        "Egreso",
-        getCategoriaLabel(nuevoGasto.categoria),
-        nuevoGasto.descripcion,
-        nuevoGasto.monto,
-        nuevoGasto.medioPago === "tarjeta" ? "Tarjeta" : "Efectivo",
-        nuevoGasto.tarjeta || "",
-        nuevoGasto.banco || "",
-        nuevoGasto.cuotaActual || "1",
-        nuevoGasto.cuotasTotal || "1",
-        "",
-      ]
       if (editRowIndex !== null) {
-        await updateRow("Gastos", editRowIndex, rowData)
+        await updateRowData("Gastos", editRowIndex, {
+          "Fecha": fechaSheets,
+          "Tipo": "Egreso",
+          "Categoria": getCategoriaLabel(nuevoGasto.categoria),
+          "Descripcion": nuevoGasto.descripcion,
+          "Monto": nuevoGasto.monto,
+          "Medio Pago": nuevoGasto.medioPago === "tarjeta" ? "Tarjeta" : "Efectivo",
+          "Tarjeta": nuevoGasto.tarjeta || "",
+          "Banco": nuevoGasto.banco || "",
+          "Cuota Actual": nuevoGasto.cuotaActual || "1",
+          "Cuotas Total": nuevoGasto.cuotasTotal || "1",
+        })
       } else {
+        const rowData = [
+          `G${Date.now()}`,
+          fechaSheets,
+          "Egreso",
+          getCategoriaLabel(nuevoGasto.categoria),
+          nuevoGasto.descripcion,
+          nuevoGasto.monto,
+          nuevoGasto.medioPago === "tarjeta" ? "Tarjeta" : "Efectivo",
+          nuevoGasto.tarjeta || "",
+          nuevoGasto.banco || "",
+          nuevoGasto.cuotaActual || "1",
+          nuevoGasto.cuotasTotal || "1",
+          "",
+        ]
         await addRow("Gastos", [rowData])
       }
       await mutate()

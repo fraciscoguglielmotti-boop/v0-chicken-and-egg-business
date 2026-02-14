@@ -230,22 +230,70 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const { sheetName, rowIndex, values } = await request.json();
+    const { sheetName, rowIndex, values, data } = await request.json();
     const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-    if (!sheetName || rowIndex === undefined || !values) {
+    if (!sheetName || rowIndex === undefined) {
       return NextResponse.json(
         { error: "Faltan campos requeridos" },
         { status: 400 },
       );
     }
     const sheets = getSheets();
-    const range = `${sheetName}!A${rowIndex + 2}:Z${rowIndex + 2}`;
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range,
-      valueInputOption: "USER_ENTERED",
-      requestBody: { values: [values] },
-    });
+
+    // Support both legacy array-based values and new key-value data object
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      // New mode: data is { "Fecha": "10/02/2026", "Cliente": "Juan", ... }
+      // Read current headers to map keys to column positions
+      const headerRes = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${sheetName}!1:1`,
+        valueRenderOption: "FORMATTED_VALUE",
+      });
+      const headers = headerRes.data.values?.[0] || [];
+      const normalizeH = (s: string) => s.trim().toLowerCase().replace(/[\s_]/g, "");
+
+      // Read current row values to preserve unmodified columns
+      const rowRange = `${sheetName}!A${rowIndex + 2}:${colIndexToLetter(Math.max(headers.length - 1, 0))}${rowIndex + 2}`;
+      const rowRes = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: rowRange,
+      });
+      const currentValues: string[] = (rowRes.data.values?.[0] || []).map((v: unknown) =>
+        v === null || v === undefined ? "" : String(v),
+      );
+
+      // Ensure array is at least as long as headers
+      while (currentValues.length < headers.length) currentValues.push("");
+
+      // Overwrite only the columns that are in data
+      for (const [key, val] of Object.entries(data)) {
+        const normalizedKey = normalizeH(key);
+        const idx = headers.findIndex((h: string) => normalizeH(h) === normalizedKey);
+        if (idx >= 0) {
+          currentValues[idx] = val as string;
+        }
+      }
+
+      const range = `${sheetName}!A${rowIndex + 2}:${colIndexToLetter(currentValues.length - 1)}${rowIndex + 2}`;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [currentValues] },
+      });
+    } else if (values) {
+      // Legacy mode: values is a flat array written A-Z
+      const range = `${sheetName}!A${rowIndex + 2}:Z${rowIndex + 2}`;
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [values] },
+      });
+    } else {
+      return NextResponse.json({ error: "Faltan values o data" }, { status: 400 });
+    }
+
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);

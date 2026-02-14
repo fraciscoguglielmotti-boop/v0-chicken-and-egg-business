@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow, updateRow, deleteRow, type SheetRow } from "@/hooks/use-sheets"
+import { useSheet, addRow, updateRowData, deleteRow, type SheetRow } from "@/hooks/use-sheets"
 import type { Cliente } from "@/lib/types"
 import {
   formatCurrency,
@@ -146,18 +146,24 @@ export function ClientesContent() {
     if (!validate()) return
     setSaving(true)
     try {
-      const rowData = [
-        editRowIndex !== null ? (rows[editRowIndex]?.ID || "") : Date.now().toString(),
-        form.nombre.trim(),
-        form.cuit.trim(),
-        form.telefono.trim(),
-        form.direccion.trim(),
-        form.saldoInicial || "0",
-        editRowIndex !== null ? (rows[editRowIndex]?.FechaAlta || formatDateForSheets(new Date())) : formatDateForSheets(new Date()),
-      ]
       if (editRowIndex !== null) {
-        await updateRow("Clientes", editRowIndex, rowData)
+        await updateRowData("Clientes", editRowIndex, {
+          "Nombre": form.nombre.trim(),
+          "CUIT": form.cuit.trim(),
+          "Telefono": form.telefono.trim(),
+          "Direccion": form.direccion.trim(),
+          "Saldo": form.saldoInicial || "0",
+        })
       } else {
+        const rowData = [
+          Date.now().toString(),
+          form.nombre.trim(),
+          form.cuit.trim(),
+          form.telefono.trim(),
+          form.direccion.trim(),
+          form.saldoInicial || "0",
+          formatDateForSheets(new Date()),
+        ]
         await addRow("Clientes", [rowData])
       }
       await mutate()

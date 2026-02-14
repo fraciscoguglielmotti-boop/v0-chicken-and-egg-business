@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select"
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow, updateRow, deleteRow, type SheetRow } from "@/hooks/use-sheets"
+import { useSheet, addRow, updateRowData, deleteRow, type SheetRow } from "@/hooks/use-sheets"
 import { PRODUCTOS, type Compra, type ProductoTipo } from "@/lib/types"
 import { formatCurrency, formatDate, formatDateForSheets, formatDateInput, parseDate, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
 
@@ -147,8 +147,15 @@ export function ComprasContent() {
     try {
       const producto = PRODUCTOS.find((p) => p.id === form.productoId)
       if (editData) {
-        const values = [sheetsCompras.rows[editData.rowIndex]?.ID || "", formatDateForSheets(form.fecha), form.proveedorNombre, producto?.nombre || "", form.cantidad, form.precioUnitario, String(subtotal), "pendiente"]
-        await updateRow("Compras", editData.rowIndex, values)
+        await updateRowData("Compras", editData.rowIndex, {
+          "Fecha": formatDateForSheets(form.fecha),
+          "Proveedor": form.proveedorNombre,
+          "Producto": producto?.nombre || "",
+          "Cantidad": form.cantidad,
+          "Precio Unitario": form.precioUnitario,
+          "Total": String(subtotal),
+          "Estado": "pendiente",
+        })
       } else {
         const id = Date.now().toString()
         await addRow("Compras", [[id, formatDateForSheets(form.fecha), form.proveedorNombre, producto?.nombre || "", form.cantidad, form.precioUnitario, String(subtotal), "pendiente"]])

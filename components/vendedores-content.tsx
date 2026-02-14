@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow, updateRow, deleteRow, type SheetRow } from "@/hooks/use-sheets"
+import { useSheet, addRow, updateRowData, deleteRow, type SheetRow } from "@/hooks/use-sheets"
 import { formatCurrency, parseDate, parseSheetNumber, resolveVentaMonto } from "@/lib/utils"
 
 interface Vendedor {
@@ -197,13 +197,10 @@ export function VendedoresContent() {
     setSaving(true)
     try {
       if (editRowIndex !== null) {
-        const existingRow = sheetsVendedores.rows[editRowIndex]
-        await updateRow("Vendedores", editRowIndex, [
-          existingRow?.ID || `V${Date.now()}`,
-          nuevoVendedor.nombre,
-          nuevoVendedor.comision,
-          existingRow?.FechaAlta || new Date().toLocaleDateString("es-AR"),
-        ])
+        await updateRowData("Vendedores", editRowIndex, {
+          "Nombre": nuevoVendedor.nombre,
+          "Comision": nuevoVendedor.comision,
+        })
       } else {
         const id = `V${Date.now()}`
         await addRow("Vendedores", [[id, nuevoVendedor.nombre, nuevoVendedor.comision, new Date().toLocaleDateString("es-AR")]])

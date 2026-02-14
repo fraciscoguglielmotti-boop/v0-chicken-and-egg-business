@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select"
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow, updateRow, deleteRow, type SheetRow } from "@/hooks/use-sheets"
+import { useSheet, addRow, updateRowData, deleteRow, type SheetRow } from "@/hooks/use-sheets"
 import type { Pago } from "@/lib/types"
 import { NuevoPagoDialog, type PagoEditData } from "./nuevo-pago-dialog"
 import { formatCurrency, formatDateForSheets, formatDate, formatDateInput, parseDate, parseSheetNumber, resolveEntityName } from "@/lib/utils"
@@ -132,8 +132,13 @@ export function PagosContent() {
   const handleUpdatePago = async (rowIndex: number, pago: Pago) => {
     setSaving(true)
     try {
-      const values = [rows[rowIndex]?.ID || "", formatDateForSheets(pago.fecha), pago.proveedorNombre, pago.proveedorNombre, String(pago.monto), pago.metodoPago, pago.observaciones || ""]
-      await updateRow("Pagos", rowIndex, values)
+      await updateRowData("Pagos", rowIndex, {
+        "Fecha": formatDateForSheets(pago.fecha),
+        "Proveedor": pago.proveedorNombre,
+        "Monto": String(pago.monto),
+        "MetodoPago": pago.metodoPago,
+        "Observaciones": pago.observaciones || "",
+      })
       await mutate()
     } catch { /* silent */ } finally { setSaving(false) }
   }

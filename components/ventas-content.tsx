@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select"
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow, updateRow, deleteRow, type SheetRow } from "@/hooks/use-sheets"
+import { useSheet, addRow, updateRowData, deleteRow, type SheetRow } from "@/hooks/use-sheets"
 import { ventasIniciales } from "@/lib/store"
 import type { Venta, VentaConVendedor, VentaItem, ProductoTipo } from "@/lib/types"
 import { NuevaVentaDialog, type VentaEditData } from "./nueva-venta-dialog"
@@ -175,8 +175,14 @@ export function VentasContent() {
       const productos = venta.items.map((i) => `${i.cantidad} ${i.productoNombre}`).join(", ")
       const cantidadTotal = venta.items.reduce((a, i) => a + i.cantidad, 0)
       const precioPromedio = venta.items.length > 0 ? venta.items[0].precioUnitario : 0
-      const values = [rows[rowIndex]?.ID || "", formatDateForSheets(venta.fecha), venta.clienteNombre, venta.clienteNombre, productos, String(cantidadTotal), String(precioPromedio), venta.vendedor || ""]
-      await updateRow("Ventas", rowIndex, values)
+      await updateRowData("Ventas", rowIndex, {
+        "Fecha": formatDateForSheets(venta.fecha),
+        "Cliente": venta.clienteNombre,
+        "Productos": productos,
+        "Cantidad": String(cantidadTotal),
+        "Precio Unitario": String(precioPromedio),
+        "Vendedor": venta.vendedor || "",
+      })
       await mutate()
     } catch { /* silent */ } finally { setSaving(false) }
   }

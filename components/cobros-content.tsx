@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select"
 import { DataTable } from "./data-table"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow, updateRow, updateCell, deleteRow, type SheetRow } from "@/hooks/use-sheets"
+import { useSheet, addRow, updateRowData, updateCell, deleteRow, type SheetRow } from "@/hooks/use-sheets"
 import { cobrosIniciales } from "@/lib/store"
 import type { Cobro } from "@/lib/types"
 import { NuevoCobroDialog, type CobroEditData } from "./nuevo-cobro-dialog"
@@ -144,9 +144,13 @@ export function CobrosContent() {
   const handleUpdateCobro = async (rowIndex: number, cobro: Cobro) => {
     setSaving(true)
     try {
-      const existingRow = rows[rowIndex]
-      const values = [existingRow?.ID || "", formatDateForSheets(cobro.fecha), cobro.clienteNombre, cobro.clienteNombre, String(cobro.monto), cobro.metodoPago, cobro.observaciones || "", existingRow?.VerificadoAgroaves || "FALSE"]
-      await updateRow("Cobros", rowIndex, values)
+      await updateRowData("Cobros", rowIndex, {
+        "Fecha": formatDateForSheets(cobro.fecha),
+        "Cliente": cobro.clienteNombre,
+        "Monto": String(cobro.monto),
+        "MetodoPago": cobro.metodoPago,
+        "Observaciones": cobro.observaciones || "",
+      })
       await mutate()
     } catch { /* silent */ } finally { setSaving(false) }
   }

@@ -45,7 +45,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { SheetsStatus } from "./sheets-status"
-import { useSheet, addRow, updateRow, deleteRow } from "@/hooks/use-sheets"
+import { useSheet, addRow, updateRow, updateRowData, deleteRow } from "@/hooks/use-sheets"
 import { formatCurrency, formatDate, formatDateForSheets, formatDateInput, parseDate, parseSheetNumber } from "@/lib/utils"
 
 const TIPOS_MANTENIMIENTO = [
@@ -258,7 +258,13 @@ export function VehiculosContent() {
         nuevoVehiculo.kilometraje || "0",
       ]
       if (editVehiculoIdx !== null) {
-        await updateRow("Vehiculos", editVehiculoIdx, rowData)
+        await updateRowData("Vehiculos", editVehiculoIdx, {
+          "Patente": nuevoVehiculo.patente.toUpperCase(),
+          "Marca": nuevoVehiculo.marca,
+          "Modelo": nuevoVehiculo.modelo,
+          "Anio": nuevoVehiculo.anio,
+          "Kilometraje": nuevoVehiculo.kilometraje || "0",
+        })
         // Update selectedVehiculo if we're editing the currently selected one
         if (selectedVehiculo && selectedVehiculo._rowIndex === editVehiculoIdx) {
           setSelectedVehiculo({
@@ -342,7 +348,16 @@ export function VehiculosContent() {
       ]
 
       if (editMantIdx !== null) {
-        await updateRow("Mantenimientos", editMantIdx, rowData)
+        await updateRowData("Mantenimientos", editMantIdx, {
+          "Fecha": formatDateForSheets(parseDate(nuevoMant.fecha)),
+          "Tipo": nuevoMant.tipo,
+          "Descripcion": nuevoMant.descripcion,
+          "Kilometraje": nuevoMant.kilometraje || String(selectedVehiculo.kilometraje),
+          "Costo": nuevoMant.costo || "0",
+          "Taller": nuevoMant.taller,
+          "ProximoKM": nuevoMant.proximoKm || "",
+          "ProximaFecha": nuevoMant.proximaFecha ? formatDateForSheets(parseDate(nuevoMant.proximaFecha)) : "",
+        })
       } else {
         await addRow("Mantenimientos", [rowData])
       }
@@ -354,14 +369,9 @@ export function VehiculosContent() {
           (r) => (r.Patente || "").toUpperCase() === selectedVehiculo.patente.toUpperCase()
         )
         if (vIdx >= 0) {
-          await updateRow("Vehiculos", vIdx, [
-            selectedVehiculo.id,
-            selectedVehiculo.patente,
-            selectedVehiculo.marca,
-            selectedVehiculo.modelo,
-            selectedVehiculo.anio,
-            String(newKm),
-          ])
+          await updateRowData("Vehiculos", vIdx, {
+            "Kilometraje": String(newKm),
+          })
           await sheetsVehiculos.mutate()
           setSelectedVehiculo({ ...selectedVehiculo, kilometraje: newKm })
         }
