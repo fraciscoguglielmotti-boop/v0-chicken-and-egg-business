@@ -11,7 +11,7 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ title, subtitle, onMenuClick }: AppHeaderProps) {
-  const { user, loginActivo, logout } = useAuth()
+  const { user, logout } = useAuth()
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:px-6">
@@ -31,18 +31,16 @@ export function AppHeader({ title, subtitle, onMenuClick }: AppHeaderProps) {
         )}
       </div>
       <div className="flex items-center gap-3">
-        {user && loginActivo && user.usuario !== "auto" && (
+        {user && (
           <div className="hidden items-center gap-2 sm:flex">
             <User className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">{user.nombre}</span>
+            <span className="text-sm text-muted-foreground">{user.email}</span>
           </div>
         )}
-        {loginActivo && (
-          <Button variant="ghost" size="sm" onClick={logout} className="gap-2">
-            <LogOut className="h-4 w-4" />
-            <span className="hidden sm:inline">Salir</span>
-          </Button>
-        )}
+        <Button variant="ghost" size="sm" onClick={logout} className="gap-2">
+          <LogOut className="h-4 w-4" />
+          <span className="hidden sm:inline">Salir</span>
+        </Button>
       </div>
     </header>
   )
