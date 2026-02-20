@@ -10,8 +10,6 @@ import {
   Users,
   Truck,
   BarChart3,
-  Settings,
-  FileSpreadsheet,
   X,
   Egg,
   Calculator,
@@ -56,13 +54,7 @@ const navSections = [
       { name: "Flujo de Fondos", href: "/flujo", icon: Wallet },
     ],
   },
-  {
-    label: "Sistema",
-    items: [
-      { name: "Google Sheets", href: "/sheets", icon: FileSpreadsheet },
-      { name: "Configuracion", href: "/config", icon: Settings },
-    ],
-  },
+
 ]
 
 interface AppSidebarProps {
@@ -153,8 +145,8 @@ export function AppSidebar({ open, onClose }: AppSidebarProps) {
         {/* Footer */}
         <div className="shrink-0 border-t border-border p-3">
           <div className="rounded-lg bg-muted px-3 py-2.5">
-            <p className="text-[11px] text-muted-foreground">Sincronizado con</p>
-            <p className="text-sm font-medium text-foreground">Google Sheets</p>
+            <p className="text-[11px] text-muted-foreground">Base de datos</p>
+            <p className="text-sm font-medium text-foreground">Supabase</p>
           </div>
         </div>
       </aside>

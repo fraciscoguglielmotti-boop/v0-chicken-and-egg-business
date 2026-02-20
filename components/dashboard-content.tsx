@@ -3,102 +3,65 @@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useMemo } from "react"
-import {
-  ShoppingCart,
-  Receipt,
-  TrendingUp,
-  TrendingDown,
-  ArrowRight,
-} from "lucide-react"
+import { ShoppingCart, Receipt, TrendingUp, TrendingDown, ArrowRight } from "lucide-react"
 import Link from "next/link"
 import { StatCard } from "./stat-card"
 import { DataTable } from "./data-table"
-import { SheetsStatus } from "./sheets-status"
-import { useSheet, type SheetRow } from "@/hooks/use-sheets"
-import { ventasIniciales, cobrosIniciales, calcularStats } from "@/lib/store"
-import type { Venta, Cobro } from "@/lib/types"
-import { formatCurrency, formatDate, parseDate, parseSheetNumber, resolveEntityName, resolveVentaMonto } from "@/lib/utils"
+import { useSupabase } from "@/hooks/use-supabase"
+import { formatCurrency, formatDate } from "@/lib/utils"
 
-function rowToVenta(row: SheetRow, i: number, clienteLookup: SheetRow[]): Venta {
-  const { cantidad, precioUnitario, total } = resolveVentaMonto(row)
-  const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
-  const fecha = parseDate(row.Fecha || "")
-  return {
-    id: row.ID || String(i),
-    fecha,
-    clienteId: clienteNombre,
-    clienteNombre,
-    items: [{
-      productoId: "producto",
-      productoNombre: row.Productos || "Producto",
-      cantidad,
-      precioUnitario,
-      subtotal: total,
-    }],
-    total,
-    estado: "pendiente",
-    createdAt: fecha,
-  }
+interface Venta {
+  id: string
+  fecha: string
+  cliente_nombre: string
+  productos: any
+  cantidad: number
+  precio_unitario: number
 }
 
-function rowToCobro(row: SheetRow, i: number, clienteLookup: SheetRow[]): Cobro {
-  const clienteNombre = resolveEntityName(row.Cliente || "", row.ClienteID || "", clienteLookup)
-  const fecha = parseDate(row.Fecha || "")
-  return {
-    id: row.ID || String(i),
-    fecha,
-    clienteId: clienteNombre,
-    clienteNombre,
-      monto: parseSheetNumber(row.Monto),
-    metodoPago: (row.MetodoPago as Cobro["metodoPago"]) || "efectivo",
-    createdAt: fecha,
-  }
+interface Cobro {
+  id: string
+  fecha: string
+  cliente_nombre: string
+  monto: number
+  metodo_pago: string
 }
 
-const estadoColors = {
-  pendiente: "bg-accent/20 text-accent-foreground border-accent/30",
-  pagada: "bg-primary/20 text-primary border-primary/30",
-  parcial: "bg-secondary text-secondary-foreground border-border",
-}
-
-const estadoLabels = {
-  pendiente: "Pendiente",
-  pagada: "Pagada",
-  parcial: "Parcial",
+interface Cliente {
+  id: string
+  nombre: string
+  saldo_inicial: number
 }
 
 export function DashboardContent() {
-  const sheetsVentas = useSheet("Ventas")
-  const sheetsCobros = useSheet("Cobros")
-  const sheetsClientes = useSheet("Clientes")
+  const { data: ventas = [], isLoading: loadingVentas } = useSupabase<Venta>("ventas")
+  const { data: cobros = [], isLoading: loadingCobros } = useSupabase<Cobro>("cobros")
+  const { data: clientes = [], isLoading: loadingClientes } = useSupabase<Cliente>("clientes")
 
-  const isLoading = sheetsVentas.isLoading || sheetsCobros.isLoading
-  const hasError = sheetsVentas.error || sheetsCobros.error || null
-  const isConnected = !hasError && !isLoading
+  const isLoading = loadingVentas || loadingCobros || loadingClientes
 
-  // Calculate client balances: ventas - cobros
+  // Calculate client balances
   const clientBalances = useMemo(() => {
     const balances = new Map<string, { nombre: string; saldo: number }>()
 
-    // Add ventas (debt)
-    sheetsVentas.rows.forEach((row) => {
-      const cliente = resolveEntityName(row.Cliente || "", row.ClienteID || "", sheetsClientes.rows)
-      if (!cliente) return
-      const key = cliente.toLowerCase().trim()
-      const { total } = resolveVentaMonto(row)
-      const existing = balances.get(key) || { nombre: cliente, saldo: 0 }
+    clientes.forEach((c) => {
+      const key = c.nombre.toLowerCase().trim()
+      balances.set(key, { nombre: c.nombre, saldo: c.saldo_inicial || 0 })
+    })
+
+    ventas.forEach((v) => {
+      const key = v.cliente_nombre.toLowerCase().trim()
+      const total = v.cantidad * v.precio_unitario
+      const existing = balances.get(key) || { nombre: v.cliente_nombre, saldo: 0 }
       existing.saldo += total
       balances.set(key, existing)
     })
 
-    // Subtract cobros (payments)
-    sheetsCobros.rows.forEach((row) => {
-      const cliente = resolveEntityName(row.Cliente || "", row.ClienteID || "", sheetsClientes.rows)
-      if (!cliente) return
-      const key = cliente.toLowerCase().trim()
+    cobros.forEach((c) => {
+      const key = c.cliente_nombre.toLowerCase().trim()
       const existing = balances.get(key)
       if (existing) {
-        existing.saldo -= parseSheetNumber(row.Monto)
+        existing.saldo -= Number(c.monto)
       }
     })
 
@@ -106,107 +69,48 @@ export function DashboardContent() {
       .filter((c) => c.saldo > 0)
       .sort((a, b) => b.saldo - a.saldo)
       .slice(0, 5)
-  }, [sheetsVentas.rows, sheetsCobros.rows, sheetsClientes.rows])
-
-  const ventas: Venta[] = useMemo(() => {
-    if (isConnected && sheetsVentas.rows.length > 0) return sheetsVentas.rows.map((row, i) => rowToVenta(row, i, sheetsClientes.rows))
-    return ventasIniciales
-  }, [isConnected, sheetsVentas.rows, sheetsClientes.rows])
-
-  const cobros: Cobro[] = useMemo(() => {
-    if (isConnected && sheetsCobros.rows.length > 0) return sheetsCobros.rows.map((row, i) => rowToCobro(row, i, sheetsClientes.rows))
-    return cobrosIniciales
-  }, [isConnected, sheetsCobros.rows, sheetsClientes.rows])
+  }, [ventas, cobros, clientes])
 
   const stats = useMemo(() => {
-    if (!isConnected) return calcularStats()
-
-    const totalVentas = ventas.reduce((acc, v) => acc + v.total, 0)
-    const totalCobros = cobros.reduce((acc, c) => acc + c.monto, 0)
-    const cuentasPorCobrar = sheetsClientes.rows.reduce(
-      (acc, r) => acc + parseSheetNumber(r.Saldo),
-      0
-    )
+    const totalVentas = ventas.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
+    const totalCobros = cobros.reduce((acc, c) => acc + Number(c.monto), 0)
+    const cuentasPorCobrar = clientBalances.reduce((acc, c) => acc + c.saldo, 0)
 
     return {
-      ventasHoy: totalVentas,
       ventasMes: totalVentas,
-      cobrosHoy: totalCobros,
       cobrosMes: totalCobros,
       cuentasPorCobrar,
-      cuentasPorPagar: 0,
     }
-  }, [isConnected, ventas, cobros, sheetsClientes.rows])
+  }, [ventas, cobros, clientBalances])
+
+  const ventasRecientes = ventas.slice(0, 5).map((v) => ({
+    ...v,
+    total: v.cantidad * v.precio_unitario,
+    estado: "pagada" as const,
+  }))
 
   const ventasColumns = [
-    { key: "fecha", header: "Fecha", render: (v: Venta) => formatDate(v.fecha) },
-    { key: "clienteNombre", header: "Cliente" },
-    {
-      key: "total",
-      header: "Total",
-      render: (v: Venta) => <span className="font-semibold">{formatCurrency(v.total)}</span>,
-    },
-    {
-      key: "estado",
-      header: "Estado",
-      render: (v: Venta) => (
-        <Badge variant="outline" className={estadoColors[v.estado]}>{estadoLabels[v.estado]}</Badge>
-      ),
-    },
+    { key: "fecha", header: "Fecha", render: (v: any) => formatDate(new Date(v.fecha)) },
+    { key: "cliente_nombre", header: "Cliente" },
+    { key: "total", header: "Total", render: (v: any) => <span className="font-semibold">{formatCurrency(v.total)}</span> },
+    { key: "estado", header: "Estado", render: (v: any) => <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">Pagada</Badge> },
   ]
 
   const cobrosColumns = [
-    { key: "fecha", header: "Fecha", render: (c: Cobro) => formatDate(c.fecha) },
-    { key: "clienteNombre", header: "Cliente" },
-    {
-      key: "monto",
-      header: "Monto",
-      render: (c: Cobro) => <span className="font-semibold text-primary">{formatCurrency(c.monto)}</span>,
-    },
-    {
-      key: "metodoPago",
-      header: "Metodo",
-      render: (c: Cobro) => <span className="capitalize">{c.metodoPago}</span>,
-    },
+    { key: "fecha", header: "Fecha", render: (c: Cobro) => formatDate(new Date(c.fecha)) },
+    { key: "cliente_nombre", header: "Cliente" },
+    { key: "monto", header: "Monto", render: (c: Cobro) => <span className="font-semibold text-primary">{formatCurrency(Number(c.monto))}</span> },
+    { key: "metodo_pago", header: "Metodo", render: (c: Cobro) => <span className="capitalize">{c.metodo_pago}</span> },
   ]
 
   return (
     <div className="space-y-8">
-      {/* Connection Status */}
-      <div className="flex justify-end">
-        <SheetsStatus isLoading={isLoading} error={hasError} isConnected={isConnected} />
-      </div>
-
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Total Ventas"
-          value={formatCurrency(stats.ventasMes)}
-          subtitle="Registradas"
-          icon={ShoppingCart}
-          variant="success"
-        />
-        <StatCard
-          title="Total Cobros"
-          value={formatCurrency(stats.cobrosMes)}
-          subtitle="Recaudado"
-          icon={TrendingUp}
-          variant="default"
-        />
-        <StatCard
-          title="Cobros"
-          value={formatCurrency(stats.cobrosHoy)}
-          subtitle="Total cobrado"
-          icon={Receipt}
-          variant="success"
-        />
-        <StatCard
-          title="Por Cobrar"
-          value={formatCurrency(stats.cuentasPorCobrar)}
-          subtitle="Saldo pendiente"
-          icon={TrendingDown}
-          variant="warning"
-        />
+        <StatCard title="Total Ventas" value={formatCurrency(stats.ventasMes)} subtitle="Registradas" icon={ShoppingCart} variant="success" />
+        <StatCard title="Total Cobros" value={formatCurrency(stats.cobrosMes)} subtitle="Recaudado" icon={TrendingUp} variant="default" />
+        <StatCard title="Cobros" value={formatCurrency(stats.cobrosMes)} subtitle="Total cobrado" icon={Receipt} variant="success" />
+        <StatCard title="Por Cobrar" value={formatCurrency(stats.cuentasPorCobrar)} subtitle="Saldo pendiente" icon={TrendingDown} variant="warning" />
       </div>
 
       {/* Quick Actions + Top Deudores */}
@@ -225,9 +129,7 @@ export function DashboardContent() {
             <div className="border-t pt-4">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-foreground">Pendiente de Cobro</span>
-                <span className="text-lg font-bold text-accent">
-                  {formatCurrency(stats.ventasMes - stats.cobrosMes)}
-                </span>
+                <span className="text-lg font-bold text-accent">{formatCurrency(stats.ventasMes - stats.cobrosMes)}</span>
               </div>
             </div>
           </div>
@@ -287,7 +189,7 @@ export function DashboardContent() {
               </Button>
             </Link>
           </div>
-          <DataTable columns={ventasColumns} data={ventas.slice(0, 5)} emptyMessage={isLoading ? "Cargando..." : "Sin ventas"} />
+          <DataTable columns={ventasColumns} data={ventasRecientes} emptyMessage={isLoading ? "Cargando..." : "Sin ventas"} />
         </div>
         <div className="space-y-4">
           <div className="flex items-center justify-between">
