@@ -28,9 +28,16 @@ interface Proveedor {
   nombre: string
 }
 
+interface Producto {
+  id: string
+  nombre: string
+  activo: boolean
+}
+
 export function ComprasContent() {
   const { data: compras = [], isLoading, mutate } = useSupabase<Compra>("compras")
   const { data: proveedores = [] } = useSupabase<Proveedor>("proveedores")
+  const { data: productos = [] } = useSupabase<Producto>("productos")
   const [searchTerm, setSearchTerm] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
@@ -41,6 +48,8 @@ export function ComprasContent() {
     precio_unitario: "",
     estado: "pendiente"
   })
+
+  const productosActivos = productos.filter(p => p.activo)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -116,7 +125,16 @@ export function ComprasContent() {
               </div>
               <div>
                 <Label>Producto</Label>
-                <Input value={formData.producto} onChange={(e) => setFormData({...formData, producto: e.target.value})} required />
+                <Select value={formData.producto} onValueChange={(value) => setFormData({...formData, producto: value})} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar producto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {productosActivos.map(p => (
+                      <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

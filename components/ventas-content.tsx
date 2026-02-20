@@ -5,6 +5,7 @@ import { Plus, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
 import { useSupabase, insertRow } from "@/hooks/use-supabase"
@@ -25,33 +26,42 @@ interface Cliente {
   nombre: string
 }
 
+interface Producto {
+  id: string
+  nombre: string
+  activo: boolean
+}
+
 export function VentasContent() {
   const { data: ventas = [], isLoading, mutate } = useSupabase<Venta>("ventas")
   const { data: clientes = [] } = useSupabase<Cliente>("clientes")
+  const { data: productos = [] } = useSupabase<Producto>("productos")
   const [searchTerm, setSearchTerm] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
     cliente_nombre: "",
-    productos: "",
+    producto: "",
     cantidad: "",
     precio_unitario: "",
     vendedor: ""
   })
+
+  const productosActivos = productos.filter(p => p.activo)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     await insertRow("ventas", {
       fecha: formData.fecha,
       cliente_nombre: formData.cliente_nombre,
-      productos: { descripcion: formData.productos },
+      productos: { nombre: formData.producto },
       cantidad: parseFloat(formData.cantidad),
       precio_unitario: parseFloat(formData.precio_unitario),
       vendedor: formData.vendedor || null
     })
     mutate()
     setIsDialogOpen(false)
-    setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", productos: "", cantidad: "", precio_unitario: "", vendedor: "" })
+    setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", producto: "", cantidad: "", precio_unitario: "", vendedor: "" })
   }
 
   const filteredVentas = ventas.filter((v) =>
@@ -61,6 +71,7 @@ export function VentasContent() {
   const columns = [
     { key: "fecha", header: "Fecha", render: (v: Venta) => formatDate(new Date(v.fecha)) },
     { key: "cliente_nombre", header: "Cliente" },
+    { key: "productos", header: "Producto", render: (v: Venta) => v.productos?.nombre || v.productos?.descripcion || "-" },
     { key: "cantidad", header: "Cantidad" },
     { key: "precio_unitario", header: "Precio Unit.", render: (v: Venta) => formatCurrency(v.precio_unitario) },
     { key: "total", header: "Total", render: (v: Venta) => <span className="font-semibold">{formatCurrency(v.cantidad * v.precio_unitario)}</span> },
@@ -103,8 +114,17 @@ export function VentasContent() {
                 </datalist>
               </div>
               <div>
-                <Label>Productos</Label>
-                <Input value={formData.productos} onChange={(e) => setFormData({...formData, productos: e.target.value})} required />
+                <Label>Producto</Label>
+                <Select value={formData.producto} onValueChange={(value) => setFormData({...formData, producto: value})} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar producto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {productosActivos.map(p => (
+                      <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
