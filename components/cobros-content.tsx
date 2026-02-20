@@ -11,6 +11,7 @@ import { DataTable } from "./data-table"
 import { useSupabase, insertRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/hooks/use-toast"
 
 interface Cobro {
   id: string
@@ -27,9 +28,16 @@ interface Cliente {
   nombre: string
 }
 
+interface Proveedor {
+  id: string
+  nombre: string
+}
+
 export function CobrosContent() {
   const { data: cobros = [], isLoading, mutate } = useSupabase<Cobro>("cobros")
   const { data: clientes = [] } = useSupabase<Cliente>("clientes")
+  const { data: proveedores = [] } = useSupabase<Proveedor>("proveedores")
+  const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
@@ -43,17 +51,69 @@ export function CobrosContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await insertRow("cobros", {
-      fecha: formData.fecha,
-      cliente_nombre: formData.cliente_nombre,
-      monto: parseFloat(formData.monto),
-      metodo_pago: formData.metodo_pago || null,
-      observaciones: formData.observaciones || null,
-      verificado_agroaves: formData.verificado_agroaves
-    })
-    mutate()
-    setIsDialogOpen(false)
-    setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", monto: "", metodo_pago: "", observaciones: "", verificado_agroaves: false })
+    
+    try {
+      // Crear el cobro
+      await insertRow("cobros", {
+        fecha: formData.fecha,
+        cliente_nombre: formData.cliente_nombre,
+        monto: parseFloat(formData.monto),
+        metodo_pago: formData.metodo_pago || null,
+        observaciones: formData.observaciones || null,
+        verificado_agroaves: formData.verificado_agroaves
+      })
+
+      // Si está verificado para agroaves, crear automáticamente un pago al proveedor
+      if (formData.verificado_agroaves) {
+        const proveedorAgroaves = proveedores.find(p => 
+          p.nombre.toLowerCase().includes('agroaves') || 
+          p.nombre.toLowerCase().includes('agro aves')
+        )
+
+        if (proveedorAgroaves) {
+          await insertRow("pagos", {
+            fecha: formData.fecha,
+            proveedor_nombre: proveedorAgroaves.nombre,
+            monto: parseFloat(formData.monto),
+            metodo_pago: "Transferencia de cliente",
+            observaciones: `Pago automático desde cobro de ${formData.cliente_nombre}`
+          })
+          
+          toast({
+            title: "Cobro y pago registrados",
+            description: `Se creó automáticamente el pago a ${proveedorAgroaves.nombre}`,
+          })
+        } else {
+          toast({
+            title: "Cobro registrado",
+            description: "Advertencia: No se encontró proveedor Agroaves para crear el pago automático",
+            variant: "destructive"
+          })
+        }
+      } else {
+        toast({
+          title: "Cobro registrado",
+          description: "El cobro se ha guardado correctamente",
+        })
+      }
+
+      mutate()
+      setIsDialogOpen(false)
+      setFormData({ 
+        fecha: new Date().toISOString().split('T')[0], 
+        cliente_nombre: "", 
+        monto: "", 
+        metodo_pago: "", 
+        observaciones: "", 
+        verificado_agroaves: false 
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "No se pudo registrar el cobro",
+        variant: "destructive"
+      })
+    }
   }
 
   const filteredCobros = cobros.filter((c) =>
@@ -65,7 +125,7 @@ export function CobrosContent() {
     { key: "cliente_nombre", header: "Cliente" },
     { key: "monto", header: "Monto", render: (c: Cobro) => <span className="font-semibold text-primary">{formatCurrency(Number(c.monto))}</span> },
     { key: "metodo_pago", header: "Metodo", render: (c: Cobro) => <span className="capitalize">{c.metodo_pago || "-"}</span> },
-    { key: "verificado_agroaves", header: "Verificado", render: (c: Cobro) => (
+    { key: "verificado_agroaves", header: "A Agroaves", render: (c: Cobro) => (
       <Badge variant={c.verificado_agroaves ? "default" : "outline"}>
         {c.verificado_agroaves ? "Si" : "No"}
       </Badge>
@@ -120,8 +180,14 @@ export function CobrosContent() {
                 <Input value={formData.observaciones} onChange={(e) => setFormData({...formData, observaciones: e.target.value})} />
               </div>
               <div className="flex items-center gap-2">
-                <Checkbox checked={formData.verificado_agroaves} onCheckedChange={(checked) => setFormData({...formData, verificado_agroaves: checked as boolean})} />
-                <Label>Verificado Agroaves</Label>
+                <Checkbox 
+                  id="verificado_agroaves"
+                  checked={formData.verificado_agroaves} 
+                  onCheckedChange={(checked) => setFormData({...formData, verificado_agroaves: checked as boolean})} 
+                />
+                <Label htmlFor="verificado_agroaves" className="cursor-pointer">
+                  Pago directo a Agroaves (crea pago automático)
+                </Label>
               </div>
               <DialogFooter>
                 <Button type="submit">Guardar</Button>

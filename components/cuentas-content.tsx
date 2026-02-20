@@ -1,12 +1,15 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ChevronDown, ChevronRight } from "lucide-react"
+import { ChevronDown, ChevronRight, Download, Calendar } from "lucide-react"
 import { useSupabase } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import jsPDF from "jspdf"
 
 interface Cliente {
   id: string
@@ -43,6 +46,10 @@ export function CuentasContent() {
   const { data: ventas = [] } = useSupabase<Venta>("ventas")
   const { data: cobros = [] } = useSupabase<Cobro>("cobros")
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
+  const [dateRange, setDateRange] = useState({
+    desde: "",
+    hasta: ""
+  })
 
   const clientesConMovimientos = useMemo(() => {
     const clientesMap = new Map<string, { nombre: string; saldo: number; movimientos: Movimiento[] }>()
@@ -107,13 +114,29 @@ export function CuentasContent() {
       }
     })
 
+    // Filtrar por rango de fechas si está definido
+    if (dateRange.desde || dateRange.hasta) {
+      const desde = dateRange.desde ? new Date(dateRange.desde) : new Date(0)
+      const hasta = dateRange.hasta ? new Date(dateRange.hasta) : new Date()
+      
+      clientesMap.forEach((cliente) => {
+        cliente.movimientos = cliente.movimientos.filter(m => {
+          const fecha = new Date(m.fecha)
+          return fecha >= desde && fecha <= hasta
+        })
+        
+        // Recalcular saldo basado en movimientos filtrados
+        cliente.saldo = cliente.movimientos.reduce((acc, m) => acc + m.debe - m.haber, 0)
+      })
+    }
+
     // Ordenar movimientos por fecha
     clientesMap.forEach((cliente) => {
       cliente.movimientos.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
     })
 
     return Array.from(clientesMap.values()).sort((a, b) => b.saldo - a.saldo)
-  }, [ventas, cobros, clientes])
+  }, [ventas, cobros, clientes, dateRange])
 
   const toggleClient = (nombre: string) => {
     setExpandedClients(prev => {
@@ -127,9 +150,94 @@ export function CuentasContent() {
     })
   }
 
+  const exportToPDF = (cliente: typeof clientesConMovimientos[0]) => {
+    const doc = new jsPDF()
+    
+    // Titulo
+    doc.setFontSize(18)
+    doc.text("Cuenta Corriente", 105, 20, { align: "center" })
+    
+    // Info del cliente
+    doc.setFontSize(12)
+    doc.text(`Cliente: ${cliente.nombre}`, 20, 35)
+    
+    if (dateRange.desde || dateRange.hasta) {
+      doc.setFontSize(10)
+      doc.text(`Periodo: ${dateRange.desde || 'Inicio'} - ${dateRange.hasta || 'Fin'}`, 20, 42)
+    }
+    
+    // Tabla de movimientos
+    let yPos = 55
+    doc.setFontSize(10)
+    doc.text("Fecha", 20, yPos)
+    doc.text("Descripcion", 50, yPos)
+    doc.text("Debe", 140, yPos)
+    doc.text("Haber", 170, yPos)
+    
+    yPos += 7
+    doc.line(20, yPos - 2, 190, yPos - 2)
+    
+    cliente.movimientos.forEach((mov) => {
+      if (yPos > 270) {
+        doc.addPage()
+        yPos = 20
+      }
+      
+      doc.setFontSize(9)
+      doc.text(formatDate(new Date(mov.fecha)), 20, yPos)
+      doc.text(mov.descripcion.substring(0, 40), 50, yPos)
+      doc.text(mov.debe > 0 ? formatCurrency(mov.debe) : "-", 140, yPos)
+      doc.text(mov.haber > 0 ? formatCurrency(mov.haber) : "-", 170, yPos)
+      yPos += 6
+    })
+    
+    // Saldo final
+    yPos += 5
+    doc.line(20, yPos, 190, yPos)
+    yPos += 7
+    doc.setFontSize(11)
+    doc.setFont(undefined, "bold")
+    doc.text(`Saldo Final: ${formatCurrency(cliente.saldo)}`, 20, yPos)
+    
+    doc.save(`cuenta-corriente-${cliente.nombre.replace(/\s+/g, '-')}.pdf`)
+  }
+
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold">Cuentas Corrientes</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Cuentas Corrientes</h2>
+        
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-center gap-2">
+              <Label htmlFor="desde" className="text-sm">Desde:</Label>
+              <Input
+                id="desde"
+                type="date"
+                value={dateRange.desde}
+                onChange={(e) => setDateRange({...dateRange, desde: e.target.value})}
+                className="w-auto"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Label htmlFor="hasta" className="text-sm">Hasta:</Label>
+              <Input
+                id="hasta"
+                type="date"
+                value={dateRange.hasta}
+                onChange={(e) => setDateRange({...dateRange, hasta: e.target.value})}
+                className="w-auto"
+              />
+            </div>
+            {(dateRange.desde || dateRange.hasta) && (
+              <Button variant="outline" size="sm" onClick={() => setDateRange({desde: "", hasta: ""})}>
+                Limpiar
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
       
       <div className="space-y-2">
         {clientesConMovimientos.length === 0 ? (
@@ -140,25 +248,34 @@ export function CuentasContent() {
           clientesConMovimientos.map((cliente) => (
             <Collapsible key={cliente.nombre} open={expandedClients.has(cliente.nombre)}>
               <div className="rounded-lg border bg-card">
-                <CollapsibleTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-between p-4 h-auto hover:bg-muted/50"
-                    onClick={() => toggleClient(cliente.nombre)}
-                  >
-                    <div className="flex items-center gap-4">
+                <div className="flex items-center justify-between p-4">
+                  <CollapsibleTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="flex-1 justify-start gap-4 h-auto hover:bg-muted/50 p-0"
+                      onClick={() => toggleClient(cliente.nombre)}
+                    >
                       {expandedClients.has(cliente.nombre) ? (
                         <ChevronDown className="h-4 w-4" />
                       ) : (
                         <ChevronRight className="h-4 w-4" />
                       )}
                       <span className="font-medium">{cliente.nombre}</span>
-                    </div>
+                    </Button>
+                  </CollapsibleTrigger>
+                  <div className="flex items-center gap-2">
                     <Badge variant={cliente.saldo > 0 ? "destructive" : cliente.saldo < 0 ? "default" : "outline"}>
                       {formatCurrency(cliente.saldo)}
                     </Badge>
-                  </Button>
-                </CollapsibleTrigger>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => exportToPDF(cliente)}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
                 
                 <CollapsibleContent>
                   <div className="border-t">
@@ -166,7 +283,7 @@ export function CuentasContent() {
                       <thead className="bg-muted/50">
                         <tr className="text-xs">
                           <th className="text-left p-2 font-medium">Fecha</th>
-                          <th className="text-left p-2 font-medium">Descripción</th>
+                          <th className="text-left p-2 font-medium">Descripcion</th>
                           <th className="text-right p-2 font-medium">Debe</th>
                           <th className="text-right p-2 font-medium">Haber</th>
                         </tr>
