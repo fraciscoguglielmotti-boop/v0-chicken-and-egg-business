@@ -1,10 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { Search } from "lucide-react"
+import { Plus, Search } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
-import { useSupabase } from "@/hooks/use-supabase"
+import { useSupabase, insertRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 
 interface Venta {
@@ -17,9 +20,39 @@ interface Venta {
   vendedor?: string
 }
 
+interface Cliente {
+  id: string
+  nombre: string
+}
+
 export function VentasContent() {
-  const { data: ventas = [], isLoading } = useSupabase<Venta>("ventas")
+  const { data: ventas = [], isLoading, mutate } = useSupabase<Venta>("ventas")
+  const { data: clientes = [] } = useSupabase<Cliente>("clientes")
   const [searchTerm, setSearchTerm] = useState("")
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [formData, setFormData] = useState({
+    fecha: new Date().toISOString().split('T')[0],
+    cliente_nombre: "",
+    productos: "",
+    cantidad: "",
+    precio_unitario: "",
+    vendedor: ""
+  })
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    await insertRow("ventas", {
+      fecha: formData.fecha,
+      cliente_nombre: formData.cliente_nombre,
+      productos: { descripcion: formData.productos },
+      cantidad: parseFloat(formData.cantidad),
+      precio_unitario: parseFloat(formData.precio_unitario),
+      vendedor: formData.vendedor || null
+    })
+    mutate()
+    setIsDialogOpen(false)
+    setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", productos: "", cantidad: "", precio_unitario: "", vendedor: "" })
+  }
 
   const filteredVentas = ventas.filter((v) =>
     v.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase())
@@ -36,14 +69,63 @@ export function VentasContent() {
 
   return (
     <div className="space-y-6">
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Buscar ventas..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-9"
-        />
+      <div className="flex items-center justify-between gap-4">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar ventas..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Nueva Venta
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Nueva Venta</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label>Fecha</Label>
+                <Input type="date" value={formData.fecha} onChange={(e) => setFormData({...formData, fecha: e.target.value})} required />
+              </div>
+              <div>
+                <Label>Cliente</Label>
+                <Input list="clientes" value={formData.cliente_nombre} onChange={(e) => setFormData({...formData, cliente_nombre: e.target.value})} required />
+                <datalist id="clientes">
+                  {clientes.map(c => <option key={c.id} value={c.nombre} />)}
+                </datalist>
+              </div>
+              <div>
+                <Label>Productos</Label>
+                <Input value={formData.productos} onChange={(e) => setFormData({...formData, productos: e.target.value})} required />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Cantidad</Label>
+                  <Input type="number" step="0.01" value={formData.cantidad} onChange={(e) => setFormData({...formData, cantidad: e.target.value})} required />
+                </div>
+                <div>
+                  <Label>Precio Unitario</Label>
+                  <Input type="number" step="0.01" value={formData.precio_unitario} onChange={(e) => setFormData({...formData, precio_unitario: e.target.value})} required />
+                </div>
+              </div>
+              <div>
+                <Label>Vendedor (opcional)</Label>
+                <Input value={formData.vendedor} onChange={(e) => setFormData({...formData, vendedor: e.target.value})} />
+              </div>
+              <DialogFooter>
+                <Button type="submit">Guardar</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <DataTable
