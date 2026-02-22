@@ -92,10 +92,16 @@ export function PagosContent() {
               </div>
               <div>
                 <Label>Proveedor</Label>
-                <Input list="proveedores-pagos" value={formData.proveedor_nombre} onChange={(e) => setFormData({...formData, proveedor_nombre: e.target.value})} required />
-                <datalist id="proveedores-pagos">
-                  {proveedores.map(p => <option key={p.id} value={p.nombre} />)}
-                </datalist>
+                <Select value={formData.proveedor_nombre} onValueChange={(value) => setFormData({...formData, proveedor_nombre: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar proveedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {proveedores.map(p => (
+                      <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label>Monto</Label>

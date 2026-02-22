@@ -164,10 +164,16 @@ export function CobrosContent() {
               </div>
               <div>
                 <Label>Cliente</Label>
-                <Input list="clientes-cobros" value={formData.cliente_nombre} onChange={(e) => setFormData({...formData, cliente_nombre: e.target.value})} required />
-                <datalist id="clientes-cobros">
-                  {clientes.map(c => <option key={c.id} value={c.nombre} />)}
-                </datalist>
+                <Select value={formData.cliente_nombre} onValueChange={(value) => setFormData({...formData, cliente_nombre: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar cliente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clientes.map(c => (
+                      <SelectItem key={c.id} value={c.nombre}>{c.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label>Monto</Label>

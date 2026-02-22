@@ -152,20 +152,17 @@ export function CuentasContent() {
     
     // Header con nombre de empresa
     doc.setFontSize(24)
-    doc.setFont(undefined, 'bold')
+    doc.setTextColor(0, 0, 0)
     doc.text("AviGest", 105, 20, { align: "center" })
     
     doc.setFontSize(12)
-    doc.setFont(undefined, 'normal')
     doc.text("Estado de Cuenta Corriente", 105, 28, { align: "center" })
     
     // Info del cliente
     doc.setFontSize(16)
-    doc.setFont(undefined, 'bold')
     doc.text(cliente.nombre, 20, 45)
     
     doc.setFontSize(10)
-    doc.setFont(undefined, 'normal')
     const periodoText = dateRange.desde && dateRange.hasta 
       ? `Periodo: ${formatDate(new Date(dateRange.desde))} al ${formatDate(new Date(dateRange.hasta))}`
       : `Periodo: Todo el historial`
@@ -181,27 +178,24 @@ export function CuentasContent() {
     doc.setFillColor(245, 245, 245)
     doc.rect(20, boxY, colWidth, boxHeight, 'F')
     doc.setFontSize(9)
+    doc.setTextColor(0, 0, 0)
     doc.text("SALDO ANTERIOR", 38, boxY + 8, { align: "center" })
     doc.setFontSize(14)
-    doc.setFont(undefined, 'bold')
     doc.text(formatCurrency(cliente.saldoAnterior), 38, boxY + 16, { align: "center" })
     
     // Ventas
-    doc.setFont(undefined, 'normal')
     doc.rect(20 + colWidth + 2, boxY, colWidth, boxHeight, 'F')
     doc.setFontSize(9)
+    doc.setTextColor(0, 0, 0)
     doc.text("VENTAS", 38 + colWidth + 2, boxY + 8, { align: "center" })
     doc.setFontSize(14)
-    doc.setFont(undefined, 'bold')
     doc.text(`+${formatCurrency(cliente.totalVentas)}`, 38 + colWidth + 2, boxY + 16, { align: "center" })
     
     // Cobros
-    doc.setFont(undefined, 'normal')
     doc.rect(20 + (colWidth + 2) * 2, boxY, colWidth, boxHeight, 'F')
     doc.setFontSize(9)
     doc.text("COBROS", 38 + (colWidth + 2) * 2, boxY + 8, { align: "center" })
     doc.setFontSize(14)
-    doc.setFont(undefined, 'bold')
     doc.text(`-${formatCurrency(cliente.totalCobros)}`, 38 + (colWidth + 2) * 2, boxY + 16, { align: "center" })
     
     // Saldo Actual - destacado
@@ -209,16 +203,15 @@ export function CuentasContent() {
     doc.setFillColor(230, 230, 230)
     doc.rect(20, yPos, 170, 18, 'F')
     doc.setFontSize(11)
-    doc.setFont(undefined, 'normal')
+    doc.setTextColor(0, 0, 0)
     doc.text("SALDO ACTUAL", 105, yPos + 7, { align: "center" })
     doc.setFontSize(20)
-    doc.setFont(undefined, 'bold')
     doc.text(formatCurrency(cliente.saldo), 105, yPos + 14, { align: "center" })
     
     // Tabla de detalle
     yPos += 28
     doc.setFontSize(10)
-    doc.setFont(undefined, 'bold')
+    doc.setTextColor(0, 0, 0)
     doc.text("FECHA", 22, yPos)
     doc.text("DETALLE", 55, yPos)
     doc.text("DEBE", 145, yPos, { align: "right" })
@@ -229,7 +222,6 @@ export function CuentasContent() {
     doc.line(20, yPos, 190, yPos)
     yPos += 6
     
-    doc.setFont(undefined, 'normal')
     doc.setFontSize(9)
     
     cliente.movimientos.forEach((mov) => {

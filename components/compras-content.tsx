@@ -118,10 +118,16 @@ export function ComprasContent() {
               </div>
               <div>
                 <Label>Proveedor</Label>
-                <Input list="proveedores-compras" value={formData.proveedor_nombre} onChange={(e) => setFormData({...formData, proveedor_nombre: e.target.value})} required />
-                <datalist id="proveedores-compras">
-                  {proveedores.map(p => <option key={p.id} value={p.nombre} />)}
-                </datalist>
+                <Select value={formData.proveedor_nombre} onValueChange={(value) => setFormData({...formData, proveedor_nombre: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar proveedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {proveedores.map(p => (
+                      <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label>Producto</Label>
