@@ -31,6 +31,7 @@ interface Cobro {
   fecha: string
   cliente_nombre: string
   monto: number
+  metodo_pago?: string
 }
 
 type Movimiento = {
@@ -52,27 +53,18 @@ export function CuentasContent() {
   })
 
   const clientesConMovimientos = useMemo(() => {
-    const clientesMap = new Map<string, { nombre: string; saldo: number; movimientos: Movimiento[] }>()
+    const clientesMap = new Map<string, { nombre: string; saldo: number; movimientos: Movimiento[]; saldoAnterior: number; totalVentas: number; totalCobros: number }>()
 
     // Inicializar clientes con saldo inicial
     clientes.forEach((c) => {
       const key = c.nombre.toLowerCase().trim()
-      const movimientos: Movimiento[] = []
-      
-      if (c.saldo_inicial && c.saldo_inicial !== 0) {
-        movimientos.push({
-          fecha: new Date().toISOString(),
-          tipo: 'saldo_inicial',
-          descripcion: 'Saldo inicial',
-          debe: c.saldo_inicial > 0 ? c.saldo_inicial : 0,
-          haber: c.saldo_inicial < 0 ? Math.abs(c.saldo_inicial) : 0
-        })
-      }
-
       clientesMap.set(key, { 
         nombre: c.nombre, 
         saldo: c.saldo_inicial || 0,
-        movimientos
+        saldoAnterior: c.saldo_inicial || 0,
+        totalVentas: 0,
+        totalCobros: 0,
+        movimientos: []
       })
     })
 
@@ -83,15 +75,16 @@ export function CuentasContent() {
       const producto = v.productos?.nombre || v.productos?.descripcion || 'Producto'
       
       if (!clientesMap.has(key)) {
-        clientesMap.set(key, { nombre: v.cliente_nombre, saldo: 0, movimientos: [] })
+        clientesMap.set(key, { nombre: v.cliente_nombre, saldo: 0, saldoAnterior: 0, totalVentas: 0, totalCobros: 0, movimientos: [] })
       }
       
       const cliente = clientesMap.get(key)!
       cliente.saldo += total
+      cliente.totalVentas += total
       cliente.movimientos.push({
         fecha: v.fecha,
         tipo: 'venta',
-        descripcion: `Venta: ${producto} (${v.cantidad} x ${formatCurrency(v.precio_unitario)})`,
+        descripcion: `Venta - ${v.cantidad} ${producto} (${v.cantidad} x ${formatCurrency(v.precio_unitario)})`,
         debe: total,
         haber: 0
       })
@@ -104,10 +97,11 @@ export function CuentasContent() {
       
       if (cliente) {
         cliente.saldo -= Number(c.monto)
+        cliente.totalCobros += Number(c.monto)
         cliente.movimientos.push({
           fecha: c.fecha,
           tipo: 'cobro',
-          descripcion: 'Cobro',
+          descripcion: `Cobro - ${c.metodo_pago || 'efectivo'}`,
           debe: 0,
           haber: Number(c.monto)
         })
@@ -125,14 +119,16 @@ export function CuentasContent() {
           return fecha >= desde && fecha <= hasta
         })
         
-        // Recalcular saldo basado en movimientos filtrados
-        cliente.saldo = cliente.movimientos.reduce((acc, m) => acc + m.debe - m.haber, 0)
+        // Recalcular totales
+        cliente.totalVentas = cliente.movimientos.filter(m => m.tipo === 'venta').reduce((sum, m) => sum + m.debe, 0)
+        cliente.totalCobros = cliente.movimientos.filter(m => m.tipo === 'cobro').reduce((sum, m) => sum + m.haber, 0)
+        cliente.saldo = cliente.saldoAnterior + cliente.totalVentas - cliente.totalCobros
       })
     }
 
     // Ordenar movimientos por fecha
     clientesMap.forEach((cliente) => {
-      cliente.movimientos.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+      cliente.movimientos.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
     })
 
     return Array.from(clientesMap.values()).sort((a, b) => b.saldo - a.saldo)
@@ -152,30 +148,89 @@ export function CuentasContent() {
 
   const exportToPDF = (cliente: typeof clientesConMovimientos[0]) => {
     const doc = new jsPDF()
+    const now = new Date()
     
-    // Titulo
-    doc.setFontSize(18)
-    doc.text("Cuenta Corriente", 105, 20, { align: "center" })
+    // Header con nombre de empresa
+    doc.setFontSize(24)
+    doc.setFont(undefined, 'bold')
+    doc.text("AviGest", 105, 20, { align: "center" })
+    
+    doc.setFontSize(12)
+    doc.setFont(undefined, 'normal')
+    doc.text("Estado de Cuenta Corriente", 105, 28, { align: "center" })
     
     // Info del cliente
-    doc.setFontSize(12)
-    doc.text(`Cliente: ${cliente.nombre}`, 20, 35)
+    doc.setFontSize(16)
+    doc.setFont(undefined, 'bold')
+    doc.text(cliente.nombre, 20, 45)
     
-    if (dateRange.desde || dateRange.hasta) {
-      doc.setFontSize(10)
-      doc.text(`Periodo: ${dateRange.desde || 'Inicio'} - ${dateRange.hasta || 'Fin'}`, 20, 42)
-    }
-    
-    // Tabla de movimientos
-    let yPos = 55
     doc.setFontSize(10)
-    doc.text("Fecha", 20, yPos)
-    doc.text("Descripcion", 50, yPos)
-    doc.text("Debe", 140, yPos)
-    doc.text("Haber", 170, yPos)
+    doc.setFont(undefined, 'normal')
+    const periodoText = dateRange.desde && dateRange.hasta 
+      ? `Periodo: ${formatDate(new Date(dateRange.desde))} al ${formatDate(new Date(dateRange.hasta))}`
+      : `Periodo: Todo el historial`
+    doc.text(periodoText, 20, 52)
+    doc.text(`Vendedor: ${cliente.movimientos.length > 0 ? 'AviGest' : 'N/A'}`, 20, 58)
     
-    yPos += 7
-    doc.line(20, yPos - 2, 190, yPos - 2)
+    // Cuadros de resumen
+    const boxY = 70
+    const boxHeight = 20
+    const colWidth = 56
+    
+    // Saldo Anterior
+    doc.setFillColor(245, 245, 245)
+    doc.rect(20, boxY, colWidth, boxHeight, 'F')
+    doc.setFontSize(9)
+    doc.text("SALDO ANTERIOR", 38, boxY + 8, { align: "center" })
+    doc.setFontSize(14)
+    doc.setFont(undefined, 'bold')
+    doc.text(formatCurrency(cliente.saldoAnterior), 38, boxY + 16, { align: "center" })
+    
+    // Ventas
+    doc.setFont(undefined, 'normal')
+    doc.rect(20 + colWidth + 2, boxY, colWidth, boxHeight, 'F')
+    doc.setFontSize(9)
+    doc.text("VENTAS", 38 + colWidth + 2, boxY + 8, { align: "center" })
+    doc.setFontSize(14)
+    doc.setFont(undefined, 'bold')
+    doc.text(`+${formatCurrency(cliente.totalVentas)}`, 38 + colWidth + 2, boxY + 16, { align: "center" })
+    
+    // Cobros
+    doc.setFont(undefined, 'normal')
+    doc.rect(20 + (colWidth + 2) * 2, boxY, colWidth, boxHeight, 'F')
+    doc.setFontSize(9)
+    doc.text("COBROS", 38 + (colWidth + 2) * 2, boxY + 8, { align: "center" })
+    doc.setFontSize(14)
+    doc.setFont(undefined, 'bold')
+    doc.text(`-${formatCurrency(cliente.totalCobros)}`, 38 + (colWidth + 2) * 2, boxY + 16, { align: "center" })
+    
+    // Saldo Actual - destacado
+    let yPos = boxY + boxHeight + 10
+    doc.setFillColor(230, 230, 230)
+    doc.rect(20, yPos, 170, 18, 'F')
+    doc.setFontSize(11)
+    doc.setFont(undefined, 'normal')
+    doc.text("SALDO ACTUAL", 105, yPos + 7, { align: "center" })
+    doc.setFontSize(20)
+    doc.setFont(undefined, 'bold')
+    doc.text(formatCurrency(cliente.saldo), 105, yPos + 14, { align: "center" })
+    
+    // Tabla de detalle
+    yPos += 28
+    doc.setFontSize(10)
+    doc.setFont(undefined, 'bold')
+    doc.text("FECHA", 22, yPos)
+    doc.text("DETALLE", 55, yPos)
+    doc.text("DEBE", 145, yPos, { align: "right" })
+    doc.text("HABER", 180, yPos, { align: "right" })
+    
+    yPos += 2
+    doc.setLineWidth(0.5)
+    doc.line(20, yPos, 190, yPos)
+    yPos += 6
+    
+    doc.setFont(undefined, 'normal')
+    doc.setFontSize(9)
     
     cliente.movimientos.forEach((mov) => {
       if (yPos > 270) {
@@ -183,23 +238,21 @@ export function CuentasContent() {
         yPos = 20
       }
       
-      doc.setFontSize(9)
-      doc.text(formatDate(new Date(mov.fecha)), 20, yPos)
-      doc.text(mov.descripcion.substring(0, 40), 50, yPos)
-      doc.text(mov.debe > 0 ? formatCurrency(mov.debe) : "-", 140, yPos)
-      doc.text(mov.haber > 0 ? formatCurrency(mov.haber) : "-", 170, yPos)
+      doc.text(formatDate(new Date(mov.fecha)), 22, yPos)
+      const descripcion = mov.descripcion.length > 50 ? mov.descripcion.substring(0, 47) + "..." : mov.descripcion
+      doc.text(descripcion, 55, yPos)
+      doc.text(mov.debe > 0 ? formatCurrency(mov.debe) : "", 145, yPos, { align: "right" })
+      doc.text(mov.haber > 0 ? formatCurrency(mov.haber) : "", 180, yPos, { align: "right" })
       yPos += 6
     })
     
-    // Saldo final
-    yPos += 5
-    doc.line(20, yPos, 190, yPos)
-    yPos += 7
-    doc.setFontSize(11)
-    doc.setFont(undefined, "bold")
-    doc.text(`Saldo Final: ${formatCurrency(cliente.saldo)}`, 20, yPos)
+    // Footer
+    yPos = 280
+    doc.setFontSize(8)
+    doc.setTextColor(128, 128, 128)
+    doc.text(`Generado el ${formatDate(now)} por AviGest`, 105, yPos, { align: "center" })
     
-    doc.save(`cuenta-corriente-${cliente.nombre.replace(/\s+/g, '-')}.pdf`)
+    doc.save(`estado-cuenta-${cliente.nombre.replace(/\s+/g, '-')}.pdf`)
   }
 
   return (
