@@ -1,20 +1,28 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ChevronDown, ChevronRight, Download, Calendar } from "lucide-react"
-import { useSupabase } from "@/hooks/use-supabase"
+import { ChevronDown, ChevronRight, Download, Calendar, Check } from "lucide-react"
+import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { useToast } from "@/hooks/use-toast"
 import jsPDF from "jspdf"
 
 interface Cliente {
   id: string
   nombre: string
   saldo_inicial: number
+}
+
+interface Proveedor {
+  id: string
+  nombre: string
 }
 
 interface Venta {
@@ -32,30 +40,63 @@ interface Cobro {
   cliente_nombre: string
   monto: number
   metodo_pago?: string
+  cuenta_destino?: string
+  verificado_agroaves: boolean
 }
 
-type Movimiento = {
+interface Compra {
+  id: string
   fecha: string
-  tipo: 'venta' | 'cobro' | 'saldo_inicial'
+  proveedor_nombre: string
+  producto: string
+  cantidad: number
+  precio_unitario: number
+  total: number
+}
+
+interface Pago {
+  id: string
+  fecha: string
+  proveedor_nombre: string
+  monto: number
+  metodo_pago?: string
+}
+
+type MovimientoCliente = {
+  fecha: string
+  tipo: 'venta' | 'cobro'
   descripcion: string
   debe: number
   haber: number
 }
 
+type MovimientoProveedor = {
+  id?: string
+  fecha: string
+  tipo: 'compra' | 'pago' | 'transferencia'
+  descripcion: string
+  debe: number
+  haber: number
+  verificado?: boolean
+}
+
 export function CuentasContent() {
   const { data: clientes = [] } = useSupabase<Cliente>("clientes")
+  const { data: proveedores = [] } = useSupabase<Proveedor>("proveedores")
   const { data: ventas = [] } = useSupabase<Venta>("ventas")
-  const { data: cobros = [] } = useSupabase<Cobro>("cobros")
+  const { data: cobros = [], mutate: mutateCobros } = useSupabase<Cobro>("cobros")
+  const { data: compras = [] } = useSupabase<Compra>("compras")
+  const { data: pagos = [] } = useSupabase<Pago>("pagos")
+  
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
-  const [dateRange, setDateRange] = useState({
-    desde: "",
-    hasta: ""
-  })
+  const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set())
+  const [dateRange, setDateRange] = useState({ desde: "", hasta: "" })
+  const { toast } = useToast()
 
+  // Clientes con movimientos
   const clientesConMovimientos = useMemo(() => {
-    const clientesMap = new Map<string, { nombre: string; saldo: number; movimientos: Movimiento[]; saldoAnterior: number; totalVentas: number; totalCobros: number }>()
+    const clientesMap = new Map<string, { nombre: string; saldo: number; movimientos: MovimientoCliente[]; saldoAnterior: number; totalVentas: number; totalCobros: number }>()
 
-    // Inicializar clientes con saldo inicial
     clientes.forEach((c) => {
       const key = c.nombre.toLowerCase().trim()
       clientesMap.set(key, { 
@@ -68,11 +109,10 @@ export function CuentasContent() {
       })
     })
 
-    // Agregar ventas
     ventas.forEach((v) => {
       const key = v.cliente_nombre.toLowerCase().trim()
       const total = v.cantidad * v.precio_unitario
-      const producto = v.productos?.nombre || v.productos?.descripcion || 'Producto'
+      const producto = v.productos?.nombre || 'Producto'
       
       if (!clientesMap.has(key)) {
         clientesMap.set(key, { nombre: v.cliente_nombre, saldo: 0, saldoAnterior: 0, totalVentas: 0, totalCobros: 0, movimientos: [] })
@@ -90,7 +130,6 @@ export function CuentasContent() {
       })
     })
 
-    // Agregar cobros
     cobros.forEach((c) => {
       const key = c.cliente_nombre.toLowerCase().trim()
       const cliente = clientesMap.get(key)
@@ -108,7 +147,6 @@ export function CuentasContent() {
       }
     })
 
-    // Filtrar por rango de fechas si está definido
     if (dateRange.desde || dateRange.hasta) {
       const desde = dateRange.desde ? new Date(dateRange.desde) : new Date(0)
       const hasta = dateRange.hasta ? new Date(dateRange.hasta) : new Date()
@@ -118,15 +156,12 @@ export function CuentasContent() {
           const fecha = new Date(m.fecha)
           return fecha >= desde && fecha <= hasta
         })
-        
-        // Recalcular totales
         cliente.totalVentas = cliente.movimientos.filter(m => m.tipo === 'venta').reduce((sum, m) => sum + m.debe, 0)
         cliente.totalCobros = cliente.movimientos.filter(m => m.tipo === 'cobro').reduce((sum, m) => sum + m.haber, 0)
         cliente.saldo = cliente.saldoAnterior + cliente.totalVentas - cliente.totalCobros
       })
     }
 
-    // Ordenar movimientos por fecha
     clientesMap.forEach((cliente) => {
       cliente.movimientos.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
     })
@@ -134,84 +169,167 @@ export function CuentasContent() {
     return Array.from(clientesMap.values()).sort((a, b) => b.saldo - a.saldo)
   }, [ventas, cobros, clientes, dateRange])
 
+  // Proveedores con movimientos
+  const proveedoresConMovimientos = useMemo(() => {
+    const proveedoresMap = new Map<string, { nombre: string; saldo: number; movimientos: MovimientoProveedor[]; totalCompras: number; totalPagos: number }>()
+
+    proveedores.forEach((p) => {
+      const key = p.nombre.toLowerCase().trim()
+      proveedoresMap.set(key, { 
+        nombre: p.nombre, 
+        saldo: 0,
+        totalCompras: 0,
+        totalPagos: 0,
+        movimientos: []
+      })
+    })
+
+    // Agregar compras (aumentan deuda)
+    compras.forEach((c) => {
+      const key = c.proveedor_nombre.toLowerCase().trim()
+      
+      if (!proveedoresMap.has(key)) {
+        proveedoresMap.set(key, { nombre: c.proveedor_nombre, saldo: 0, totalCompras: 0, totalPagos: 0, movimientos: [] })
+      }
+      
+      const proveedor = proveedoresMap.get(key)!
+      proveedor.saldo += c.total
+      proveedor.totalCompras += c.total
+      proveedor.movimientos.push({
+        fecha: c.fecha,
+        tipo: 'compra',
+        descripcion: `Compra - ${c.cantidad} ${c.producto} (${c.cantidad} x ${formatCurrency(c.precio_unitario)})`,
+        debe: c.total,
+        haber: 0
+      })
+    })
+
+    // Agregar pagos en efectivo (disminuyen deuda)
+    pagos.forEach((p) => {
+      const key = p.proveedor_nombre.toLowerCase().trim()
+      const proveedor = proveedoresMap.get(key)
+      
+      if (proveedor) {
+        proveedor.saldo -= Number(p.monto)
+        proveedor.totalPagos += Number(p.monto)
+        proveedor.movimientos.push({
+          fecha: p.fecha,
+          tipo: 'pago',
+          descripcion: `Pago - ${p.metodo_pago || 'efectivo'}`,
+          debe: 0,
+          haber: Number(p.monto)
+        })
+      }
+    })
+
+    // Agregar transferencias directas de clientes (disminuyen deuda)
+    cobros.forEach((c) => {
+      if (c.cuenta_destino && c.metodo_pago === 'transferencia') {
+        const key = c.cuenta_destino.toLowerCase().trim()
+        const proveedor = proveedoresMap.get(key)
+        
+        if (proveedor) {
+          proveedor.saldo -= Number(c.monto)
+          proveedor.totalPagos += Number(c.monto)
+          proveedor.movimientos.push({
+            id: c.id,
+            fecha: c.fecha,
+            tipo: 'transferencia',
+            descripcion: `Transferencia de ${c.cliente_nombre}`,
+            debe: 0,
+            haber: Number(c.monto),
+            verificado: c.verificado_agroaves
+          })
+        }
+      }
+    })
+
+    proveedoresMap.forEach((proveedor) => {
+      proveedor.movimientos.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
+    })
+
+    return Array.from(proveedoresMap.values()).sort((a, b) => b.saldo - a.saldo)
+  }, [compras, pagos, cobros, proveedores])
+
   const toggleClient = (nombre: string) => {
     setExpandedClients(prev => {
       const newSet = new Set(prev)
-      if (newSet.has(nombre)) {
-        newSet.delete(nombre)
-      } else {
-        newSet.add(nombre)
-      }
+      newSet.has(nombre) ? newSet.delete(nombre) : newSet.add(nombre)
       return newSet
     })
   }
 
-  const exportToPDF = (cliente: typeof clientesConMovimientos[0]) => {
+  const toggleProvider = (nombre: string) => {
+    setExpandedProviders(prev => {
+      const newSet = new Set(prev)
+      newSet.has(nombre) ? newSet.delete(nombre) : newSet.add(nombre)
+      return newSet
+    })
+  }
+
+  const handleVerifyTransfer = async (cobroId: string, currentStatus: boolean) => {
+    try {
+      await updateRow("cobros", cobroId, { verificado_agroaves: !currentStatus })
+      await mutateCobros()
+      toast({ title: "Transferencia actualizada", description: !currentStatus ? "Marcada como verificada" : "Desmarcada" })
+    } catch (error) {
+      toast({ title: "Error", description: "No se pudo actualizar la verificación", variant: "destructive" })
+    }
+  }
+
+  const exportClientePDF = (cliente: typeof clientesConMovimientos[0]) => {
     const doc = new jsPDF()
-    const now = new Date()
     
-    // Header con nombre de empresa
     doc.setFontSize(24)
-    doc.setTextColor(0, 0, 0)
     doc.text("AviGest", 105, 20, { align: "center" })
-    
     doc.setFontSize(12)
     doc.text("Estado de Cuenta Corriente", 105, 28, { align: "center" })
     
-    // Info del cliente
     doc.setFontSize(16)
     doc.text(cliente.nombre, 20, 45)
-    
     doc.setFontSize(10)
     const periodoText = dateRange.desde && dateRange.hasta 
       ? `Periodo: ${formatDate(new Date(dateRange.desde))} al ${formatDate(new Date(dateRange.hasta))}`
       : `Periodo: Todo el historial`
     doc.text(periodoText, 20, 52)
-    doc.text(`Vendedor: ${cliente.movimientos.length > 0 ? 'AviGest' : 'N/A'}`, 20, 58)
+    doc.text(`Vendedor: AviGest`, 20, 58)
     
-    // Cuadros de resumen
     const boxY = 70
     const boxHeight = 20
     const colWidth = 56
     
-    // Saldo Anterior
+    // Cajas sin setFont
     doc.setFillColor(245, 245, 245)
     doc.rect(20, boxY, colWidth, boxHeight, 'F')
     doc.setFontSize(9)
-    doc.setTextColor(0, 0, 0)
-    doc.text("SALDO ANTERIOR", 38, boxY + 8, { align: "center" })
+    doc.text("SALDO ANTERIOR", 48, boxY + 8, { align: "center" })
     doc.setFontSize(14)
-    doc.text(formatCurrency(cliente.saldoAnterior), 38, boxY + 16, { align: "center" })
+    doc.text(formatCurrency(cliente.saldoAnterior), 48, boxY + 16, { align: "center" })
     
-    // Ventas
+    doc.setFillColor(245, 245, 245)
     doc.rect(20 + colWidth + 2, boxY, colWidth, boxHeight, 'F')
     doc.setFontSize(9)
-    doc.setTextColor(0, 0, 0)
-    doc.text("VENTAS", 38 + colWidth + 2, boxY + 8, { align: "center" })
+    doc.text("VENTAS", 48 + colWidth + 2, boxY + 8, { align: "center" })
     doc.setFontSize(14)
-    doc.text(`+${formatCurrency(cliente.totalVentas)}`, 38 + colWidth + 2, boxY + 16, { align: "center" })
+    doc.text(`+${formatCurrency(cliente.totalVentas)}`, 48 + colWidth + 2, boxY + 16, { align: "center" })
     
-    // Cobros
+    doc.setFillColor(245, 245, 245)
     doc.rect(20 + (colWidth + 2) * 2, boxY, colWidth, boxHeight, 'F')
     doc.setFontSize(9)
-    doc.text("COBROS", 38 + (colWidth + 2) * 2, boxY + 8, { align: "center" })
+    doc.text("COBROS", 48 + (colWidth + 2) * 2, boxY + 8, { align: "center" })
     doc.setFontSize(14)
-    doc.text(`-${formatCurrency(cliente.totalCobros)}`, 38 + (colWidth + 2) * 2, boxY + 16, { align: "center" })
+    doc.text(`-${formatCurrency(cliente.totalCobros)}`, 48 + (colWidth + 2) * 2, boxY + 16, { align: "center" })
     
-    // Saldo Actual - destacado
     let yPos = boxY + boxHeight + 10
     doc.setFillColor(230, 230, 230)
     doc.rect(20, yPos, 170, 18, 'F')
     doc.setFontSize(11)
-    doc.setTextColor(0, 0, 0)
     doc.text("SALDO ACTUAL", 105, yPos + 7, { align: "center" })
     doc.setFontSize(20)
     doc.text(formatCurrency(cliente.saldo), 105, yPos + 14, { align: "center" })
     
-    // Tabla de detalle
     yPos += 28
     doc.setFontSize(10)
-    doc.setTextColor(0, 0, 0)
     doc.text("FECHA", 22, yPos)
     doc.text("DETALLE", 55, yPos)
     doc.text("DEBE", 145, yPos, { align: "right" })
@@ -223,26 +341,22 @@ export function CuentasContent() {
     yPos += 6
     
     doc.setFontSize(9)
-    
     cliente.movimientos.forEach((mov) => {
       if (yPos > 270) {
         doc.addPage()
         yPos = 20
       }
-      
       doc.text(formatDate(new Date(mov.fecha)), 22, yPos)
-      const descripcion = mov.descripcion.length > 50 ? mov.descripcion.substring(0, 47) + "..." : mov.descripcion
-      doc.text(descripcion, 55, yPos)
+      doc.text(mov.descripcion.substring(0, 47), 55, yPos)
       doc.text(mov.debe > 0 ? formatCurrency(mov.debe) : "", 145, yPos, { align: "right" })
       doc.text(mov.haber > 0 ? formatCurrency(mov.haber) : "", 180, yPos, { align: "right" })
       yPos += 6
     })
     
-    // Footer
     yPos = 280
     doc.setFontSize(8)
     doc.setTextColor(128, 128, 128)
-    doc.text(`Generado el ${formatDate(now)} por AviGest`, 105, yPos, { align: "center" })
+    doc.text(`Generado el ${formatDate(new Date())} por AviGest`, 105, yPos, { align: "center" })
     
     doc.save(`estado-cuenta-${cliente.nombre.replace(/\s+/g, '-')}.pdf`)
   }
@@ -283,74 +397,139 @@ export function CuentasContent() {
           </div>
         </div>
       </div>
-      
-      <div className="space-y-2">
-        {clientesConMovimientos.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-            No hay datos de cuentas corrientes
-          </div>
-        ) : (
-          clientesConMovimientos.map((cliente) => (
-            <Collapsible key={cliente.nombre} open={expandedClients.has(cliente.nombre)}>
-              <div className="rounded-lg border bg-card">
-                <div className="flex items-center justify-between p-4">
-                  <CollapsibleTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      className="flex-1 justify-start gap-4 h-auto hover:bg-muted/50 p-0"
-                      onClick={() => toggleClient(cliente.nombre)}
-                    >
-                      {expandedClients.has(cliente.nombre) ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                      <span className="font-medium">{cliente.nombre}</span>
-                    </Button>
-                  </CollapsibleTrigger>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={cliente.saldo > 0 ? "destructive" : cliente.saldo < 0 ? "default" : "outline"}>
-                      {formatCurrency(cliente.saldo)}
-                    </Badge>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => exportToPDF(cliente)}
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
+
+      <Tabs defaultValue="clientes" className="w-full">
+        <TabsList>
+          <TabsTrigger value="clientes">Clientes</TabsTrigger>
+          <TabsTrigger value="proveedores">Proveedores</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="clientes" className="space-y-2 mt-4">
+          {clientesConMovimientos.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+              No hay datos de clientes
+            </div>
+          ) : (
+            clientesConMovimientos.map((cliente) => (
+              <Collapsible key={cliente.nombre} open={expandedClients.has(cliente.nombre)}>
+                <div className="rounded-lg border bg-card">
+                  <div className="flex items-center justify-between p-4">
+                    <CollapsibleTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="flex-1 justify-start gap-4 h-auto hover:bg-muted/50 p-0"
+                        onClick={() => toggleClient(cliente.nombre)}
+                      >
+                        {expandedClients.has(cliente.nombre) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        <span className="font-medium">{cliente.nombre}</span>
+                      </Button>
+                    </CollapsibleTrigger>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={cliente.saldo > 0 ? "destructive" : cliente.saldo < 0 ? "default" : "outline"}>
+                        {formatCurrency(cliente.saldo)}
+                      </Badge>
+                      <Button variant="outline" size="sm" onClick={() => exportClientePDF(cliente)}>
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-                
-                <CollapsibleContent>
-                  <div className="border-t">
-                    <table className="w-full">
-                      <thead className="bg-muted/50">
-                        <tr className="text-xs">
-                          <th className="text-left p-2 font-medium">Fecha</th>
-                          <th className="text-left p-2 font-medium">Descripcion</th>
-                          <th className="text-right p-2 font-medium">Debe</th>
-                          <th className="text-right p-2 font-medium">Haber</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {cliente.movimientos.map((mov, idx) => (
-                          <tr key={idx} className="border-t text-sm">
-                            <td className="p-2 text-muted-foreground">{formatDate(new Date(mov.fecha))}</td>
-                            <td className="p-2">{mov.descripcion}</td>
-                            <td className="p-2 text-right text-destructive">{mov.debe > 0 ? formatCurrency(mov.debe) : '-'}</td>
-                            <td className="p-2 text-right text-green-600">{mov.haber > 0 ? formatCurrency(mov.haber) : '-'}</td>
+                  
+                  <CollapsibleContent>
+                    <div className="border-t">
+                      <table className="w-full">
+                        <thead className="bg-muted/50">
+                          <tr className="text-xs">
+                            <th className="text-left p-2 font-medium">Fecha</th>
+                            <th className="text-left p-2 font-medium">Descripcion</th>
+                            <th className="text-right p-2 font-medium">Debe</th>
+                            <th className="text-right p-2 font-medium">Haber</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {cliente.movimientos.map((mov, idx) => (
+                            <tr key={idx} className="border-t text-sm">
+                              <td className="p-2 text-muted-foreground">{formatDate(new Date(mov.fecha))}</td>
+                              <td className="p-2">{mov.descripcion}</td>
+                              <td className="p-2 text-right text-destructive">{mov.debe > 0 ? formatCurrency(mov.debe) : '-'}</td>
+                              <td className="p-2 text-right text-green-600">{mov.haber > 0 ? formatCurrency(mov.haber) : '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+            ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="proveedores" className="space-y-2 mt-4">
+          {proveedoresConMovimientos.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+              No hay datos de proveedores
+            </div>
+          ) : (
+            proveedoresConMovimientos.map((proveedor) => (
+              <Collapsible key={proveedor.nombre} open={expandedProviders.has(proveedor.nombre)}>
+                <div className="rounded-lg border bg-card">
+                  <div className="flex items-center justify-between p-4">
+                    <CollapsibleTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="flex-1 justify-start gap-4 h-auto hover:bg-muted/50 p-0"
+                        onClick={() => toggleProvider(proveedor.nombre)}
+                      >
+                        {expandedProviders.has(proveedor.nombre) ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        <span className="font-medium">{proveedor.nombre}</span>
+                      </Button>
+                    </CollapsibleTrigger>
+                    <Badge variant={proveedor.saldo > 0 ? "destructive" : proveedor.saldo < 0 ? "default" : "outline"}>
+                      {formatCurrency(proveedor.saldo)}
+                    </Badge>
                   </div>
-                </CollapsibleContent>
-              </div>
-            </Collapsible>
-          ))
-        )}
-      </div>
+                  
+                  <CollapsibleContent>
+                    <div className="border-t">
+                      <table className="w-full">
+                        <thead className="bg-muted/50">
+                          <tr className="text-xs">
+                            <th className="text-left p-2 font-medium">Fecha</th>
+                            <th className="text-left p-2 font-medium">Descripcion</th>
+                            <th className="text-right p-2 font-medium">Debe</th>
+                            <th className="text-right p-2 font-medium">Haber</th>
+                            <th className="text-center p-2 font-medium">Verificado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {proveedor.movimientos.map((mov, idx) => (
+                            <tr key={idx} className="border-t text-sm">
+                              <td className="p-2 text-muted-foreground">{formatDate(new Date(mov.fecha))}</td>
+                              <td className="p-2">{mov.descripcion}</td>
+                              <td className="p-2 text-right text-destructive">{mov.debe > 0 ? formatCurrency(mov.debe) : '-'}</td>
+                              <td className="p-2 text-right text-green-600">{mov.haber > 0 ? formatCurrency(mov.haber) : '-'}</td>
+                              <td className="p-2 text-center">
+                                {mov.tipo === 'transferencia' && mov.id ? (
+                                  <Checkbox
+                                    checked={mov.verificado || false}
+                                    onCheckedChange={() => handleVerifyTransfer(mov.id!, mov.verificado || false)}
+                                  />
+                                ) : (
+                                  '-'
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+            ))
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
