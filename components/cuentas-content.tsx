@@ -91,6 +91,7 @@ export function CuentasContent() {
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
   const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set())
   const [dateRange, setDateRange] = useState({ desde: "", hasta: "" })
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
   const { toast } = useToast()
 
   // Clientes con movimientos
@@ -222,15 +223,18 @@ export function CuentasContent() {
       }
     })
 
-    // Agregar transferencias directas de clientes (disminuyen deuda)
+    // Agregar transferencias directas de clientes (disminuyen deuda SOLO si están verificadas)
     cobros.forEach((c) => {
       if (c.cuenta_destino && c.metodo_pago === 'transferencia') {
         const key = c.cuenta_destino.toLowerCase().trim()
         const proveedor = proveedoresMap.get(key)
         
         if (proveedor) {
-          proveedor.saldo -= Number(c.monto)
-          proveedor.totalPagos += Number(c.monto)
+          // Solo descuenta del saldo si está verificado
+          if (c.verificado_agroaves) {
+            proveedor.saldo -= Number(c.monto)
+            proveedor.totalPagos += Number(c.monto)
+          }
           proveedor.movimientos.push({
             id: c.id,
             fecha: c.fecha,
@@ -399,9 +403,10 @@ export function CuentasContent() {
       </div>
 
       <Tabs defaultValue="clientes" className="w-full">
-        <TabsList>
+        <TabsList className="grid w-full max-w-2xl grid-cols-3">
           <TabsTrigger value="clientes">Clientes</TabsTrigger>
           <TabsTrigger value="proveedores">Proveedores</TabsTrigger>
+          <TabsTrigger value="transferencias">Transferencias Agroaves</TabsTrigger>
         </TabsList>
 
         <TabsContent value="clientes" className="space-y-2 mt-4">
@@ -528,6 +533,82 @@ export function CuentasContent() {
               </Collapsible>
             ))
           )}
+        </TabsContent>
+
+        <TabsContent value="transferencias" className="space-y-4">
+          <div className="flex items-center gap-4">
+            <Label>Mes:</Label>
+            <Input 
+              type="month" 
+              value={selectedMonth} 
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="max-w-xs"
+            />
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Transferencias a Agroaves por Cliente - {selectedMonth}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {(() => {
+                  const transferenciasAgroaves = cobros
+                    .filter(c => c.cuenta_destino?.toLowerCase() === 'agroaves' && c.metodo_pago === 'transferencia' && c.fecha.startsWith(selectedMonth))
+                    .reduce((acc, c) => {
+                      const cliente = c.cliente_nombre || 'Sin cliente'
+                      if (!acc[cliente]) {
+                        acc[cliente] = { total: 0, transferencias: [] }
+                      }
+                      acc[cliente].total += Number(c.monto)
+                      acc[cliente].transferencias.push({
+                        fecha: c.fecha,
+                        monto: Number(c.monto),
+                        verificado: c.verificado_agroaves
+                      })
+                      return acc
+                    }, {} as Record<string, { total: number; transferencias: Array<{ fecha: string; monto: number; verificado: boolean }> }>)
+
+                  const totalMes = Object.values(transferenciasAgroaves).reduce((sum, c) => sum + c.total, 0)
+
+                  return (
+                    <>
+                      <div className="rounded-lg border p-4 bg-muted">
+                        <p className="text-sm font-medium">Total Transferencias del Mes</p>
+                        <p className="text-2xl font-bold">{formatCurrency(totalMes)}</p>
+                      </div>
+
+                      {Object.entries(transferenciasAgroaves).length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-8">No hay transferencias a Agroaves en este período</p>
+                      ) : (
+                        Object.entries(transferenciasAgroaves)
+                          .sort((a, b) => b[1].total - a[1].total)
+                          .map(([cliente, data]) => (
+                            <div key={cliente} className="rounded-lg border p-4">
+                              <div className="flex justify-between items-center mb-2">
+                                <h4 className="font-semibold">{cliente}</h4>
+                                <Badge variant="default" className="text-base">{formatCurrency(data.total)}</Badge>
+                              </div>
+                              <div className="mt-2 space-y-1">
+                                {data.transferencias.map((t, idx) => (
+                                  <div key={idx} className="flex justify-between text-sm">
+                                    <span className="text-muted-foreground">{formatDate(new Date(t.fecha))}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span>{formatCurrency(t.monto)}</span>
+                                      {t.verificado && <Badge variant="outline" className="text-xs">Verificado</Badge>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))
+                      )}
+                    </>
+                  )
+                })()}
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
