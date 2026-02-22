@@ -1,166 +1,185 @@
 "use client"
 
-import { useState } from "react"
-import { Plus, Search, Pencil, Check, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
-import { Switch } from "@/components/ui/switch"
-import { DataTable } from "./data-table"
-import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
+import { useMemo } from "react"
+import { Package, TrendingUp, TrendingDown } from "lucide-react"
+import { useSupabase } from "@/hooks/use-supabase"
+import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface Producto {
   id: string
   nombre: string
-  descripcion: string
-  activo: boolean
+}
+
+interface Compra {
+  id: string
+  producto: string
+  cantidad: number
+  fecha: string
+}
+
+interface Venta {
+  id: string
+  productos: { producto: string; cantidad: number }[]
+  fecha: string
 }
 
 export function StockContent() {
-  const { data: productos = [], isLoading, mutate } = useSupabase<Producto>("productos")
-  const [searchTerm, setSearchTerm] = useState("")
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [formData, setFormData] = useState({
-    nombre: "",
-    descripcion: "",
-    activo: true
-  })
+  const { data: productos = [] } = useSupabase<Producto>("productos")
+  const { data: compras = [] } = useSupabase<Compra>("compras")
+  const { data: ventas = [] } = useSupabase<Venta>("ventas")
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (editingId) {
-      await updateRow("productos", editingId, formData)
-      setEditingId(null)
-    } else {
-      await insertRow("productos", formData)
-    }
-    mutate()
-    setIsDialogOpen(false)
-    setFormData({ nombre: "", descripcion: "", activo: true })
-  }
+  const inventario = useMemo(() => {
+    const stock = new Map<string, { compras: number; ventas: number; stock: number }>()
 
-  const handleEdit = (producto: Producto) => {
-    setFormData({
-      nombre: producto.nombre,
-      descripcion: producto.descripcion || "",
-      activo: producto.activo
+    // Inicializar productos
+    productos.forEach(p => {
+      stock.set(p.nombre, { compras: 0, ventas: 0, stock: 0 })
     })
-    setEditingId(producto.id)
-    setIsDialogOpen(true)
-  }
 
-  const toggleActivo = async (producto: Producto) => {
-    await updateRow("productos", producto.id, { activo: !producto.activo })
-    mutate()
-  }
+    // Sumar compras
+    compras.forEach(c => {
+      const item = stock.get(c.producto) || { compras: 0, ventas: 0, stock: 0 }
+      item.compras += c.cantidad
+      item.stock += c.cantidad
+      stock.set(c.producto, item)
+    })
 
-  const filteredProductos = productos.filter((p) =>
-    p.nombre.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+    // Restar ventas
+    ventas.forEach(v => {
+      if (Array.isArray(v.productos)) {
+        v.productos.forEach((p: any) => {
+          const item = stock.get(p.producto) || { compras: 0, ventas: 0, stock: 0 }
+          item.ventas += p.cantidad || 0
+          item.stock -= p.cantidad || 0
+          stock.set(p.producto, item)
+        })
+      }
+    })
 
-  const columns = [
-    { key: "nombre", header: "Producto", render: (p: Producto) => <span className="font-medium">{p.nombre}</span> },
-    { key: "descripcion", header: "Descripción", render: (p: Producto) => p.descripcion || "-" },
-    { 
-      key: "activo", 
-      header: "Estado", 
-      render: (p: Producto) => (
-        <Badge variant={p.activo ? "default" : "outline"}>
-          {p.activo ? "Activo" : "Inactivo"}
-        </Badge>
-      )
-    },
-    {
-      key: "actions",
-      header: "Acciones",
-      render: (p: Producto) => (
-        <div className="flex gap-2">
-          <Button variant="ghost" size="icon" onClick={() => handleEdit(p)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={() => toggleActivo(p)}
-            className={p.activo ? "text-destructive" : "text-green-600"}
-          >
-            {p.activo ? <X className="h-4 w-4" /> : <Check className="h-4 w-4" />}
-          </Button>
-        </div>
-      )
-    },
-  ]
+    return Array.from(stock.entries()).map(([nombre, datos]) => ({
+      producto: nombre,
+      ...datos
+    }))
+  }, [productos, compras, ventas])
+
+  const movimientos = useMemo(() => {
+    const items: Array<{
+      fecha: string
+      tipo: "compra" | "venta"
+      producto: string
+      cantidad: number
+    }> = []
+
+    compras.forEach(c => {
+      items.push({
+        fecha: c.fecha,
+        tipo: "compra",
+        producto: c.producto,
+        cantidad: c.cantidad
+      })
+    })
+
+    ventas.forEach(v => {
+      if (Array.isArray(v.productos)) {
+        v.productos.forEach((p: any) => {
+          items.push({
+            fecha: v.fecha,
+            tipo: "venta",
+            producto: p.producto,
+            cantidad: p.cantidad || 0
+          })
+        })
+      }
+    })
+
+    return items.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+  }, [compras, ventas])
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Buscar productos..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open)
-          if (!open) {
-            setEditingId(null)
-            setFormData({ nombre: "", descripcion: "", activo: true })
-          }
-        }}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Nuevo Producto
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingId ? "Editar Producto" : "Nuevo Producto"}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label>Nombre</Label>
-                <Input 
-                  value={formData.nombre} 
-                  onChange={(e) => setFormData({...formData, nombre: e.target.value})} 
-                  placeholder="Ej: Pollo A, Cajon N1"
-                  required 
-                />
-              </div>
-              <div>
-                <Label>Descripción (opcional)</Label>
-                <Input 
-                  value={formData.descripcion} 
-                  onChange={(e) => setFormData({...formData, descripcion: e.target.value})} 
-                  placeholder="Descripción del producto"
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label>Activo</Label>
-                <Switch 
-                  checked={formData.activo} 
-                  onCheckedChange={(checked) => setFormData({...formData, activo: checked})} 
-                />
-              </div>
-              <DialogFooter>
-                <Button type="submit">{editingId ? "Actualizar" : "Guardar"}</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+      <Tabs defaultValue="stock">
+        <TabsList>
+          <TabsTrigger value="stock">Stock Actual</TabsTrigger>
+          <TabsTrigger value="movimientos">Movimientos</TabsTrigger>
+        </TabsList>
 
-      <DataTable
-        columns={columns}
-        data={filteredProductos}
-        emptyMessage={isLoading ? "Cargando..." : "No hay productos registrados"}
-      />
+        <TabsContent value="stock">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {inventario.map((item) => (
+              <Card key={item.producto} className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-muted-foreground">
+                      {item.producto}
+                    </p>
+                    <p className="text-3xl font-bold">
+                      {item.stock}
+                    </p>
+                  </div>
+                  <Package className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <div className="mt-4 flex gap-4 text-sm">
+                  <div className="flex items-center gap-1 text-green-600">
+                    <TrendingUp className="h-4 w-4" />
+                    <span>Compras: {item.compras}</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-red-600">
+                    <TrendingDown className="h-4 w-4" />
+                    <span>Ventas: {item.ventas}</span>
+                  </div>
+                </div>
+                {item.stock < 10 && item.stock > 0 && (
+                  <Badge variant="outline" className="mt-2 text-orange-600 border-orange-600">
+                    Stock Bajo
+                  </Badge>
+                )}
+                {item.stock === 0 && (
+                  <Badge variant="destructive" className="mt-2">
+                    Sin Stock
+                  </Badge>
+                )}
+              </Card>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="movimientos">
+          <div className="rounded-lg border">
+            <div className="p-4">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="pb-2 text-left text-sm font-medium">Fecha</th>
+                    <th className="pb-2 text-left text-sm font-medium">Tipo</th>
+                    <th className="pb-2 text-left text-sm font-medium">Producto</th>
+                    <th className="pb-2 text-right text-sm font-medium">Cantidad</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movimientos.map((m, i) => (
+                    <tr key={i} className="border-b last:border-0">
+                      <td className="py-3 text-sm">
+                        {new Date(m.fecha).toLocaleDateString()}
+                      </td>
+                      <td className="py-3">
+                        <Badge variant={m.tipo === "compra" ? "default" : "outline"}>
+                          {m.tipo === "compra" ? "Compra" : "Venta"}
+                        </Badge>
+                      </td>
+                      <td className="py-3 text-sm">{m.producto}</td>
+                      <td className={`py-3 text-right text-sm font-medium ${m.tipo === "compra" ? "text-green-600" : "text-red-600"}`}>
+                        {m.tipo === "compra" ? "+" : "-"}{m.cantidad}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
