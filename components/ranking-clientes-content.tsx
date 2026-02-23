@@ -49,16 +49,16 @@ export function RankingClientesContent() {
     }>()
 
     // Calcular costo promedio por producto
-    const costosPromedio = new Map<string, number>()
+    const costosPromedio = new Map<string, number[]>()
     compras.forEach(c => {
       const key = c.producto_nombre.toLowerCase().trim()
       const existing = costosPromedio.get(key) || []
-      costosPromedio.set(key, [...(Array.isArray(existing) ? existing : []), c.precio_unitario])
+      costosPromedio.set(key, [...existing, c.precio_unitario])
     })
 
     const costosPromedioFinal = new Map<string, number>()
     costosPromedio.forEach((precios, producto) => {
-      const promedio = precios.reduce((a: number, b: number) => a + b, 0) / precios.length
+      const promedio = precios.reduce((a, b) => a + b, 0) / precios.length
       costosPromedioFinal.set(producto, promedio)
     })
 
