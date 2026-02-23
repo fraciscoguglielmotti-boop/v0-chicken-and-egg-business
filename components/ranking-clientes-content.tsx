@@ -77,7 +77,8 @@ export function RankingClientesContent() {
       }
 
       const totalVenta = v.cantidad * v.precio_unitario
-      const costoUnitario = costosPromedioFinal.get(v.producto_nombre.toLowerCase().trim()) || 0
+      const productoNombre = v.producto_nombre || 'Sin producto'
+      const costoUnitario = costosPromedioFinal.get(productoNombre.toLowerCase().trim()) || 0
       const ganancia = totalVenta - (v.cantidad * costoUnitario)
 
       cliente.totalVentas += totalVenta
@@ -88,8 +89,8 @@ export function RankingClientesContent() {
         cliente.ultimaVenta = v.fecha
       }
 
-      const prodCount = cliente.productos.get(v.producto_nombre) || 0
-      cliente.productos.set(v.producto_nombre, prodCount + v.cantidad)
+      const prodCount = cliente.productos.get(productoNombre) || 0
+      cliente.productos.set(productoNombre, prodCount + v.cantidad)
 
       clientesMap.set(key, cliente)
     })
