@@ -22,7 +22,8 @@ interface Vendedor {
 
 interface Venta {
   id: string
-  vendedor_nombre: string
+  vendedor?: string
+  producto_nombre?: string
   cantidad: number
   precio_unitario: number
   fecha: string
@@ -67,28 +68,18 @@ export function VendedoresContent() {
 
   // Calcular comisiones por vendedor
   const comisionesPorVendedor = useMemo(() => {
-    console.log("[v0] Calculando comisiones para mes:", selectedMonth)
-    console.log("[v0] Total ventas:", ventas.length)
-    console.log("[v0] Ventas del mes:", ventas.filter(v => v.fecha.startsWith(selectedMonth)).length)
-    console.log("[v0] Primera venta estructura:", ventas[0])
-    
     const comisiones = new Map<string, { totalGanancia: number, totalVentas: number, comision: number, ventas: number }>()
     
     ventas
       .filter(v => v.fecha.startsWith(selectedMonth))
       .forEach(venta => {
-        console.log("[v0] Procesando venta:", { vendedor_nombre: venta.vendedor_nombre, fecha: venta.fecha })
-        const vendedor = vendedores.find(v => v.nombre === venta.vendedor_nombre)
-        if (!vendedor) {
-          console.log("[v0] Vendedor no encontrado para:", venta.vendedor_nombre)
-          return
-        }
+        if (!venta.vendedor) return // Skip ventas sin vendedor
+        const vendedor = vendedores.find(v => v.nombre === venta.vendedor)
+        if (!vendedor) return
         
         const costoUnitario = costosProducto.get(venta.producto_nombre?.toLowerCase() || '') || 0
         const gananciaVenta = (venta.precio_unitario - costoUnitario) * venta.cantidad
         const comisionVenta = gananciaVenta * (vendedor.comision / 100)
-        
-        console.log("[v0] Comision calculada:", { vendedor: vendedor.nombre, ganancia: gananciaVenta, comision: comisionVenta })
         
         const existing = comisiones.get(vendedor.nombre) || { totalGanancia: 0, totalVentas: 0, comision: 0, ventas: 0 }
         comisiones.set(vendedor.nombre, {
