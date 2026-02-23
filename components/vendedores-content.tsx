@@ -81,18 +81,6 @@ export function VendedoresContent() {
         const gananciaVenta = (venta.precio_unitario - costoUnitario) * venta.cantidad
         const comisionVenta = gananciaVenta * (vendedor.comision / 100)
         
-        console.log("[v0] CALCULO COMISION:", {
-          vendedor: vendedor.nombre,
-          producto: venta.producto_nombre,
-          precioVenta: venta.precio_unitario,
-          costoUnitario: costoUnitario,
-          cantidad: venta.cantidad,
-          gananciaUnitaria: venta.precio_unitario - costoUnitario,
-          gananciaTotal: gananciaVenta,
-          porcentajeComision: vendedor.comision,
-          comisionFinal: comisionVenta
-        })
-        
         const existing = comisiones.get(vendedor.nombre) || { totalGanancia: 0, totalVentas: 0, comision: 0, ventas: 0 }
         comisiones.set(vendedor.nombre, {
           totalGanancia: existing.totalGanancia + gananciaVenta,

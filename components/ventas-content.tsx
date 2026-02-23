@@ -54,7 +54,7 @@ export function VentasContent() {
     await insertRow("ventas", {
       fecha: formData.fecha,
       cliente_nombre: formData.cliente_nombre,
-      productos: { nombre: formData.producto },
+      producto_nombre: formData.producto,
       cantidad: parseFloat(formData.cantidad),
       precio_unitario: parseFloat(formData.precio_unitario),
       vendedor: formData.vendedor || null
