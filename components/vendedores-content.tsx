@@ -91,6 +91,7 @@ export function VendedoresContent() {
       })
     
     return Array.from(comisiones.entries()).map(([nombre, data]) => ({
+      id: nombre, // Usar nombre como ID único
       nombre,
       ...data,
       porcentaje: vendedores.find(v => v.nombre === nombre)?.comision || 0
