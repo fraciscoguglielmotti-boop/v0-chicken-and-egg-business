@@ -21,7 +21,8 @@ interface Compra {
 
 interface Venta {
   id: string
-  productos: { producto: string; cantidad: number }[]
+  producto_nombre?: string
+  cantidad: number
   fecha: string
 }
 
@@ -48,13 +49,11 @@ export function StockContent() {
 
     // Restar ventas
     ventas.forEach(v => {
-      if (Array.isArray(v.productos)) {
-        v.productos.forEach((p: any) => {
-          const item = stock.get(p.producto) || { compras: 0, ventas: 0, stock: 0 }
-          item.ventas += p.cantidad || 0
-          item.stock -= p.cantidad || 0
-          stock.set(p.producto, item)
-        })
+      if (v.producto_nombre) {
+        const item = stock.get(v.producto_nombre) || { compras: 0, ventas: 0, stock: 0 }
+        item.ventas += v.cantidad
+        item.stock -= v.cantidad
+        stock.set(v.producto_nombre, item)
       }
     })
 
@@ -82,14 +81,12 @@ export function StockContent() {
     })
 
     ventas.forEach(v => {
-      if (Array.isArray(v.productos)) {
-        v.productos.forEach((p: any) => {
-          items.push({
-            fecha: v.fecha,
-            tipo: "venta",
-            producto: p.producto,
-            cantidad: p.cantidad || 0
-          })
+      if (v.producto_nombre) {
+        items.push({
+          fecha: v.fecha,
+          tipo: "venta",
+          producto: v.producto_nombre,
+          cantidad: v.cantidad
         })
       }
     })

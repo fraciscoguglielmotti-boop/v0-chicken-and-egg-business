@@ -22,7 +22,8 @@ interface Vendedor {
 
 interface Venta {
   id: string
-  vendedor_nombre: string
+  vendedor?: string
+  producto_nombre?: string
   cantidad: number
   precio_unitario: number
   fecha: string
@@ -30,7 +31,7 @@ interface Venta {
 
 interface Compra {
   id: string
-  producto_nombre: string
+  producto: string
   cantidad: number
   precio_unitario: number
   fecha: string
@@ -48,9 +49,10 @@ export function VendedoresContent() {
 
   // Calcular costo promedio por producto
   const costosProducto = useMemo(() => {
-    const costos = new Map<string, number>()
+    const costos = new Map<string, { total: number, count: number }>()
     compras.forEach(c => {
-      const key = c.producto_nombre.toLowerCase()
+      if (!c.producto) return // Skip compras sin producto
+      const key = c.producto.toLowerCase()
       const existing = costos.get(key) || { total: 0, count: 0 }
       costos.set(key, {
         total: existing.total + (c.cantidad * c.precio_unitario),
@@ -71,7 +73,8 @@ export function VendedoresContent() {
     ventas
       .filter(v => v.fecha.startsWith(selectedMonth))
       .forEach(venta => {
-        const vendedor = vendedores.find(v => v.nombre === venta.vendedor_nombre)
+        if (!venta.vendedor) return // Skip ventas sin vendedor
+        const vendedor = vendedores.find(v => v.nombre === venta.vendedor)
         if (!vendedor) return
         
         const costoUnitario = costosProducto.get(venta.producto_nombre?.toLowerCase() || '') || 0
@@ -88,6 +91,7 @@ export function VendedoresContent() {
       })
     
     return Array.from(comisiones.entries()).map(([nombre, data]) => ({
+      id: nombre, // Usar nombre como ID único
       nombre,
       ...data,
       porcentaje: vendedores.find(v => v.nombre === nombre)?.comision || 0
