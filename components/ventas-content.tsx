@@ -71,7 +71,7 @@ export function VentasContent() {
   const columns = [
     { key: "fecha", header: "Fecha", render: (v: Venta) => formatDate(new Date(v.fecha)) },
     { key: "cliente_nombre", header: "Cliente" },
-    { key: "productos", header: "Producto", render: (v: Venta) => v.productos?.nombre || v.productos?.descripcion || "-" },
+    { key: "producto_nombre", header: "Producto", render: (v: Venta) => v.producto_nombre || "-" },
     { key: "cantidad", header: "Cantidad" },
     { key: "precio_unitario", header: "Precio Unit.", render: (v: Venta) => formatCurrency(v.precio_unitario) },
     { key: "total", header: "Total", render: (v: Venta) => <span className="font-semibold">{formatCurrency(v.cantidad * v.precio_unitario)}</span> },
