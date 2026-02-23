@@ -104,7 +104,13 @@ export function VentasContent() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <Label>Fecha</Label>
-                <Input type="date" value={formData.fecha} onChange={(e) => setFormData({...formData, fecha: e.target.value})} required />
+                <Input 
+                  type="date" 
+                  value={formData.fecha} 
+                  max={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setFormData({...formData, fecha: e.target.value})} 
+                  required 
+                />
               </div>
               <div>
                 <Label>Cliente</Label>

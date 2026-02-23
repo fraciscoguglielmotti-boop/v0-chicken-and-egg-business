@@ -39,6 +39,7 @@ const navSections = [
       { name: "Clientes", href: "/clientes", icon: Users },
       { name: "Proveedores", href: "/proveedores", icon: Truck },
       { name: "Cuentas Corrientes", href: "/cuentas", icon: BarChart3 },
+      { name: "Ranking de Clientes", href: "/ranking", icon: TrendingUp },
       { name: "Vendedores", href: "/vendedores", icon: UserCheck },
       { name: "Inventario", href: "/stock", icon: Package },
       { name: "Vehiculos", href: "/vehiculos", icon: Car },
