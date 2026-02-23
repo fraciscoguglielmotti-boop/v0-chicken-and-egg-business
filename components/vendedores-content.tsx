@@ -48,8 +48,9 @@ export function VendedoresContent() {
 
   // Calcular costo promedio por producto
   const costosProducto = useMemo(() => {
-    const costos = new Map<string, number>()
+    const costos = new Map<string, { total: number, count: number }>()
     compras.forEach(c => {
+      if (!c.producto_nombre) return // Skip compras sin producto
       const key = c.producto_nombre.toLowerCase()
       const existing = costos.get(key) || { total: 0, count: 0 }
       costos.set(key, {
