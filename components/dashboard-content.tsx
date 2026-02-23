@@ -72,12 +72,55 @@ export function DashboardContent() {
   }, [ventas, cobros, clientes])
 
   const stats = useMemo(() => {
+    const now = new Date()
+    const mesActual = now.getMonth()
+    const añoActual = now.getFullYear()
+    const mesAnterior = mesActual === 0 ? 11 : mesActual - 1
+    const añoMesAnterior = mesActual === 0 ? añoActual - 1 : añoActual
+
+    const semanaActual = Math.floor((now.getTime() - new Date(añoActual, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
+    const semanaAnterior = semanaActual - 1
+
+    const ventasMesActual = ventas.filter(v => {
+      const fecha = new Date(v.fecha)
+      return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual
+    })
+    const ventasMesAnterior = ventas.filter(v => {
+      const fecha = new Date(v.fecha)
+      return fecha.getMonth() === mesAnterior && fecha.getFullYear() === añoMesAnterior
+    })
+
+    const ventasSemanaActual = ventas.filter(v => {
+      const fecha = new Date(v.fecha)
+      const semana = Math.floor((fecha.getTime() - new Date(fecha.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
+      return semana === semanaActual
+    })
+    const ventasSemanaAnterior = ventas.filter(v => {
+      const fecha = new Date(v.fecha)
+      const semana = Math.floor((fecha.getTime() - new Date(fecha.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
+      return semana === semanaAnterior
+    })
+
+    const totalVentasMesActual = ventasMesActual.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
+    const totalVentasMesAnterior = ventasMesAnterior.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
+    const totalVentasSemanaActual = ventasSemanaActual.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
+    const totalVentasSemanaAnterior = ventasSemanaAnterior.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
+
+    const variacionMes = totalVentasMesAnterior > 0 ? ((totalVentasMesActual - totalVentasMesAnterior) / totalVentasMesAnterior) * 100 : 0
+    const variacionSemana = totalVentasSemanaAnterior > 0 ? ((totalVentasSemanaActual - totalVentasSemanaAnterior) / totalVentasSemanaAnterior) * 100 : 0
+
     const totalVentas = ventas.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
     const totalCobros = cobros.reduce((acc, c) => acc + Number(c.monto), 0)
     const cuentasPorCobrar = clientBalances.reduce((acc, c) => acc + c.saldo, 0)
 
     return {
       ventasMes: totalVentas,
+      ventasMesActual: totalVentasMesActual,
+      ventasMesAnterior: totalVentasMesAnterior,
+      ventasSemanaActual: totalVentasSemanaActual,
+      ventasSemanaAnterior: totalVentasSemanaAnterior,
+      variacionMes,
+      variacionSemana,
       cobrosMes: totalCobros,
       cuentasPorCobrar,
     }
@@ -111,6 +154,63 @@ export function DashboardContent() {
         <StatCard title="Total Cobros" value={formatCurrency(stats.cobrosMes)} subtitle="Recaudado" icon={TrendingUp} variant="default" />
         <StatCard title="Cobros" value={formatCurrency(stats.cobrosMes)} subtitle="Total cobrado" icon={Receipt} variant="success" />
         <StatCard title="Por Cobrar" value={formatCurrency(stats.cuentasPorCobrar)} subtitle="Saldo pendiente" icon={TrendingDown} variant="warning" />
+      </div>
+
+      {/* Comparativas */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-xl border bg-card p-6">
+          <h3 className="text-lg font-semibold mb-4">Comparativa Mes vs Mes</h3>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Mes Actual</span>
+              <span className="font-semibold">{formatCurrency(stats.ventasMesActual)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Mes Anterior</span>
+              <span className="font-semibold">{formatCurrency(stats.ventasMesAnterior)}</span>
+            </div>
+            <div className="border-t pt-3 flex items-center justify-between">
+              <span className="font-medium">Variación</span>
+              <div className="flex items-center gap-2">
+                {stats.variacionMes >= 0 ? (
+                  <TrendingUp className="h-4 w-4 text-green-600" />
+                ) : (
+                  <TrendingDown className="h-4 w-4 text-red-600" />
+                )}
+                <span className={`font-bold ${stats.variacionMes >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {stats.variacionMes >= 0 ? '+' : ''}{stats.variacionMes.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border bg-card p-6">
+          <h3 className="text-lg font-semibold mb-4">Comparativa Semana vs Semana</h3>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Semana Actual</span>
+              <span className="font-semibold">{formatCurrency(stats.ventasSemanaActual)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Semana Anterior</span>
+              <span className="font-semibold">{formatCurrency(stats.ventasSemanaAnterior)}</span>
+            </div>
+            <div className="border-t pt-3 flex items-center justify-between">
+              <span className="font-medium">Variación</span>
+              <div className="flex items-center gap-2">
+                {stats.variacionSemana >= 0 ? (
+                  <TrendingUp className="h-4 w-4 text-green-600" />
+                ) : (
+                  <TrendingDown className="h-4 w-4 text-red-600" />
+                )}
+                <span className={`font-bold ${stats.variacionSemana >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {stats.variacionSemana >= 0 ? '+' : ''}{stats.variacionSemana.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Quick Actions + Top Deudores */}
