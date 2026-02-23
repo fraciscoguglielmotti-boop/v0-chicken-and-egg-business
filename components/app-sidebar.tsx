@@ -16,8 +16,9 @@ import {
   UserCheck,
   Wallet,
   DollarSign,
-  Target, // Added import for Target
-  Car, // Added import for Car
+  Target,
+  Car,
+  TrendingUp
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
