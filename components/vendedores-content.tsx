@@ -31,7 +31,7 @@ interface Venta {
 
 interface Compra {
   id: string
-  producto_nombre: string
+  producto: string
   cantidad: number
   precio_unitario: number
   fecha: string
@@ -51,8 +51,8 @@ export function VendedoresContent() {
   const costosProducto = useMemo(() => {
     const costos = new Map<string, { total: number, count: number }>()
     compras.forEach(c => {
-      if (!c.producto_nombre) return // Skip compras sin producto
-      const key = c.producto_nombre.toLowerCase()
+      if (!c.producto) return // Skip compras sin producto
+      const key = c.producto.toLowerCase()
       const existing = costos.get(key) || { total: 0, count: 0 }
       costos.set(key, {
         total: existing.total + (c.cantidad * c.precio_unitario),
