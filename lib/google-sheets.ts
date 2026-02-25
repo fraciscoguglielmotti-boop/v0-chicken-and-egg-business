@@ -30,6 +30,12 @@ export const SHEET_NAMES = {
   STOCK_MOVIMIENTOS: "StockMovimientos",
 } as const
 
+export type SheetName = typeof SHEET_NAMES[keyof typeof SHEET_NAMES]
+
+export function isSheetName(x: string): x is SheetName {
+  return (Object.values(SHEET_NAMES) as string[]).includes(x)
+}
+
 // Estructura de columnas esperada para cada hoja
 export const SHEET_COLUMNS = {
   VENTAS: [

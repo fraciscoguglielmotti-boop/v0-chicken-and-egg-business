@@ -31,7 +31,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { SHEET_NAMES, SHEET_COLUMNS } from "@/lib/google-sheets";
+import { SHEET_NAMES, SHEET_COLUMNS, isSheetName } from "@/lib/google-sheets";
 
 interface DiagnoseResult {
   status: string;
@@ -339,9 +339,7 @@ export function SheetsContent() {
                             </p>
                             <div className="flex flex-wrap gap-1">
                               {result.availableSheets.map((s) => {
-                                const isExpected = Object.values(
-                                  SHEET_NAMES
-                                ).includes(s as string);
+                                const isExpected = isSheetName(s);
                                 return (
                                   <span
                                     key={s}
