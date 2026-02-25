@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Search, Phone, MapPin, CreditCard, User } from "lucide-react"
+import { Plus, Search, Phone, MapPin, CreditCard, User, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,6 +10,7 @@ import { DataTable } from "./data-table"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/hooks/use-toast"
 
 interface Cliente {
   id: string
@@ -22,8 +23,25 @@ interface Cliente {
   created_at: string
 }
 
+interface Venta {
+  id: string
+  cliente_nombre: string
+  cantidad: number
+  precio_unitario: number
+}
+
+interface Cobro {
+  id: string
+  cliente_nombre: string
+  monto: number
+}
+
 export function ClientesContent() {
   const { data: clientes = [], mutate, isLoading } = useSupabase<Cliente>("clientes")
+  const { data: ventas = [] } = useSupabase<Venta>("ventas")
+  const { data: cobros = [] } = useSupabase<Cobro>("cobros")
+  const { toast } = useToast()
+
   const [searchTerm, setSearchTerm] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null)
@@ -34,6 +52,12 @@ export function ClientesContent() {
     direccion: "",
     saldo_inicial: "0",
   })
+
+  // WhatsApp phone dialog state
+  const [waDialogOpen, setWaDialogOpen] = useState(false)
+  const [waCliente, setWaCliente] = useState<Cliente | null>(null)
+  const [waTempPhone, setWaTempPhone] = useState("")
+  const [waSending, setWaSending] = useState(false)
 
   const filteredClientes = clientes.filter((c) =>
     c.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -95,6 +119,54 @@ export function ClientesContent() {
     setEditingCliente(null)
   }
 
+  const getClienteBalance = (nombre: string) => {
+    const key = nombre.toLowerCase().trim()
+    const totalVentas = ventas
+      .filter(v => v.cliente_nombre.toLowerCase().trim() === key)
+      .reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
+    const totalCobrado = cobros
+      .filter(c => c.cliente_nombre.toLowerCase().trim() === key)
+      .reduce((acc, c) => acc + Number(c.monto), 0)
+    return { totalVentas, totalCobrado, saldo: totalVentas - totalCobrado }
+  }
+
+  const sendWhatsApp = async (cliente: Cliente, telefono: string) => {
+    setWaSending(true)
+    try {
+      const balance = getClienteBalance(cliente.nombre)
+      const res = await fetch("/api/whatsapp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          telefono,
+          clienteNombre: cliente.nombre,
+          saldo: balance.saldo,
+          totalVentas: balance.totalVentas,
+          totalCobrado: balance.totalCobrado,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Error al enviar")
+      toast({ title: "WhatsApp enviado", description: `Estado de cuenta enviado a ${cliente.nombre}` })
+      setWaDialogOpen(false)
+      setWaTempPhone("")
+    } catch (err: any) {
+      toast({ title: "Error al enviar WhatsApp", description: err.message, variant: "destructive" })
+    } finally {
+      setWaSending(false)
+    }
+  }
+
+  const handleWhatsAppClick = (cliente: Cliente) => {
+    if (cliente.telefono) {
+      sendWhatsApp(cliente, cliente.telefono)
+    } else {
+      setWaCliente(cliente)
+      setWaTempPhone("")
+      setWaDialogOpen(true)
+    }
+  }
+
   const columns = [
     { key: "nombre", header: "Nombre", render: (c: Cliente) => <span className="font-medium">{c.nombre}</span> },
     { key: "cuit", header: "CUIT", render: (c: Cliente) => c.cuit || "-" },
@@ -102,6 +174,21 @@ export function ClientesContent() {
     { key: "direccion", header: "Direccion", render: (c: Cliente) => c.direccion || "-" },
     { key: "saldo_inicial", header: "Saldo Inicial", render: (c: Cliente) => <Badge variant={c.saldo_inicial > 0 ? "destructive" : "outline"}>{formatCurrency(c.saldo_inicial)}</Badge> },
     { key: "fecha_alta", header: "Fecha Alta", render: (c: Cliente) => formatDate(new Date(c.fecha_alta)) },
+    {
+      key: "whatsapp",
+      header: "WhatsApp",
+      render: (c: Cliente) => (
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+          onClick={(e) => { e.stopPropagation(); handleWhatsAppClick(c) }}
+          title="Enviar estado de cuenta por WhatsApp"
+        >
+          <MessageCircle className="h-4 w-4" />
+        </Button>
+      ),
+    },
   ]
 
   return (
@@ -204,6 +291,50 @@ export function ClientesContent() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* WhatsApp phone dialog for clients without phone */}
+      <Dialog open={waDialogOpen} onOpenChange={(open) => { setWaDialogOpen(open); if (!open) { setWaCliente(null); setWaTempPhone("") } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5 text-green-600" />
+              Enviar por WhatsApp
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {waCliente?.nombre} no tiene teléfono registrado. Ingresá el número para enviar el estado de cuenta.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="wa-phone">Número de WhatsApp</Label>
+              <div className="relative">
+                <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="wa-phone"
+                  placeholder="5491112345678"
+                  value={waTempPhone}
+                  onChange={(e) => setWaTempPhone(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">Formato internacional sin + (ej: 5491112345678)</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setWaDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => waCliente && sendWhatsApp(waCliente, waTempPhone)}
+              disabled={!waTempPhone || waSending}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              <MessageCircle className="h-4 w-4 mr-2" />
+              {waSending ? "Enviando..." : "Enviar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <DataTable
         columns={columns}

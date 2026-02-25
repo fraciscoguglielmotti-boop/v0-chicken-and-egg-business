@@ -7,6 +7,17 @@ import { Badge } from "@/components/ui/badge"
 import { formatCurrency } from "@/lib/utils"
 import { TrendingUp, TrendingDown, Users, DollarSign, Clock, AlertCircle } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts"
 
 interface Venta {
   id: string
@@ -31,6 +42,8 @@ interface Compra {
   precio_unitario: number
 }
 
+const CHART_COLORS = ["#22c55e", "#ef4444", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#6366f1", "#a855f7"]
+
 export function RankingClientesContent() {
   const { data: ventas = [] } = useSupabase<Venta>("ventas")
   const { data: cobros = [] } = useSupabase<Cobro>("cobros")
@@ -51,7 +64,7 @@ export function RankingClientesContent() {
     // Calcular costo promedio por producto
     const costosPromedio = new Map<string, number[]>()
     compras.forEach(c => {
-      if (!c.producto_nombre) return // Skip compras sin producto
+      if (!c.producto_nombre) return
       const key = c.producto_nombre.toLowerCase().trim()
       const existing = costosPromedio.get(key) || []
       costosPromedio.set(key, [...existing, c.precio_unitario])
@@ -85,7 +98,7 @@ export function RankingClientesContent() {
       cliente.totalVentas += totalVenta
       cliente.cantidadVentas += 1
       cliente.rentabilidad += ganancia
-      
+
       if (v.fecha > cliente.ultimaVenta) {
         cliente.ultimaVenta = v.fecha
       }
@@ -223,72 +236,206 @@ export function RankingClientesContent() {
           <TabsTrigger value="inactivos">Inactivos</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="volumen" className="space-y-3 mt-4">
-          {rankings.porVolumen.map((cliente, idx) => (
-            <ClientCard 
-              key={idx} 
-              cliente={cliente} 
-              metric={`#${idx + 1} en ventas`}
-              icon={TrendingUp}
-              color="text-green-600"
-            />
-          ))}
-        </TabsContent>
-
-        <TabsContent value="frecuencia" className="space-y-3 mt-4">
-          {rankings.porFrecuencia.map((cliente, idx) => (
-            <ClientCard 
-              key={idx} 
-              cliente={cliente} 
-              metric={`${cliente.cantidadVentas} compras`}
-              icon={Clock}
-              color="text-blue-600"
-            />
-          ))}
-        </TabsContent>
-
-        <TabsContent value="rentabilidad" className="space-y-3 mt-4">
-          {rankings.porRentabilidad.map((cliente, idx) => (
-            <div key={idx}>
-              <ClientCard 
-                cliente={cliente} 
-                metric={formatCurrency(cliente.rentabilidad)}
-                icon={DollarSign}
-                color="text-yellow-600"
+        <TabsContent value="volumen" className="space-y-4 mt-4">
+          {rankings.porVolumen.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Top 10 por Monto de Ventas</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart
+                    data={rankings.porVolumen.map(c => ({ nombre: c.nombre.split(" ")[0], monto: Math.round(c.totalVentas) }))}
+                    layout="vertical"
+                    margin={{ top: 0, right: 10, left: 10, bottom: 0 }}
+                  >
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                    <YAxis type="category" dataKey="nombre" tick={{ fontSize: 12 }} width={80} />
+                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    <Bar dataKey="monto" name="Total Ventas" fill="#22c55e" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+          <div className="space-y-3">
+            {rankings.porVolumen.map((cliente, idx) => (
+              <ClientCard
+                key={idx}
+                cliente={cliente}
+                metric={`#${idx + 1} en ventas`}
+                icon={TrendingUp}
+                color="text-green-600"
               />
-            </div>
-          ))}
+            ))}
+          </div>
         </TabsContent>
 
-        <TabsContent value="morosos" className="space-y-3 mt-4">
+        <TabsContent value="frecuencia" className="space-y-4 mt-4">
+          {rankings.porFrecuencia.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Top 10 por Cantidad de Compras</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart
+                    data={rankings.porFrecuencia.map(c => ({ nombre: c.nombre.split(" ")[0], compras: c.cantidadVentas }))}
+                    layout="vertical"
+                    margin={{ top: 0, right: 10, left: 10, bottom: 0 }}
+                  >
+                    <XAxis type="number" tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="nombre" tick={{ fontSize: 12 }} width={80} />
+                    <Tooltip />
+                    <Bar dataKey="compras" name="Cantidad Compras" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+          <div className="space-y-3">
+            {rankings.porFrecuencia.map((cliente, idx) => (
+              <ClientCard
+                key={idx}
+                cliente={cliente}
+                metric={`${cliente.cantidadVentas} compras`}
+                icon={Clock}
+                color="text-blue-600"
+              />
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="rentabilidad" className="space-y-4 mt-4">
+          {rankings.porRentabilidad.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Top 10 por Ganancia Generada</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart
+                    data={rankings.porRentabilidad.map(c => ({ nombre: c.nombre.split(" ")[0], ganancia: Math.round(c.rentabilidad) }))}
+                    layout="vertical"
+                    margin={{ top: 0, right: 10, left: 10, bottom: 0 }}
+                  >
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                    <YAxis type="category" dataKey="nombre" tick={{ fontSize: 12 }} width={80} />
+                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    <Bar dataKey="ganancia" name="Ganancia" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+          <div className="space-y-3">
+            {rankings.porRentabilidad.map((cliente, idx) => (
+              <div key={idx}>
+                <ClientCard
+                  cliente={cliente}
+                  metric={formatCurrency(cliente.rentabilidad)}
+                  icon={DollarSign}
+                  color="text-yellow-600"
+                />
+              </div>
+            ))}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="morosos" className="space-y-4 mt-4">
           {rankings.morosos.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">No hay clientes con saldo pendiente</p>
           ) : (
-            rankings.morosos.map((cliente, idx) => (
-              <ClientCard 
-                key={idx} 
-                cliente={cliente} 
-                metric={`Debe: ${formatCurrency(cliente.saldoPendiente)}`}
-                icon={AlertCircle}
-                color="text-red-600"
-              />
-            ))
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">Distribución de Saldos Pendientes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4">
+                    <ResponsiveContainer width="60%" height={200}>
+                      <PieChart>
+                        <Pie
+                          data={rankings.morosos.map(c => ({ name: c.nombre.split(" ")[0], value: Math.round(c.saldoPendiente) }))}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={45}
+                          outerRadius={80}
+                          dataKey="value"
+                        >
+                          {rankings.morosos.map((_, i) => (
+                            <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex-1 space-y-1.5">
+                      {rankings.morosos.slice(0, 5).map((c, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs">
+                          <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }} />
+                          <span className="text-muted-foreground truncate">{c.nombre.split(" ")[0]}</span>
+                          <span className="ml-auto font-medium">{formatCurrency(c.saldoPendiente)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <div className="space-y-3">
+                {rankings.morosos.map((cliente, idx) => (
+                  <ClientCard
+                    key={idx}
+                    cliente={cliente}
+                    metric={`Debe: ${formatCurrency(cliente.saldoPendiente)}`}
+                    icon={AlertCircle}
+                    color="text-red-600"
+                  />
+                ))}
+              </div>
+            </>
           )}
         </TabsContent>
 
-        <TabsContent value="inactivos" className="space-y-3 mt-4">
-          {rankings.inactivos.map((cliente, idx) => {
-            const diasSinComprar = Math.floor((Date.now() - new Date(cliente.ultimaVenta).getTime()) / (1000 * 60 * 60 * 24))
-            return (
-              <ClientCard 
-                key={idx} 
-                cliente={cliente} 
-                metric={`${diasSinComprar} días sin comprar`}
-                icon={TrendingDown}
-                color="text-orange-600"
-              />
-            )
-          })}
+        <TabsContent value="inactivos" className="space-y-4 mt-4">
+          {rankings.inactivos.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium">Días sin Comprar</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart
+                    data={rankings.inactivos.map(c => ({
+                      nombre: c.nombre.split(" ")[0],
+                      dias: Math.floor((Date.now() - new Date(c.ultimaVenta).getTime()) / (1000 * 60 * 60 * 24))
+                    }))}
+                    layout="vertical"
+                    margin={{ top: 0, right: 10, left: 10, bottom: 0 }}
+                  >
+                    <XAxis type="number" tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="nombre" tick={{ fontSize: 12 }} width={80} />
+                    <Tooltip />
+                    <Bar dataKey="dias" name="Días sin comprar" fill="#f97316" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+          <div className="space-y-3">
+            {rankings.inactivos.map((cliente, idx) => {
+              const diasSinComprar = Math.floor((Date.now() - new Date(cliente.ultimaVenta).getTime()) / (1000 * 60 * 60 * 24))
+              return (
+                <ClientCard
+                  key={idx}
+                  cliente={cliente}
+                  metric={`${diasSinComprar} días sin comprar`}
+                  icon={TrendingDown}
+                  color="text-orange-600"
+                />
+              )
+            })}
+          </div>
         </TabsContent>
       </Tabs>
     </div>

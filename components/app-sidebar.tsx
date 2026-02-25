@@ -18,7 +18,8 @@ import {
   DollarSign,
   Target,
   Car,
-  TrendingUp
+  TrendingUp,
+  LineChart
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -54,6 +55,7 @@ const navSections = [
       { name: "Rentabilidad", href: "/rentabilidad", icon: BarChart3 },
       { name: "Presupuestos", href: "/presupuestos", icon: Target },
       { name: "Flujo de Fondos", href: "/flujo", icon: Wallet },
+      { name: "KPIs Ejecutivos", href: "/kpis", icon: LineChart },
     ],
   },
 
