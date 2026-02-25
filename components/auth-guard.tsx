@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState, createContext, useContext, useCallback } from "react"
+import React, { useEffect, useState, createContext, useContext, useCallback, useMemo } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
@@ -27,7 +27,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [ready, setReady] = useState(false)
   const [user, setUser] = useState<User | null>(null)
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
   const checkAuth = useCallback(async () => {
     // Login/auth pages never block

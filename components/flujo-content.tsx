@@ -96,12 +96,16 @@ export function FlujoContent() {
     return movimientos.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
   }, [cobros, pagos, gastos, selectedMonth])
 
-  // Flujo acumulado
+  // Flujo acumulado (sorted ascending so accumulation goes forward in time)
   const flujoAcumulado = useMemo(() => {
     let acumulado = 0
     const datos: Array<{ fecha: string; saldo: number }> = []
 
-    movimientosDiarios.forEach(mov => {
+    const movimientosAsc = [...movimientosDiarios].sort(
+      (a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+    )
+
+    movimientosAsc.forEach(mov => {
       acumulado += mov.tipo === 'ingreso' ? mov.monto : -mov.monto
       const existing = datos.find(d => d.fecha === mov.fecha)
       if (existing) {
@@ -111,7 +115,7 @@ export function FlujoContent() {
       }
     })
 
-    return datos.reverse()
+    return datos
   }, [movimientosDiarios])
 
   return (

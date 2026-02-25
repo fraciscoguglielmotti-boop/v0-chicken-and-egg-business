@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Plus, Search, DollarSign } from "lucide-react"
+import { Plus, Search, DollarSign, Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -139,15 +139,31 @@ export function VendedoresContent() {
     { key: "nombre", header: "Nombre", render: (v: Vendedor) => <span className="font-medium">{v.nombre}</span> },
     { key: "comision", header: "Comision %", render: (v: Vendedor) => `${v.comision}%` },
     { key: "fecha_alta", header: "Fecha Alta", render: (v: Vendedor) => formatDate(new Date(v.fecha_alta)) },
+    {
+      key: "actions",
+      header: "Acciones",
+      render: (v: Vendedor) => (
+        <div className="flex gap-2">
+          <Button variant="ghost" size="icon" onClick={() => handleEdit(v)}>
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => handleDelete(v.id)}>
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      )
+    },
   ]
 
+  type ComisionRow = { id: string; nombre: string; totalGanancia: number; totalVentas: number; comision: number; ventas: number; porcentaje: number }
+
   const comisionesColumns = [
-    { key: "nombre", header: "Vendedor", render: (c: any) => <span className="font-medium">{c.nombre}</span> },
-    { key: "ventas", header: "Ventas", render: (c: any) => c.ventas },
-    { key: "totalVentas", header: "Total Ventas", render: (c: any) => formatCurrency(c.totalVentas) },
-    { key: "totalGanancia", header: "Ganancia", render: (c: any) => formatCurrency(c.totalGanancia) },
-    { key: "porcentaje", header: "% Comisión", render: (c: any) => `${c.porcentaje}%` },
-    { key: "comision", header: "Comisión a Pagar", render: (c: any) => (
+    { key: "nombre", header: "Vendedor", render: (c: ComisionRow) => <span className="font-medium">{c.nombre}</span> },
+    { key: "ventas", header: "Ventas", render: (c: ComisionRow) => c.ventas },
+    { key: "totalVentas", header: "Total Ventas", render: (c: ComisionRow) => formatCurrency(c.totalVentas) },
+    { key: "totalGanancia", header: "Ganancia", render: (c: ComisionRow) => formatCurrency(c.totalGanancia) },
+    { key: "porcentaje", header: "% Comisión", render: (c: ComisionRow) => `${c.porcentaje}%` },
+    { key: "comision", header: "Comisión a Pagar", render: (c: ComisionRow) => (
       <Badge variant="default" className="text-base font-semibold">{formatCurrency(c.comision)}</Badge>
     )},
   ]
@@ -221,8 +237,6 @@ export function VendedoresContent() {
             columns={columns}
             data={filteredVendedores}
             emptyMessage={isLoading ? "Cargando..." : "No hay vendedores"}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
           />
         </TabsContent>
 

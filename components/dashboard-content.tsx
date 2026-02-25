@@ -14,7 +14,6 @@ interface Venta {
   id: string
   fecha: string
   cliente_nombre: string
-  productos: any
   cantidad: number
   precio_unitario: number
 }
@@ -132,11 +131,13 @@ export function DashboardContent() {
     estado: "pagada" as const,
   }))
 
+  type VentaRow = Venta & { total: number; estado: string }
+
   const ventasColumns = [
-    { key: "fecha", header: "Fecha", render: (v: any) => formatDate(new Date(v.fecha)) },
+    { key: "fecha", header: "Fecha", render: (v: VentaRow) => formatDate(new Date(v.fecha)) },
     { key: "cliente_nombre", header: "Cliente" },
-    { key: "total", header: "Total", render: (v: any) => <span className="font-semibold">{formatCurrency(v.total)}</span> },
-    { key: "estado", header: "Estado", render: (v: any) => <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">Pagada</Badge> },
+    { key: "total", header: "Total", render: (v: VentaRow) => <span className="font-semibold">{formatCurrency(v.total)}</span> },
+    { key: "estado", header: "Estado", render: (_v: VentaRow) => <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">Pagada</Badge> },
   ]
 
   const cobrosColumns = [
@@ -229,7 +230,7 @@ export function DashboardContent() {
             <div className="border-t pt-4">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-foreground">Pendiente de Cobro</span>
-                <span className="text-lg font-bold text-accent">{formatCurrency(stats.ventasMes - stats.cobrosMes)}</span>
+                <span className="text-lg font-bold text-accent">{formatCurrency(stats.cuentasPorCobrar)}</span>
               </div>
             </div>
           </div>

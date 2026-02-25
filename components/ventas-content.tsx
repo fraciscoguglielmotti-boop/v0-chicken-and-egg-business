@@ -15,7 +15,7 @@ interface Venta {
   id: string
   fecha: string
   cliente_nombre: string
-  productos: any
+  producto_nombre?: string
   cantidad: number
   precio_unitario: number
   vendedor?: string

@@ -116,7 +116,16 @@ export function PagosContent() {
               </div>
               <div>
                 <Label>Metodo de Pago</Label>
-                <Input value={formData.metodo_pago} onChange={(e) => setFormData({...formData, metodo_pago: e.target.value})} placeholder="Efectivo, Transferencia, etc." />
+                <Select value={formData.metodo_pago} onValueChange={(value) => setFormData({...formData, metodo_pago: value})}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar metodo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Efectivo">Efectivo</SelectItem>
+                    <SelectItem value="Transferencia">Transferencia</SelectItem>
+                    <SelectItem value="Cheque">Cheque</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label>Observaciones</Label>
