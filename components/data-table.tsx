@@ -1,6 +1,7 @@
 "use client"
 
 import React from "react"
+import { Pencil, Trash2 } from "lucide-react"
 
 import {
   Table,
@@ -10,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 interface Column<T> {
@@ -24,6 +26,8 @@ interface DataTableProps<T> {
   data: T[]
   onRowClick?: (item: T) => void
   emptyMessage?: string
+  onEdit?: (item: T) => void
+  onDelete?: (id: string) => void
 }
 
 export function DataTable<T extends { id: string }>({
@@ -31,13 +35,41 @@ export function DataTable<T extends { id: string }>({
   data,
   onRowClick,
   emptyMessage = "No hay datos disponibles",
+  onEdit,
+  onDelete,
 }: DataTableProps<T>) {
+  const hasActions = onEdit || onDelete
+
+  const effectiveColumns: Column<T>[] = hasActions
+    ? [
+        ...columns,
+        {
+          key: "__actions__",
+          header: "Acciones",
+          render: (item: T) => (
+            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+              {onEdit && (
+                <Button variant="ghost" size="icon" onClick={() => onEdit(item)}>
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              )}
+              {onDelete && (
+                <Button variant="ghost" size="icon" onClick={() => onDelete(item.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          ),
+        },
+      ]
+    : columns
+
   return (
     <div className="rounded-lg border bg-card">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            {columns.map((column) => (
+            {effectiveColumns.map((column) => (
               <TableHead
                 key={String(column.key)}
                 className={cn("font-semibold", column.className)}
@@ -51,7 +83,7 @@ export function DataTable<T extends { id: string }>({
           {data.length === 0 ? (
             <TableRow>
               <TableCell
-                colSpan={columns.length}
+                colSpan={effectiveColumns.length}
                 className="h-24 text-center text-muted-foreground"
               >
                 {emptyMessage}
@@ -66,7 +98,7 @@ export function DataTable<T extends { id: string }>({
                 )}
                 onClick={() => onRowClick?.(item)}
               >
-                {columns.map((column) => (
+                {effectiveColumns.map((column) => (
                   <TableCell
                     key={`${item.id}-${String(column.key)}`}
                     className={column.className}
