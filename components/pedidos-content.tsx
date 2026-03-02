@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Plus, Trash2, FileDown, ClipboardList, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
+import { useSupabase, insertRow, deleteRow } from "@/hooks/use-supabase"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 
@@ -19,9 +20,8 @@ interface Pedido {
   cantidad: number
   precio_unitario: number
   observaciones: string
+  created_at: string
 }
-
-const STORAGE_KEY = "avigest_pedidos_dia"
 
 const emptyForm = {
   cliente: "",
@@ -33,50 +33,36 @@ const emptyForm = {
 
 export function PedidosContent() {
   const { toast } = useToast()
-  const [pedidos, setPedidos] = useState<Pedido[]>([])
+  const { data: pedidosDesc = [], isLoading, mutate } = useSupabase<Pedido>("pedidos_dia")
+  const pedidos = [...pedidosDesc].reverse() // mostrar en orden de carga (más nuevo al final)
   const [form, setForm] = useState(emptyForm)
-  const [loaded, setLoaded] = useState(false)
 
-  // Load from localStorage on mount
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) setPedidos(JSON.parse(saved))
-    } catch {}
-    setLoaded(true)
-  }, [])
-
-  // Persist to localStorage on every change
-  useEffect(() => {
-    if (!loaded) return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(pedidos))
-  }, [pedidos, loaded])
-
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.cliente.trim() || !form.producto.trim() || !form.cantidad) return
 
-    const nuevo: Pedido = {
-      id: crypto.randomUUID(),
+    await insertRow("pedidos_dia", {
       cliente: form.cliente.trim(),
       producto: form.producto.trim(),
       cantidad: parseFloat(form.cantidad),
       precio_unitario: parseFloat(form.precio_unitario) || 0,
-      observaciones: form.observaciones.trim(),
-    }
+      observaciones: form.observaciones.trim() || null,
+    })
 
-    setPedidos((prev) => [...prev, nuevo])
+    await mutate()
     setForm(emptyForm)
-    toast({ title: "Pedido agregado", description: `${nuevo.cliente} — ${nuevo.producto}` })
+    toast({ title: "Pedido agregado", description: `${form.cliente.trim()} — ${form.producto.trim()}` })
   }
 
-  const handleDelete = (id: string) => {
-    setPedidos((prev) => prev.filter((p) => p.id !== id))
+  const handleDelete = async (id: string) => {
+    await deleteRow("pedidos_dia", id)
+    await mutate()
   }
 
-  const handleClear = () => {
+  const handleClear = async () => {
     if (!confirm(`¿Borrar los ${pedidos.length} pedidos del día?`)) return
-    setPedidos([])
+    await Promise.all(pedidos.map((p) => deleteRow("pedidos_dia", p.id)))
+    await mutate()
     toast({ title: "Lista limpiada", description: "Los pedidos fueron eliminados." })
   }
 
@@ -268,8 +254,8 @@ export function PedidosContent() {
       {pedidos.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 text-muted-foreground rounded-lg border border-dashed">
           <ClipboardList className="h-10 w-10 mb-3 opacity-30" />
-          <p className="font-medium">Sin pedidos por ahora</p>
-          <p className="text-sm mt-1">Usá el formulario de arriba para ir anotando</p>
+          <p className="font-medium">{isLoading ? "Cargando..." : "Sin pedidos por ahora"}</p>
+          {!isLoading && <p className="text-sm mt-1">Usá el formulario de arriba para ir anotando</p>}
         </div>
       ) : (
         <div className="rounded-lg border bg-card overflow-hidden">
