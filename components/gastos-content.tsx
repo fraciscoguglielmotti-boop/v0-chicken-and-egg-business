@@ -46,6 +46,7 @@ const BANCOS = ["Santander", "Galicia", "BBVA", "Macro", "Otro"]
 export function GastosContent() {
   const { data: gastos = [], isLoading, mutate } = useSupabase<Gasto>("gastos")
   const [searchTerm, setSearchTerm] = useState("")
+  const [categoriaFiltro, setCategoriaFiltro] = useState("todas")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
@@ -121,10 +122,13 @@ export function GastosContent() {
     })
   }
 
-  const filteredGastos = gastos.filter((g) =>
-    g.categoria.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (g.descripcion || "").toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredGastos = gastos.filter((g) => {
+    const matchSearch =
+      g.categoria.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (g.descripcion || "").toLowerCase().includes(searchTerm.toLowerCase())
+    const matchCategoria = categoriaFiltro === "todas" || g.categoria === categoriaFiltro
+    return matchSearch && matchCategoria
+  })
 
   const gastosPorCategoria = CATEGORIAS.map(cat => ({
     categoria: cat,
@@ -175,14 +179,27 @@ export function GastosContent() {
           ) : (
           <>
           <div className="flex items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Buscar gastos..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex flex-1 items-center gap-3 max-w-xl">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar gastos..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select value={categoriaFiltro} onValueChange={setCategoriaFiltro}>
+                <SelectTrigger className="w-[170px]">
+                  <SelectValue placeholder="Categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas las categorías</SelectItem>
+                  {CATEGORIAS.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowImport(true)}>
