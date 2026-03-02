@@ -21,6 +21,7 @@ import {
   TrendingUp,
   LineChart,
   ClipboardList,
+  Landmark,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -53,6 +54,7 @@ const navSections = [
     label: "Finanzas",
     items: [
       { name: "Gastos", href: "/gastos", icon: Receipt },
+      { name: "MercadoPago", href: "/mercadopago", icon: Landmark },
       { name: "Contabilidad", href: "/contabilidad", icon: Calculator },
       { name: "Rentabilidad", href: "/rentabilidad", icon: BarChart3 },
       { name: "Presupuestos", href: "/presupuestos", icon: Target },
