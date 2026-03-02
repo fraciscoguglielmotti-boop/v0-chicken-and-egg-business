@@ -5,11 +5,13 @@ import { Plus, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
-import { useSupabase, insertRow } from "@/hooks/use-supabase"
+import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
 
 interface Venta {
   id: string
@@ -19,6 +21,7 @@ interface Venta {
   cantidad: number
   precio_unitario: number
   vendedor?: string
+  observaciones?: string
 }
 
 interface Cliente {
@@ -36,6 +39,7 @@ export function VentasContent() {
   const { data: ventas = [], isLoading, mutate } = useSupabase<Venta>("ventas")
   const { data: clientes = [] } = useSupabase<Cliente>("clientes")
   const { data: productos = [] } = useSupabase<Producto>("productos")
+  const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
@@ -45,6 +49,16 @@ export function VentasContent() {
     cantidad: "",
     precio_unitario: "",
     vendedor: ""
+  })
+  const [editingVenta, setEditingVenta] = useState<Venta | null>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editFormData, setEditFormData] = useState({
+    fecha: "",
+    cliente_nombre: "",
+    producto_nombre: "",
+    cantidad: "",
+    precio_unitario: "",
+    observaciones: ""
   })
 
   const productosActivos = productos.filter(p => p.activo)
@@ -62,6 +76,40 @@ export function VentasContent() {
     mutate()
     setIsDialogOpen(false)
     setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", producto: "", cantidad: "", precio_unitario: "", vendedor: "" })
+  }
+
+  const handleEdit = (venta: Venta) => {
+    setEditingVenta(venta)
+    setEditFormData({
+      fecha: venta.fecha?.split('T')[0] ?? "",
+      cliente_nombre: venta.cliente_nombre ?? "",
+      producto_nombre: venta.producto_nombre ?? "",
+      cantidad: String(venta.cantidad ?? ""),
+      precio_unitario: String(venta.precio_unitario ?? ""),
+      observaciones: venta.observaciones ?? ""
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingVenta) return
+    try {
+      await updateRow("ventas", editingVenta.id, {
+        fecha: editFormData.fecha,
+        cliente_nombre: editFormData.cliente_nombre,
+        producto_nombre: editFormData.producto_nombre || null,
+        cantidad: parseFloat(editFormData.cantidad),
+        precio_unitario: parseFloat(editFormData.precio_unitario),
+        observaciones: editFormData.observaciones || null
+      })
+      await mutate()
+      setIsEditDialogOpen(false)
+      setEditingVenta(null)
+      toast({ title: "Venta actualizada", description: "Los cambios se guardaron correctamente." })
+    } catch (err: any) {
+      toast({ title: "Error al actualizar", description: err.message, variant: "destructive" })
+    }
   }
 
   const filteredVentas = ventas.filter((v) =>
@@ -164,7 +212,72 @@ export function VentasContent() {
         columns={columns}
         data={filteredVentas}
         emptyMessage={isLoading ? "Cargando..." : "No hay ventas registradas"}
+        onEdit={handleEdit}
       />
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Venta</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div>
+              <Label>Fecha</Label>
+              <Input
+                type="date"
+                value={editFormData.fecha}
+                max={new Date().toISOString().split('T')[0]}
+                onChange={(e) => setEditFormData({ ...editFormData, fecha: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <Label>Cliente</Label>
+              <Select value={editFormData.cliente_nombre} onValueChange={(value) => setEditFormData({ ...editFormData, cliente_nombre: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clientes.map(c => (
+                    <SelectItem key={c.id} value={c.nombre}>{c.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Producto</Label>
+              <Select value={editFormData.producto_nombre} onValueChange={(value) => setEditFormData({ ...editFormData, producto_nombre: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar producto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {productosActivos.map(p => (
+                    <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Cantidad</Label>
+                <Input type="number" step="0.01" value={editFormData.cantidad} onChange={(e) => setEditFormData({ ...editFormData, cantidad: e.target.value })} required />
+              </div>
+              <div>
+                <Label>Precio Unitario</Label>
+                <Input type="number" step="0.01" value={editFormData.precio_unitario} onChange={(e) => setEditFormData({ ...editFormData, precio_unitario: e.target.value })} required />
+              </div>
+            </div>
+            <div>
+              <Label>Observaciones</Label>
+              <Textarea value={editFormData.observaciones} onChange={(e) => setEditFormData({ ...editFormData, observaciones: e.target.value })} rows={3} />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit">Guardar cambios</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

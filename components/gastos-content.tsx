@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Search, Pencil, Trash2, Calendar } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, CreditCard } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,6 +12,7 @@ import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supaba
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ImportarTarjeta } from "./importar-tarjeta"
 
 interface Gasto {
   id: string
@@ -47,6 +48,7 @@ export function GastosContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [showImport, setShowImport] = useState(false)
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
     tipo: "Egreso",
@@ -165,6 +167,13 @@ export function GastosContent() {
         </TabsList>
 
         <TabsContent value="listado" className="space-y-4">
+          {showImport ? (
+            <ImportarTarjeta
+              onClose={() => setShowImport(false)}
+              onImportComplete={() => { mutate(); setShowImport(false) }}
+            />
+          ) : (
+          <>
           <div className="flex items-center justify-between gap-4">
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -175,6 +184,11 @@ export function GastosContent() {
                 className="pl-9"
               />
             </div>
+            <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowImport(true)}>
+              <CreditCard className="mr-2 h-4 w-4" />
+              Importar resumen de tarjeta
+            </Button>
             <Dialog open={isDialogOpen} onOpenChange={(open) => {
               setIsDialogOpen(open)
               if (!open) {
@@ -294,6 +308,7 @@ export function GastosContent() {
                 </form>
               </DialogContent>
             </Dialog>
+            </div>
           </div>
 
           <DataTable
@@ -301,6 +316,8 @@ export function GastosContent() {
             data={filteredGastos}
             emptyMessage={isLoading ? "Cargando..." : "No hay gastos registrados"}
           />
+          </>
+          )}
         </TabsContent>
 
         <TabsContent value="resumen">
