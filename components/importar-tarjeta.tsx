@@ -131,32 +131,37 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
         }
       }
 
-      for (const [texto, g] of nuevasReglas) {
-        await insertRow("reglas_categorias", {
-          texto_original: texto,
-          categoria: g.categoria,
-          proveedor: g.proveedor || null,
-        })
-      }
+      // Insert new rules in parallel
+      await Promise.all(
+        Array.from(nuevasReglas.values()).map((g) =>
+          insertRow("reglas_categorias", {
+            texto_original: g.descripcion_original,
+            categoria: g.categoria,
+            proveedor: g.proveedor || null,
+          })
+        )
+      )
 
-      // 2. Save all gastos to the gastos table
-      for (const g of gastosReview) {
-        await insertRow("gastos", {
-          fecha: g.fecha,
-          tipo: "Egreso",
-          categoria: g.categoria || null,
-          descripcion: g.descripcion_original,
-          monto: g.monto,
-          medio_pago: "Tarjeta Credito",
-        })
-      }
+      // 2. Save all gastos in parallel — use "Otros" fallback so categoria is never null
+      await Promise.all(
+        gastosReview.map((g) =>
+          insertRow("gastos", {
+            fecha: g.fecha,
+            tipo: "Egreso",
+            categoria: g.categoria || "Otros",
+            descripcion: g.descripcion_original,
+            monto: g.monto,
+            medio_pago: "Tarjeta Credito",
+          })
+        )
+      )
 
-      setStep("done")
       toast({
         title: "Importación exitosa",
-        description: `Se importaron ${gastosReview.length} gastos. ${nuevasReglas.size > 0 ? `Se guardaron ${nuevasReglas.size} nuevas reglas de categorización.` : ""}`,
+        description: `Se importaron ${gastosReview.length} gastos.${nuevasReglas.size > 0 ? ` Se guardaron ${nuevasReglas.size} nuevas reglas.` : ""}`,
       })
       onImportComplete()
+      setStep("done")
     } catch (err: any) {
       toast({ title: "Error al importar", description: err.message, variant: "destructive" })
       setStep("review")

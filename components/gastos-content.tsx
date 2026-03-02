@@ -170,7 +170,7 @@ export function GastosContent() {
           {showImport ? (
             <ImportarTarjeta
               onClose={() => setShowImport(false)}
-              onImportComplete={() => { mutate(); setShowImport(false) }}
+              onImportComplete={() => mutate()}
             />
           ) : (
           <>

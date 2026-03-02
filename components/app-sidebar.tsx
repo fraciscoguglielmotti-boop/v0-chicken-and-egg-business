@@ -19,7 +19,8 @@ import {
   Target,
   Car,
   TrendingUp,
-  LineChart
+  LineChart,
+  ClipboardList,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -30,6 +31,7 @@ const navSections = [
     items: [
       { name: "Dashboard", href: "/", icon: LayoutDashboard },
       { name: "Ventas", href: "/ventas", icon: ShoppingCart },
+      { name: "Toma de Pedidos", href: "/pedidos", icon: ClipboardList },
       { name: "Cobros", href: "/cobros", icon: Receipt },
       { name: "Compras", href: "/compras", icon: Package },
       { name: "Pagos", href: "/pagos", icon: DollarSign },
