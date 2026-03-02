@@ -101,7 +101,6 @@ export function VentasContent() {
         producto_nombre: editFormData.producto_nombre || null,
         cantidad: parseFloat(editFormData.cantidad),
         precio_unitario: parseFloat(editFormData.precio_unitario),
-        observaciones: editFormData.observaciones || null
       })
       await mutate()
       setIsEditDialogOpen(false)
@@ -266,10 +265,6 @@ export function VentasContent() {
                 <Label>Precio Unitario</Label>
                 <Input type="number" step="0.01" value={editFormData.precio_unitario} onChange={(e) => setEditFormData({ ...editFormData, precio_unitario: e.target.value })} required />
               </div>
-            </div>
-            <div>
-              <Label>Observaciones</Label>
-              <Textarea value={editFormData.observaciones} onChange={(e) => setEditFormData({ ...editFormData, observaciones: e.target.value })} rows={3} />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
