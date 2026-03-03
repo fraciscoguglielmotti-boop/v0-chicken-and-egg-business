@@ -83,6 +83,7 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
       const data = await response.json()
 
       if (!response.ok) throw new Error(data.error || "Error al procesar el PDF")
+      if (!Array.isArray(data.gastos)) throw new Error("El servidor no devolvió gastos válidos. Verificá que el PDF sea un resumen de tarjeta.")
 
       const gastosExtraidos: GastoExtraido[] = data.gastos
 

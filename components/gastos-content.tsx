@@ -11,6 +11,7 @@ import { DataTable } from "./data-table"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ImportarTarjeta } from "./importar-tarjeta"
 
@@ -45,6 +46,7 @@ const BANCOS = ["Santander", "Galicia", "BBVA", "Macro", "Otro"]
 
 export function GastosContent() {
   const { data: gastos = [], isLoading, mutate } = useSupabase<Gasto>("gastos")
+  const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
   const [categoriaFiltro, setCategoriaFiltro] = useState("todas")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -71,16 +73,22 @@ export function GastosContent() {
       cuota_actual: parseInt(formData.cuota_actual.toString()),
       cuotas_total: parseInt(formData.cuotas_total.toString())
     }
-    
-    if (editingId) {
-      await updateRow("gastos", editingId, data)
-      setEditingId(null)
-    } else {
-      await insertRow("gastos", data)
+
+    try {
+      if (editingId) {
+        await updateRow("gastos", editingId, data)
+        setEditingId(null)
+        toast({ title: "Gasto actualizado", description: "Los cambios se guardaron correctamente." })
+      } else {
+        await insertRow("gastos", data)
+        toast({ title: "Gasto agregado", description: `${data.categoria} — ${formatCurrency(data.monto)}` })
+      }
+      mutate()
+      setIsDialogOpen(false)
+      resetForm()
+    } catch (err: any) {
+      toast({ title: "Error al guardar", description: err?.message ?? "Error desconocido", variant: "destructive" })
     }
-    mutate()
-    setIsDialogOpen(false)
-    resetForm()
   }
 
   const handleEdit = (gasto: Gasto) => {

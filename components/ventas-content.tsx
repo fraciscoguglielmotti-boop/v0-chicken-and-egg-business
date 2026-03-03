@@ -65,17 +65,22 @@ export function VentasContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await insertRow("ventas", {
-      fecha: formData.fecha,
-      cliente_nombre: formData.cliente_nombre,
-      producto_nombre: formData.producto,
-      cantidad: parseFloat(formData.cantidad),
-      precio_unitario: parseFloat(formData.precio_unitario),
-      vendedor: formData.vendedor || null
-    })
-    mutate()
-    setIsDialogOpen(false)
-    setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", producto: "", cantidad: "", precio_unitario: "", vendedor: "" })
+    try {
+      await insertRow("ventas", {
+        fecha: formData.fecha,
+        cliente_nombre: formData.cliente_nombre,
+        producto_nombre: formData.producto,
+        cantidad: parseFloat(formData.cantidad),
+        precio_unitario: parseFloat(formData.precio_unitario),
+        vendedor: formData.vendedor || null
+      })
+      mutate()
+      setIsDialogOpen(false)
+      setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", producto: "", cantidad: "", precio_unitario: "", vendedor: "" })
+      toast({ title: "Venta registrada", description: `${formData.cliente_nombre} — ${formData.producto}` })
+    } catch (err: any) {
+      toast({ title: "Error al guardar", description: err?.message ?? "Error desconocido", variant: "destructive" })
+    }
   }
 
   const handleEdit = (venta: Venta) => {
