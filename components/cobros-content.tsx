@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
-import { useSupabase, insertRow } from "@/hooks/use-supabase"
+import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
@@ -128,7 +128,18 @@ export function CobrosContent() {
     { key: "metodo_pago", header: "Metodo", render: (c: Cobro) => <span className="capitalize">{c.metodo_pago || "-"}</span> },
     { key: "cuenta_destino", header: "Destino", render: (c: Cobro) => c.cuenta_destino || "-" },
     { key: "verificado_agroaves", header: "Verificado", render: (c: Cobro) => (
-      <Badge variant={c.verificado_agroaves ? "default" : "outline"}>
+      <Badge
+        variant={c.verificado_agroaves ? "default" : "outline"}
+        className="cursor-pointer select-none"
+        onClick={async () => {
+          try {
+            await updateRow("cobros", c.id, { verificado_agroaves: !c.verificado_agroaves })
+            mutate()
+          } catch (err: any) {
+            toast({ title: "Error", description: err?.message ?? "No se pudo actualizar", variant: "destructive" })
+          }
+        }}
+      >
         {c.verificado_agroaves ? "✓" : "-"}
       </Badge>
     )},
