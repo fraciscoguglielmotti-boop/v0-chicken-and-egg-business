@@ -41,29 +41,41 @@ export function PedidosContent() {
     e.preventDefault()
     if (!form.cliente.trim() || !form.producto.trim() || !form.cantidad) return
 
-    await insertRow("pedidos_dia", {
-      cliente: form.cliente.trim(),
-      producto: form.producto.trim(),
-      cantidad: parseFloat(form.cantidad),
-      precio_unitario: parseFloat(form.precio_unitario) || 0,
-      observaciones: form.observaciones.trim() || null,
-    })
+    try {
+      await insertRow("pedidos_dia", {
+        cliente: form.cliente.trim(),
+        producto: form.producto.trim(),
+        cantidad: parseFloat(form.cantidad),
+        precio_unitario: parseFloat(form.precio_unitario) || 0,
+        observaciones: form.observaciones.trim() || null,
+      })
 
-    await mutate()
-    setForm(emptyForm)
-    toast({ title: "Pedido agregado", description: `${form.cliente.trim()} — ${form.producto.trim()}` })
+      await mutate()
+      setForm(emptyForm)
+      toast({ title: "Pedido agregado", description: `${form.cliente.trim()} — ${form.producto.trim()}` })
+    } catch (err: any) {
+      toast({ title: "Error al agregar", description: err?.message ?? "Error desconocido", variant: "destructive" })
+    }
   }
 
   const handleDelete = async (id: string) => {
-    await deleteRow("pedidos_dia", id)
-    await mutate()
+    try {
+      await deleteRow("pedidos_dia", id)
+      await mutate()
+    } catch (err: any) {
+      toast({ title: "Error al eliminar", description: err?.message ?? "Error desconocido", variant: "destructive" })
+    }
   }
 
   const handleClear = async () => {
     if (!confirm(`¿Borrar los ${pedidos.length} pedidos del día?`)) return
-    await Promise.all(pedidos.map((p) => deleteRow("pedidos_dia", p.id)))
-    await mutate()
-    toast({ title: "Lista limpiada", description: "Los pedidos fueron eliminados." })
+    try {
+      await Promise.all(pedidos.map((p) => deleteRow("pedidos_dia", p.id)))
+      await mutate()
+      toast({ title: "Lista limpiada", description: "Los pedidos fueron eliminados." })
+    } catch (err: any) {
+      toast({ title: "Error al limpiar", description: err?.message ?? "Error desconocido", variant: "destructive" })
+    }
   }
 
   const totalPedidos = pedidos.reduce((sum, p) => sum + p.cantidad * p.precio_unitario, 0)
