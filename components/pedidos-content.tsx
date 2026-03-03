@@ -156,6 +156,56 @@ export function PedidosContent() {
       })
     }
 
+    // Resumen de cajones
+    const normalize = (s: string) =>
+      s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+
+    const tiposCajones = [
+      { label: "Pollo A", keyword: "pollo a" },
+      { label: "Pollo B", keyword: "pollo b" },
+      { label: "Cajón N1 (Huevo)", keyword: "cajon n" },
+    ]
+
+    const resumenCajones = tiposCajones
+      .map(({ label, keyword }) => ({
+        label,
+        total: pedidos
+          .filter((p) => normalize(p.producto).includes(keyword))
+          .reduce((sum, p) => sum + p.cantidad, 0),
+      }))
+      .filter((c) => c.total > 0)
+
+    const totalPollos = pedidos
+      .filter((p) => normalize(p.producto).includes("pollo"))
+      .reduce((sum, p) => sum + p.cantidad, 0)
+
+    if (resumenCajones.length > 0) {
+      const yCajones = (doc as any).lastAutoTable?.finalY ?? finalY + 40
+      doc.setFontSize(12)
+      doc.setFont("helvetica", "bold")
+      doc.text("Resumen de cajones", 14, yCajones + 12)
+
+      const bodyFilas: any[] = resumenCajones.map((c) => [c.label, c.total])
+      if (resumenCajones.some((c) => c.label.startsWith("Pollo"))) {
+        bodyFilas.push(["Total pollos (A + B)", totalPollos])
+      }
+
+      autoTable(doc, {
+        startY: yCajones + 18,
+        head: [["Tipo", "Cajones"]],
+        body: bodyFilas,
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: [40, 90, 40], textColor: 255, fontStyle: "bold" },
+        columnStyles: { 1: { halign: "right", fontStyle: "bold" } },
+        didParseCell: (data) => {
+          if (data.row.index === bodyFilas.length - 1 && resumenCajones.some((c) => c.label.startsWith("Pollo"))) {
+            data.cell.styles.fontStyle = "bold"
+            data.cell.styles.fillColor = [220, 240, 220]
+          }
+        },
+      })
+    }
+
     if (totalPedidos > 0) {
       const y = (doc as any).lastAutoTable?.finalY ?? finalY + 40
       doc.setFontSize(11)
