@@ -1,15 +1,16 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Trash2, FileDown, ClipboardList, RotateCcw, ShoppingCart } from "lucide-react"
+import { Plus, Trash2, FileDown, ClipboardList, RotateCcw, ShoppingCart, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
-import { useSupabase, insertRow, deleteRow } from "@/hooks/use-supabase"
+import { useSupabase, insertRow, deleteRow, updateRow } from "@/hooks/use-supabase"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 
@@ -36,6 +37,8 @@ export function PedidosContent() {
   const { data: pedidosDesc = [], isLoading, mutate } = useSupabase<Pedido>("pedidos_dia")
   const pedidos = [...pedidosDesc].reverse() // mostrar en orden de carga (más nuevo al final)
   const [form, setForm] = useState(emptyForm)
+  const [editingPedido, setEditingPedido] = useState<Pedido | null>(null)
+  const [editForm, setEditForm] = useState(emptyForm)
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -75,6 +78,36 @@ export function PedidosContent() {
       toast({ title: "Lista limpiada", description: "Los pedidos fueron eliminados." })
     } catch (err: any) {
       toast({ title: "Error al limpiar", description: err?.message ?? "Error desconocido", variant: "destructive" })
+    }
+  }
+
+  const handleEdit = (p: Pedido) => {
+    setEditingPedido(p)
+    setEditForm({
+      cliente: p.cliente,
+      producto: p.producto,
+      cantidad: String(p.cantidad),
+      precio_unitario: p.precio_unitario > 0 ? String(p.precio_unitario) : "",
+      observaciones: p.observaciones || "",
+    })
+  }
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingPedido) return
+    try {
+      await updateRow("pedidos_dia", editingPedido.id, {
+        cliente: editForm.cliente.trim(),
+        producto: editForm.producto.trim(),
+        cantidad: parseFloat(editForm.cantidad),
+        precio_unitario: parseFloat(editForm.precio_unitario) || 0,
+        observaciones: editForm.observaciones.trim() || null,
+      })
+      await mutate()
+      setEditingPedido(null)
+      toast({ title: "Pedido actualizado", description: `${editForm.cliente} — ${editForm.producto}` })
+    } catch (err: any) {
+      toast({ title: "Error al guardar", description: err?.message ?? "Error desconocido", variant: "destructive" })
     }
   }
 
@@ -381,14 +414,23 @@ export function PedidosContent() {
                     {p.observaciones || "-"}
                   </td>
                   <td className="p-3">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(p.id)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEdit(p)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(p.id)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -396,6 +438,71 @@ export function PedidosContent() {
           </table>
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingPedido} onOpenChange={(open) => { if (!open) setEditingPedido(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar pedido</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Cliente *</Label>
+                <Input
+                  value={editForm.cliente}
+                  onChange={(e) => setEditForm({ ...editForm, cliente: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label>Producto *</Label>
+                <Input
+                  value={editForm.producto}
+                  onChange={(e) => setEditForm({ ...editForm, producto: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label>Cantidad *</Label>
+                <Input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  value={editForm.cantidad}
+                  onChange={(e) => setEditForm({ ...editForm, cantidad: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label>Precio unitario</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={editForm.precio_unitario}
+                  onChange={(e) => setEditForm({ ...editForm, precio_unitario: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Observaciones</Label>
+              <Textarea
+                value={editForm.observaciones}
+                onChange={(e) => setEditForm({ ...editForm, observaciones: e.target.value })}
+                rows={2}
+                className="resize-none"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditingPedido(null)}>
+                Cancelar
+              </Button>
+              <Button type="submit">Guardar</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
