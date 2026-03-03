@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Trash2, FileDown, ClipboardList, RotateCcw } from "lucide-react"
+import { Plus, Trash2, FileDown, ClipboardList, RotateCcw, ShoppingCart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -79,6 +79,32 @@ export function PedidosContent() {
   }
 
   const totalPedidos = pedidos.reduce((sum, p) => sum + p.cantidad * p.precio_unitario, 0)
+
+  const handleCargarVentas = async () => {
+    if (pedidos.length === 0) return
+    if (!confirm(`¿Cargar los ${pedidos.length} pedidos como ventas del día? Esto los registrará en la sección Ventas.`)) return
+
+    const fecha = new Date().toISOString().split("T")[0]
+    try {
+      await Promise.all(
+        pedidos.map((p) =>
+          insertRow("ventas", {
+            fecha,
+            cliente_nombre: p.cliente,
+            producto_nombre: p.producto,
+            cantidad: p.cantidad,
+            precio_unitario: p.precio_unitario,
+          })
+        )
+      )
+      toast({
+        title: "Ventas cargadas",
+        description: `${pedidos.length} pedido${pedidos.length !== 1 ? "s" : ""} registrado${pedidos.length !== 1 ? "s" : ""} en Ventas.`,
+      })
+    } catch (err: any) {
+      toast({ title: "Error al cargar ventas", description: err?.message ?? "Error desconocido", variant: "destructive" })
+    }
+  }
 
   const handleGenerarPDF = () => {
     if (pedidos.length === 0) {
@@ -305,6 +331,10 @@ export function PedidosContent() {
               Limpiar lista
             </Button>
           )}
+          <Button variant="outline" onClick={handleCargarVentas} disabled={pedidos.length === 0}>
+            <ShoppingCart className="mr-2 h-4 w-4" />
+            Cargar como ventas
+          </Button>
           <Button onClick={handleGenerarPDF} disabled={pedidos.length === 0}>
             <FileDown className="mr-2 h-4 w-4" />
             Generar PDF
