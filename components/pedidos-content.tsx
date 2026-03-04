@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
 import { useSupabase, insertRow, deleteRow, updateRow } from "@/hooks/use-supabase"
@@ -24,6 +25,17 @@ interface Pedido {
   created_at: string
 }
 
+interface Cliente {
+  id: string
+  nombre: string
+}
+
+interface Producto {
+  id: string
+  nombre: string
+  activo: boolean
+}
+
 const emptyForm = {
   cliente: "",
   producto: "",
@@ -35,6 +47,9 @@ const emptyForm = {
 export function PedidosContent() {
   const { toast } = useToast()
   const { data: pedidosDesc = [], isLoading, mutate } = useSupabase<Pedido>("pedidos_dia")
+  const { data: clientes = [] } = useSupabase<Cliente>("clientes")
+  const { data: productosAll = [] } = useSupabase<Producto>("productos")
+  const productos = productosAll.filter((p) => p.activo)
   const pedidos = [...pedidosDesc].reverse() // mostrar en orden de carga (más nuevo al final)
   const [form, setForm] = useState(emptyForm)
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null)
@@ -42,7 +57,7 @@ export function PedidosContent() {
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.cliente.trim() || !form.producto.trim() || !form.cantidad) return
+    if (!form.cliente || !form.producto || !form.cantidad) return
 
     try {
       await insertRow("pedidos_dia", {
@@ -288,21 +303,29 @@ export function PedidosContent() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <Label>Cliente *</Label>
-              <Input
-                placeholder="Nombre del cliente"
-                value={form.cliente}
-                onChange={(e) => setForm({ ...form, cliente: e.target.value })}
-                required
-              />
+              <Select value={form.cliente} onValueChange={(v) => setForm({ ...form, cliente: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccioná un cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clientes.map((c) => (
+                    <SelectItem key={c.id} value={c.nombre}>{c.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Producto *</Label>
-              <Input
-                placeholder="Ej: Pollo A, Huevo"
-                value={form.producto}
-                onChange={(e) => setForm({ ...form, producto: e.target.value })}
-                required
-              />
+              <Select value={form.producto} onValueChange={(v) => setForm({ ...form, producto: v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccioná un producto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {productos.map((p) => (
+                    <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Cantidad *</Label>
@@ -449,19 +472,29 @@ export function PedidosContent() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Cliente *</Label>
-                <Input
-                  value={editForm.cliente}
-                  onChange={(e) => setEditForm({ ...editForm, cliente: e.target.value })}
-                  required
-                />
+                <Select value={editForm.cliente} onValueChange={(v) => setEditForm({ ...editForm, cliente: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccioná un cliente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clientes.map((c) => (
+                      <SelectItem key={c.id} value={c.nombre}>{c.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label>Producto *</Label>
-                <Input
-                  value={editForm.producto}
-                  onChange={(e) => setEditForm({ ...editForm, producto: e.target.value })}
-                  required
-                />
+                <Select value={editForm.producto} onValueChange={(v) => setEditForm({ ...editForm, producto: v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccioná un producto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {productos.map((p) => (
+                      <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label>Cantidad *</Label>
