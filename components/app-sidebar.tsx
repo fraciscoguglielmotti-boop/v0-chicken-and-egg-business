@@ -22,6 +22,7 @@ import {
   LineChart,
   ClipboardList,
   Landmark,
+  FileText,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -36,6 +37,7 @@ const navSections = [
       { name: "Cobros", href: "/cobros", icon: Receipt },
       { name: "Compras", href: "/compras", icon: Package },
       { name: "Pagos", href: "/pagos", icon: DollarSign },
+      { name: "Prep. Facturas", href: "/facturas", icon: FileText },
     ],
   },
   {
