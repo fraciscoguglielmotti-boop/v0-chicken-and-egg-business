@@ -1,9 +1,10 @@
 import { cn } from "@/lib/utils"
 import type { LucideIcon } from "lucide-react"
+import type { ReactNode } from "react"
 
 interface StatCardProps {
   title: string
-  value: string | number
+  value: string | number | ReactNode
   subtitle?: string
   icon: LucideIcon
   trend?: {

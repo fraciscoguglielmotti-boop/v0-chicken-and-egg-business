@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import { useSupabase } from "@/hooks/use-supabase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/utils"
+import { useBalanceVisibility } from "@/contexts/balance-visibility"
 import { TrendingUp, TrendingDown, Percent, Users, Clock, DollarSign } from "lucide-react"
 import {
   BarChart,
@@ -86,6 +87,7 @@ export function KpisContent() {
   const { data: cobros = [] } = useSupabase<Cobro>("cobros")
   const { data: compras = [] } = useSupabase<Compra>("compras")
   const { data: clientes = [] } = useSupabase<{ id: string; nombre: string }>("clientes")
+  const { hidden } = useBalanceVisibility()
 
   const kpis = useMemo(() => {
     const now = new Date()
@@ -212,7 +214,7 @@ export function KpisContent() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <KpiCard
           title="Ticket Promedio"
-          value={formatCurrency(kpis.ticketPromedio)}
+          value={hidden ? "••••••" : formatCurrency(kpis.ticketPromedio)}
           subtitle="Por venta registrada"
           icon={DollarSign}
         />
@@ -262,7 +264,7 @@ export function KpisContent() {
               <BarChart data={ventasCobrosChart} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
                 <XAxis dataKey="label" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Tooltip formatter={(value: number) => hidden ? "••••••" : formatCurrency(value)} />
                 <Legend />
                 <Bar dataKey="ventas" name="Ventas" fill="#22c55e" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="cobros" name="Cobros" fill="#3b82f6" radius={[4, 4, 0, 0]} />
@@ -284,7 +286,7 @@ export function KpisContent() {
                 <BarChart data={vendedoresChart} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
                   <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
                   <YAxis type="category" dataKey="nombre" tick={{ fontSize: 12 }} width={90} />
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                  <Tooltip formatter={(value: number) => hidden ? "••••••" : formatCurrency(value)} />
                   <Bar dataKey="total" name="Total Vendido" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -309,7 +311,7 @@ export function KpisContent() {
                         <Cell key={i} fill={COLORS[i % COLORS.length]} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    <Tooltip formatter={(value: number) => hidden ? "••••••" : formatCurrency(value)} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="flex-1 space-y-2">
@@ -317,7 +319,7 @@ export function KpisContent() {
                     <div key={i} className="flex items-center gap-2 text-sm">
                       <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                       <span className="text-muted-foreground capitalize">{entry.name}</span>
-                      <span className="ml-auto font-medium">{formatCurrency(entry.value)}</span>
+                      <span className="ml-auto font-medium">{hidden ? "••••••" : formatCurrency(entry.value)}</span>
                     </div>
                   ))}
                 </div>
@@ -336,7 +338,7 @@ export function KpisContent() {
               <LineChart data={ticketMensualChart} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
                 <XAxis dataKey="label" tick={{ fontSize: 12 }} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Tooltip formatter={(value: number) => hidden ? "••••••" : formatCurrency(value)} />
                 <Line type="monotone" dataKey="ticket" name="Ticket Prom." stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
               </LineChart>
             </ResponsiveContainer>

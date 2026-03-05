@@ -1,8 +1,9 @@
 "use client"
 
-import { Menu, LogOut, User } from "lucide-react"
+import { Menu, LogOut, User, Eye, EyeOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useAuth } from "./auth-guard"
+import { useBalanceVisibility } from "@/contexts/balance-visibility"
 
 interface AppHeaderProps {
   title: string
@@ -12,6 +13,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ title, subtitle, onMenuClick }: AppHeaderProps) {
   const { user, logout } = useAuth()
+  const { hidden, toggle } = useBalanceVisibility()
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-border bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:px-6">
@@ -31,6 +33,14 @@ export function AppHeader({ title, subtitle, onMenuClick }: AppHeaderProps) {
         )}
       </div>
       <div className="flex items-center gap-3">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggle}
+          title={hidden ? "Mostrar saldos" : "Ocultar saldos"}
+        >
+          {hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        </Button>
         {user && (
           <div className="hidden items-center gap-2 sm:flex">
             <User className="h-4 w-4 text-muted-foreground" />

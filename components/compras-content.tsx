@@ -8,9 +8,11 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
-import { useSupabase, insertRow } from "@/hooks/use-supabase"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { CurrencyDisplay } from "./currency-display"
+import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
+import { formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/hooks/use-toast"
 
 interface Compra {
   id: string
@@ -38,10 +40,21 @@ export function ComprasContent() {
   const { data: compras = [], isLoading, mutate } = useSupabase<Compra>("compras")
   const { data: proveedores = [] } = useSupabase<Proveedor>("proveedores")
   const { data: productos = [] } = useSupabase<Producto>("productos")
+  const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
+    proveedor_nombre: "",
+    producto: "",
+    cantidad: "",
+    precio_unitario: "",
+    estado: "pendiente"
+  })
+  const [editingCompra, setEditingCompra] = useState<Compra | null>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editFormData, setEditFormData] = useState({
+    fecha: "",
     proveedor_nombre: "",
     producto: "",
     cantidad: "",
@@ -69,6 +82,43 @@ export function ComprasContent() {
     setFormData({ fecha: new Date().toISOString().split('T')[0], proveedor_nombre: "", producto: "", cantidad: "", precio_unitario: "", estado: "pendiente" })
   }
 
+  const handleEdit = (compra: Compra) => {
+    setEditingCompra(compra)
+    setEditFormData({
+      fecha: compra.fecha?.split('T')[0] ?? "",
+      proveedor_nombre: compra.proveedor_nombre ?? "",
+      producto: compra.producto ?? "",
+      cantidad: String(compra.cantidad ?? ""),
+      precio_unitario: String(compra.precio_unitario ?? ""),
+      estado: compra.estado ?? "pendiente"
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingCompra) return
+    try {
+      const cantidad = parseFloat(editFormData.cantidad)
+      const precio = parseFloat(editFormData.precio_unitario)
+      await updateRow("compras", editingCompra.id, {
+        fecha: editFormData.fecha,
+        proveedor_nombre: editFormData.proveedor_nombre,
+        producto: editFormData.producto,
+        cantidad,
+        precio_unitario: precio,
+        total: cantidad * precio,
+        estado: editFormData.estado
+      })
+      await mutate()
+      setIsEditDialogOpen(false)
+      setEditingCompra(null)
+      toast({ title: "Compra actualizada", description: "Los cambios se guardaron correctamente." })
+    } catch (err: any) {
+      toast({ title: "Error al actualizar", description: err.message, variant: "destructive" })
+    }
+  }
+
   const filteredCompras = compras.filter((c) =>
     c.proveedor_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
     c.producto.toLowerCase().includes(searchTerm.toLowerCase())
@@ -79,8 +129,8 @@ export function ComprasContent() {
     { key: "proveedor_nombre", header: "Proveedor" },
     { key: "producto", header: "Producto" },
     { key: "cantidad", header: "Cantidad" },
-    { key: "precio_unitario", header: "Precio Unit.", render: (c: Compra) => formatCurrency(c.precio_unitario) },
-    { key: "total", header: "Total", render: (c: Compra) => <span className="font-semibold">{formatCurrency(c.total)}</span> },
+    { key: "precio_unitario", header: "Precio Unit.", render: (c: Compra) => <CurrencyDisplay amount={c.precio_unitario} /> },
+    { key: "total", header: "Total", render: (c: Compra) => <CurrencyDisplay amount={c.total} className="font-semibold" /> },
     { key: "estado", header: "Estado", render: (c: Compra) => (
       <Badge variant={c.estado === "pagado" ? "default" : "outline"}>
         {c.estado}
@@ -114,12 +164,12 @@ export function ComprasContent() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <Label>Fecha</Label>
-                <Input 
-                  type="date" 
-                  value={formData.fecha} 
+                <Input
+                  type="date"
+                  value={formData.fecha}
                   max={new Date().toISOString().split('T')[0]}
-                  onChange={(e) => setFormData({...formData, fecha: e.target.value})} 
-                  required 
+                  onChange={(e) => setFormData({...formData, fecha: e.target.value})}
+                  required
                 />
               </div>
               <div>
@@ -182,7 +232,80 @@ export function ComprasContent() {
         columns={columns}
         data={filteredCompras}
         emptyMessage={isLoading ? "Cargando..." : "No hay compras registradas"}
+        onEdit={handleEdit}
       />
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Compra</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div>
+              <Label>Fecha</Label>
+              <Input
+                type="date"
+                value={editFormData.fecha}
+                max={new Date().toISOString().split('T')[0]}
+                onChange={(e) => setEditFormData({ ...editFormData, fecha: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <Label>Proveedor</Label>
+              <Select value={editFormData.proveedor_nombre} onValueChange={(value) => setEditFormData({ ...editFormData, proveedor_nombre: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar proveedor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {proveedores.map(p => (
+                    <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Producto</Label>
+              <Select value={editFormData.producto} onValueChange={(value) => setEditFormData({ ...editFormData, producto: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar producto" />
+                </SelectTrigger>
+                <SelectContent>
+                  {productosActivos.map(p => (
+                    <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Cantidad</Label>
+                <Input type="number" step="0.01" value={editFormData.cantidad} onChange={(e) => setEditFormData({ ...editFormData, cantidad: e.target.value })} required />
+              </div>
+              <div>
+                <Label>Precio Unitario</Label>
+                <Input type="number" step="0.01" value={editFormData.precio_unitario} onChange={(e) => setEditFormData({ ...editFormData, precio_unitario: e.target.value })} required />
+              </div>
+            </div>
+            <div>
+              <Label>Estado</Label>
+              <Select value={editFormData.estado} onValueChange={(value) => setEditFormData({ ...editFormData, estado: value })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pendiente">Pendiente</SelectItem>
+                  <SelectItem value="pagado">Pagado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit">Guardar cambios</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

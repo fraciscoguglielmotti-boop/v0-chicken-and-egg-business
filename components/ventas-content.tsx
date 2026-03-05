@@ -9,8 +9,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
+import { CurrencyDisplay } from "./currency-display"
 import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatDate } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 
 interface Venta {
@@ -125,8 +126,8 @@ export function VentasContent() {
     { key: "cliente_nombre", header: "Cliente" },
     { key: "producto_nombre", header: "Producto", render: (v: Venta) => v.producto_nombre || "-" },
     { key: "cantidad", header: "Cantidad" },
-    { key: "precio_unitario", header: "Precio Unit.", render: (v: Venta) => formatCurrency(v.precio_unitario) },
-    { key: "total", header: "Total", render: (v: Venta) => <span className="font-semibold">{formatCurrency(v.cantidad * v.precio_unitario)}</span> },
+    { key: "precio_unitario", header: "Precio Unit.", render: (v: Venta) => <CurrencyDisplay amount={v.precio_unitario} /> },
+    { key: "total", header: "Total", render: (v: Venta) => <CurrencyDisplay amount={v.cantidad * v.precio_unitario} className="font-semibold" /> },
     { key: "vendedor", header: "Vendedor", render: (v: Venta) => v.vendedor || "-" },
   ]
 

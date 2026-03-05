@@ -8,7 +8,8 @@ import Link from "next/link"
 import { StatCard } from "./stat-card"
 import { DataTable } from "./data-table"
 import { useSupabase } from "@/hooks/use-supabase"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { CurrencyDisplay } from "./currency-display"
+import { formatDate } from "@/lib/utils"
 
 interface Venta {
   id: string
@@ -136,14 +137,14 @@ export function DashboardContent() {
   const ventasColumns = [
     { key: "fecha", header: "Fecha", render: (v: VentaRow) => formatDate(new Date(v.fecha)) },
     { key: "cliente_nombre", header: "Cliente" },
-    { key: "total", header: "Total", render: (v: VentaRow) => <span className="font-semibold">{formatCurrency(v.total)}</span> },
+    { key: "total", header: "Total", render: (v: VentaRow) => <CurrencyDisplay amount={v.total} className="font-semibold" /> },
     { key: "estado", header: "Estado", render: (_v: VentaRow) => <Badge variant="outline" className="bg-primary/20 text-primary border-primary/30">Pagada</Badge> },
   ]
 
   const cobrosColumns = [
     { key: "fecha", header: "Fecha", render: (c: Cobro) => formatDate(new Date(c.fecha)) },
     { key: "cliente_nombre", header: "Cliente" },
-    { key: "monto", header: "Monto", render: (c: Cobro) => <span className="font-semibold text-primary">{formatCurrency(Number(c.monto))}</span> },
+    { key: "monto", header: "Monto", render: (c: Cobro) => <CurrencyDisplay amount={Number(c.monto)} className="font-semibold text-primary" /> },
     { key: "metodo_pago", header: "Metodo", render: (c: Cobro) => <span className="capitalize">{c.metodo_pago}</span> },
   ]
 
@@ -151,10 +152,10 @@ export function DashboardContent() {
     <div className="space-y-8">
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Ventas" value={formatCurrency(stats.ventasMes)} subtitle="Registradas" icon={ShoppingCart} variant="success" />
-        <StatCard title="Total Cobros" value={formatCurrency(stats.cobrosMes)} subtitle="Recaudado" icon={TrendingUp} variant="default" />
-        <StatCard title="Cobros" value={formatCurrency(stats.cobrosMes)} subtitle="Total cobrado" icon={Receipt} variant="success" />
-        <StatCard title="Por Cobrar" value={formatCurrency(stats.cuentasPorCobrar)} subtitle="Saldo pendiente" icon={TrendingDown} variant="warning" />
+        <StatCard title="Total Ventas" value={<CurrencyDisplay amount={stats.ventasMes} />} subtitle="Registradas" icon={ShoppingCart} variant="success" />
+        <StatCard title="Total Cobros" value={<CurrencyDisplay amount={stats.cobrosMes} />} subtitle="Recaudado" icon={TrendingUp} variant="default" />
+        <StatCard title="Cobros" value={<CurrencyDisplay amount={stats.cobrosMes} />} subtitle="Total cobrado" icon={Receipt} variant="success" />
+        <StatCard title="Por Cobrar" value={<CurrencyDisplay amount={stats.cuentasPorCobrar} />} subtitle="Saldo pendiente" icon={TrendingDown} variant="warning" />
       </div>
 
       {/* Comparativas */}
@@ -164,11 +165,11 @@ export function DashboardContent() {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Mes Actual</span>
-              <span className="font-semibold">{formatCurrency(stats.ventasMesActual)}</span>
+              <CurrencyDisplay amount={stats.ventasMesActual} className="font-semibold" />
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Mes Anterior</span>
-              <span className="font-semibold">{formatCurrency(stats.ventasMesAnterior)}</span>
+              <CurrencyDisplay amount={stats.ventasMesAnterior} className="font-semibold" />
             </div>
             <div className="border-t pt-3 flex items-center justify-between">
               <span className="font-medium">Variación</span>
@@ -191,11 +192,11 @@ export function DashboardContent() {
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Semana Actual</span>
-              <span className="font-semibold">{formatCurrency(stats.ventasSemanaActual)}</span>
+              <CurrencyDisplay amount={stats.ventasSemanaActual} className="font-semibold" />
             </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Semana Anterior</span>
-              <span className="font-semibold">{formatCurrency(stats.ventasSemanaAnterior)}</span>
+              <CurrencyDisplay amount={stats.ventasSemanaAnterior} className="font-semibold" />
             </div>
             <div className="border-t pt-3 flex items-center justify-between">
               <span className="font-medium">Variación</span>
@@ -221,16 +222,16 @@ export function DashboardContent() {
           <div className="mt-4 space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Total Ventas</span>
-              <span className="font-semibold text-primary">{formatCurrency(stats.ventasMes)}</span>
+              <CurrencyDisplay amount={stats.ventasMes} className="font-semibold text-primary" />
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Total Cobros</span>
-              <span className="font-semibold text-foreground">{formatCurrency(stats.cobrosMes)}</span>
+              <CurrencyDisplay amount={stats.cobrosMes} className="font-semibold text-foreground" />
             </div>
             <div className="border-t pt-4">
               <div className="flex items-center justify-between">
                 <span className="font-medium text-foreground">Pendiente de Cobro</span>
-                <span className="text-lg font-bold text-accent">{formatCurrency(stats.cuentasPorCobrar)}</span>
+                <CurrencyDisplay amount={stats.cuentasPorCobrar} className="text-lg font-bold text-accent" />
               </div>
             </div>
           </div>
@@ -267,7 +268,7 @@ export function DashboardContent() {
                 <Link key={idx} href="/cuentas">
                   <div className="flex items-center justify-between rounded-lg border bg-accent/5 p-3 hover:bg-accent/10 transition-colors cursor-pointer">
                     <span className="text-sm font-medium text-foreground truncate">{client.nombre}</span>
-                    <span className="text-sm font-bold text-destructive">{formatCurrency(client.saldo)}</span>
+                    <CurrencyDisplay amount={client.saldo} className="text-sm font-bold text-destructive" />
                   </div>
                 </Link>
               ))
