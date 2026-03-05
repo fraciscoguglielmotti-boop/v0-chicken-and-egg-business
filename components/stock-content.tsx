@@ -3,6 +3,7 @@
 import { useMemo } from "react"
 import { Package, TrendingUp, TrendingDown } from "lucide-react"
 import { useSupabase } from "@/hooks/use-supabase"
+import { formatDate } from "@/lib/utils"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -158,7 +159,7 @@ export function StockContent() {
                   {movimientos.map((m, i) => (
                     <tr key={i} className="border-b last:border-0">
                       <td className="py-3 text-sm">
-                        {new Date(m.fecha).toLocaleDateString()}
+                        {formatDate(m.fecha)}
                       </td>
                       <td className="py-3">
                         <Badge variant={m.tipo === "compra" ? "default" : "outline"}>
