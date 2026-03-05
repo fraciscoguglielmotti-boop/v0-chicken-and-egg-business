@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useState } from "react"
-import { Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react"
+import React, { useState, useMemo } from "react"
+import { Pencil, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react"
 
 import {
   Table,
@@ -42,6 +42,29 @@ interface DataTableProps<T> {
   onDelete?: (id: string) => void
 }
 
+function sortValues(a: any, b: any, dir: 'asc' | 'desc'): number {
+  if (a == null && b == null) return 0
+  if (a == null) return 1
+  if (b == null) return -1
+
+  // Date strings (ISO format)
+  if (typeof a === 'string' && /^\d{4}-\d{2}-\d{2}/.test(a)) {
+    const diff = new Date(a).getTime() - new Date(b).getTime()
+    return dir === 'asc' ? diff : -diff
+  }
+
+  // Numbers
+  const aNum = Number(a)
+  const bNum = Number(b)
+  if (!isNaN(aNum) && !isNaN(bNum)) {
+    return dir === 'asc' ? aNum - bNum : bNum - aNum
+  }
+
+  // Strings
+  const cmp = String(a).toLowerCase().localeCompare(String(b).toLowerCase(), 'es')
+  return dir === 'asc' ? cmp : -cmp
+}
+
 export function DataTable<T extends { id: string }>({
   columns,
   data,
@@ -52,11 +75,31 @@ export function DataTable<T extends { id: string }>({
 }: DataTableProps<T>) {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [sortKey, setSortKey] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleSort = (key: string) => {
+    if (key === '__actions__') return
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+    setCurrentPage(1)
+  }
+
+  const sortedData = useMemo(() => {
+    if (!sortKey) return data
+    return [...data].sort((a, b) =>
+      sortValues((a as any)[sortKey], (b as any)[sortKey], sortDir)
+    )
+  }, [data, sortKey, sortDir])
 
   const hasActions = onEdit || onDelete
-  const totalPages = Math.ceil(data.length / PAGE_SIZE)
-  const paginated = data.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
-  const showPagination = data.length > PAGE_SIZE
+  const totalPages = Math.ceil(sortedData.length / PAGE_SIZE)
+  const paginated = sortedData.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const showPagination = sortedData.length > PAGE_SIZE
 
   const effectiveColumns: Column<T>[] = hasActions
     ? [
@@ -89,14 +132,29 @@ export function DataTable<T extends { id: string }>({
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              {effectiveColumns.map((column) => (
-                <TableHead
-                  key={String(column.key)}
-                  className={cn("font-semibold", column.className)}
-                >
-                  {column.header}
-                </TableHead>
-              ))}
+              {effectiveColumns.map((column) => {
+                const key = String(column.key)
+                const isSortable = key !== '__actions__'
+                const isActive = sortKey === key
+                return (
+                  <TableHead
+                    key={key}
+                    className={cn("font-semibold", column.className, isSortable && "cursor-pointer select-none hover:bg-muted/50")}
+                    onClick={() => isSortable && handleSort(key)}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {column.header}
+                      {isSortable && (
+                        isActive
+                          ? sortDir === 'asc'
+                            ? <ChevronUp className="h-3 w-3 text-primary" />
+                            : <ChevronDown className="h-3 w-3 text-primary" />
+                          : <ChevronsUpDown className="h-3 w-3 text-muted-foreground/50" />
+                      )}
+                    </span>
+                  </TableHead>
+                )
+              })}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -138,7 +196,7 @@ export function DataTable<T extends { id: string }>({
         {showPagination && (
           <div className="flex items-center justify-between border-t px-4 py-3">
             <span className="text-sm text-muted-foreground">
-              {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, data.length)} de {data.length} registros
+              {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedData.length)} de {sortedData.length} registros
             </span>
             <div className="flex items-center gap-2">
               <Button
