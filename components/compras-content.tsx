@@ -5,11 +5,12 @@ import { Plus, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
 import { CurrencyDisplay } from "./currency-display"
-import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
+import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
@@ -42,6 +43,8 @@ export function ComprasContent() {
   const { data: productos = [] } = useSupabase<Producto>("productos")
   const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
+  const [fechaDesde, setFechaDesde] = useState("")
+  const [fechaHasta, setFechaHasta] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
@@ -95,6 +98,16 @@ export function ComprasContent() {
     setIsEditDialogOpen(true)
   }
 
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteRow("compras", id)
+      mutate()
+      toast({ title: "Compra eliminada" })
+    } catch (err: any) {
+      toast({ title: "Error al eliminar", description: err.message, variant: "destructive" })
+    }
+  }
+
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!editingCompra) return
@@ -119,10 +132,10 @@ export function ComprasContent() {
     }
   }
 
-  const filteredCompras = compras.filter((c) =>
-    c.proveedor_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    c.producto.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredCompras = compras
+    .filter((c) => c.proveedor_nombre.toLowerCase().includes(searchTerm.toLowerCase()) || c.producto.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter((c) => !fechaDesde || c.fecha >= fechaDesde)
+    .filter((c) => !fechaHasta || c.fecha <= fechaHasta)
 
   const columns = [
     { key: "fecha", header: "Fecha", render: (c: Compra) => formatDate(new Date(c.fecha)) },
@@ -140,8 +153,8 @@ export function ComprasContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar compras..."
@@ -150,9 +163,20 @@ export function ComprasContent() {
             className="pl-9"
           />
         </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm whitespace-nowrap">Desde:</Label>
+          <Input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="w-auto" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm whitespace-nowrap">Hasta:</Label>
+          <Input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="w-auto" />
+        </div>
+        {(fechaDesde || fechaHasta) && (
+          <Button variant="outline" size="sm" onClick={() => { setFechaDesde(""); setFechaHasta("") }}>Limpiar</Button>
+        )}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="ml-auto">
               <Plus className="mr-2 h-4 w-4" />
               Nueva Compra
             </Button>
@@ -233,6 +257,7 @@ export function ComprasContent() {
         data={filteredCompras}
         emptyMessage={isLoading ? "Cargando..." : "No hay compras registradas"}
         onEdit={handleEdit}
+        onDelete={handleDelete}
       />
 
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>

@@ -8,8 +8,10 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
-import { useSupabase, insertRow } from "@/hooks/use-supabase"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { CurrencyDisplay } from "./currency-display"
+import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
+import { formatDate } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
 
 interface Pago {
   id: string
@@ -28,10 +30,20 @@ interface Proveedor {
 export function PagosContent() {
   const { data: pagos = [], isLoading, mutate } = useSupabase<Pago>("pagos")
   const { data: proveedores = [] } = useSupabase<Proveedor>("proveedores")
+  const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
+    proveedor_nombre: "",
+    monto: "",
+    metodo_pago: "",
+    observaciones: ""
+  })
+  const [editingPago, setEditingPago] = useState<Pago | null>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editFormData, setEditFormData] = useState({
+    fecha: "",
     proveedor_nombre: "",
     monto: "",
     metodo_pago: "",
@@ -52,6 +64,48 @@ export function PagosContent() {
     setFormData({ fecha: new Date().toISOString().split('T')[0], proveedor_nombre: "", monto: "", metodo_pago: "", observaciones: "" })
   }
 
+  const handleEdit = (pago: Pago) => {
+    setEditingPago(pago)
+    setEditFormData({
+      fecha: pago.fecha?.split('T')[0] ?? "",
+      proveedor_nombre: pago.proveedor_nombre ?? "",
+      monto: String(pago.monto ?? ""),
+      metodo_pago: pago.metodo_pago ?? "",
+      observaciones: pago.observaciones ?? ""
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editingPago) return
+    try {
+      await updateRow("pagos", editingPago.id, {
+        fecha: editFormData.fecha,
+        proveedor_nombre: editFormData.proveedor_nombre,
+        monto: parseFloat(editFormData.monto),
+        metodo_pago: editFormData.metodo_pago || null,
+        observaciones: editFormData.observaciones || null
+      })
+      await mutate()
+      setIsEditDialogOpen(false)
+      setEditingPago(null)
+      toast({ title: "Pago actualizado", description: "Los cambios se guardaron correctamente." })
+    } catch (err: any) {
+      toast({ title: "Error al actualizar", description: err.message, variant: "destructive" })
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteRow("pagos", id)
+      mutate()
+      toast({ title: "Pago eliminado" })
+    } catch (err: any) {
+      toast({ title: "Error al eliminar", description: err.message, variant: "destructive" })
+    }
+  }
+
   const filteredPagos = pagos.filter((p) =>
     p.proveedor_nombre.toLowerCase().includes(searchTerm.toLowerCase())
   )
@@ -59,7 +113,7 @@ export function PagosContent() {
   const columns = [
     { key: "fecha", header: "Fecha", render: (p: Pago) => formatDate(new Date(p.fecha)) },
     { key: "proveedor_nombre", header: "Proveedor" },
-    { key: "monto", header: "Monto", render: (p: Pago) => <span className="font-semibold text-destructive">{formatCurrency(Number(p.monto))}</span> },
+    { key: "monto", header: "Monto", render: (p: Pago) => <CurrencyDisplay amount={Number(p.monto)} className="font-semibold text-destructive" /> },
     { key: "metodo_pago", header: "Metodo", render: (p: Pago) => p.metodo_pago || "-" },
   ]
 
@@ -89,24 +143,14 @@ export function PagosContent() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <Label>Fecha</Label>
-                <Input 
-                  type="date" 
-                  value={formData.fecha} 
-                  max={new Date().toISOString().split('T')[0]}
-                  onChange={(e) => setFormData({...formData, fecha: e.target.value})} 
-                  required 
-                />
+                <Input type="date" value={formData.fecha} max={new Date().toISOString().split('T')[0]} onChange={(e) => setFormData({...formData, fecha: e.target.value})} required />
               </div>
               <div>
                 <Label>Proveedor</Label>
                 <Select value={formData.proveedor_nombre} onValueChange={(value) => setFormData({...formData, proveedor_nombre: value})}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar proveedor" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar proveedor" /></SelectTrigger>
                   <SelectContent>
-                    {proveedores.map(p => (
-                      <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
-                    ))}
+                    {proveedores.map(p => <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
@@ -117,9 +161,7 @@ export function PagosContent() {
               <div>
                 <Label>Metodo de Pago</Label>
                 <Select value={formData.metodo_pago} onValueChange={(value) => setFormData({...formData, metodo_pago: value})}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar metodo" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar metodo" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Efectivo">Efectivo</SelectItem>
                     <SelectItem value="Transferencia">Transferencia</SelectItem>
@@ -143,7 +185,55 @@ export function PagosContent() {
         columns={columns}
         data={filteredPagos}
         emptyMessage={isLoading ? "Cargando..." : "No hay pagos registrados"}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
       />
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Pago</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div>
+              <Label>Fecha</Label>
+              <Input type="date" value={editFormData.fecha} max={new Date().toISOString().split('T')[0]} onChange={(e) => setEditFormData({ ...editFormData, fecha: e.target.value })} required />
+            </div>
+            <div>
+              <Label>Proveedor</Label>
+              <Select value={editFormData.proveedor_nombre} onValueChange={(value) => setEditFormData({ ...editFormData, proveedor_nombre: value })}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar proveedor" /></SelectTrigger>
+                <SelectContent>
+                  {proveedores.map(p => <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Monto</Label>
+              <Input type="number" step="0.01" value={editFormData.monto} onChange={(e) => setEditFormData({ ...editFormData, monto: e.target.value })} required />
+            </div>
+            <div>
+              <Label>Metodo de Pago</Label>
+              <Select value={editFormData.metodo_pago} onValueChange={(value) => setEditFormData({ ...editFormData, metodo_pago: value })}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar metodo" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Efectivo">Efectivo</SelectItem>
+                  <SelectItem value="Transferencia">Transferencia</SelectItem>
+                  <SelectItem value="Cheque">Cheque</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Observaciones</Label>
+              <Input value={editFormData.observaciones} onChange={(e) => setEditFormData({ ...editFormData, observaciones: e.target.value })} />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit">Guardar cambios</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

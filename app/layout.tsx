@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/toaster'
 import { BalanceVisibilityProvider } from '@/contexts/balance-visibility'
+import { ThemeProvider } from '@/components/theme-provider'
 
 import './globals.css'
 
@@ -21,9 +22,11 @@ export default function RootLayout({
   return (
     <html lang="es" className={inter.variable} suppressHydrationWarning>
       <body className="font-sans antialiased" suppressHydrationWarning>
-        <BalanceVisibilityProvider>
-          {children}
-        </BalanceVisibilityProvider>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          <BalanceVisibilityProvider>
+            {children}
+          </BalanceVisibilityProvider>
+        </ThemeProvider>
         <Toaster />
       </body>
     </html>

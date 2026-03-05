@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ChevronDown, ChevronRight, Download, Calendar, Check } from "lucide-react"
+import { ChevronDown, ChevronRight, Download, Calendar, Check, Receipt } from "lucide-react"
 import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -94,6 +96,8 @@ export function CuentasContent() {
   const [dateRange, setDateRange] = useState({ desde: "", hasta: "" })
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
   const { toast } = useToast()
+  const [cobrarCliente, setCobrarCliente] = useState<string | null>(null)
+  const [cobrarForm, setCobrarForm] = useState({ monto: "", metodo_pago: "efectivo", fecha: new Date().toISOString().split('T')[0] })
 
   // Clientes con movimientos
   const clientesConMovimientos = useMemo(() => {
@@ -282,6 +286,26 @@ export function CuentasContent() {
     }
   }
 
+  const handleCobrarSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!cobrarCliente) return
+    try {
+      await insertRow("cobros", {
+        fecha: cobrarForm.fecha,
+        cliente_nombre: cobrarCliente,
+        monto: parseFloat(cobrarForm.monto),
+        metodo_pago: cobrarForm.metodo_pago,
+        verificado_agroaves: false
+      })
+      await mutateCobros()
+      setCobrarCliente(null)
+      setCobrarForm({ monto: "", metodo_pago: "efectivo", fecha: new Date().toISOString().split('T')[0] })
+      toast({ title: "Cobro registrado", description: `Cobro a ${cobrarCliente} guardado correctamente.` })
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" })
+    }
+  }
+
   const exportClientePDF = (cliente: typeof clientesConMovimientos[0]) => {
     const doc = new jsPDF()
     
@@ -434,7 +458,18 @@ export function CuentasContent() {
                       <Badge variant={cliente.saldo > 0 ? "destructive" : cliente.saldo < 0 ? "default" : "outline"}>
                         {formatCurrency(cliente.saldo)}
                       </Badge>
-                      <Button variant="outline" size="sm" onClick={() => exportClientePDF(cliente)}>
+                      {cliente.saldo > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          onClick={(e) => { e.stopPropagation(); setCobrarCliente(cliente.nombre); setCobrarForm(f => ({ ...f, monto: String(Math.round(cliente.saldo)) })) }}
+                        >
+                          <Receipt className="h-3 w-3" />
+                          Cobrar
+                        </Button>
+                      )}
+                      <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); exportClientePDF(cliente) }}>
                         <Download className="h-4 w-4" />
                       </Button>
                     </div>
@@ -612,6 +647,38 @@ export function CuentasContent() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!cobrarCliente} onOpenChange={(open) => !open && setCobrarCliente(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar Cobro — {cobrarCliente}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCobrarSubmit} className="space-y-4">
+            <div>
+              <Label>Fecha</Label>
+              <Input type="date" value={cobrarForm.fecha} max={new Date().toISOString().split('T')[0]} onChange={(e) => setCobrarForm({ ...cobrarForm, fecha: e.target.value })} required />
+            </div>
+            <div>
+              <Label>Monto</Label>
+              <Input type="number" step="0.01" value={cobrarForm.monto} onChange={(e) => setCobrarForm({ ...cobrarForm, monto: e.target.value })} required />
+            </div>
+            <div>
+              <Label>Metodo de Pago</Label>
+              <Select value={cobrarForm.metodo_pago} onValueChange={(value) => setCobrarForm({ ...cobrarForm, metodo_pago: value })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="efectivo">Efectivo</SelectItem>
+                  <SelectItem value="transferencia">Transferencia</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCobrarCliente(null)}>Cancelar</Button>
+              <Button type="submit">Registrar Cobro</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
