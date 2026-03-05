@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Search } from "lucide-react"
+import { Plus, Search, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -45,13 +45,13 @@ export function VentasContent() {
   const [fechaDesde, setFechaDesde] = useState("")
   const [fechaHasta, setFechaHasta] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+
+  const emptyLinea = () => ({ producto: "", cantidad: "", precio_unitario: "" })
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
     cliente_nombre: "",
-    producto: "",
-    cantidad: "",
-    precio_unitario: "",
-    vendedor: ""
+    vendedor: "",
+    lineas: [emptyLinea()]
   })
   const [editingVenta, setEditingVenta] = useState<Venta | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -68,22 +68,41 @@ export function VentasContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const lineasValidas = formData.lineas.filter(l => l.producto && l.cantidad && l.precio_unitario)
+    if (lineasValidas.length === 0) return
     try {
-      await insertRow("ventas", {
-        fecha: formData.fecha,
-        cliente_nombre: formData.cliente_nombre,
-        producto_nombre: formData.producto,
-        cantidad: parseFloat(formData.cantidad),
-        precio_unitario: parseFloat(formData.precio_unitario),
-        vendedor: formData.vendedor || null
-      })
+      await Promise.all(lineasValidas.map(l =>
+        insertRow("ventas", {
+          fecha: formData.fecha,
+          cliente_nombre: formData.cliente_nombre,
+          producto_nombre: l.producto,
+          cantidad: parseFloat(l.cantidad),
+          precio_unitario: parseFloat(l.precio_unitario),
+          vendedor: formData.vendedor || null
+        })
+      ))
       mutate()
       setIsDialogOpen(false)
-      setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", producto: "", cantidad: "", precio_unitario: "", vendedor: "" })
-      toast({ title: "Venta registrada", description: `${formData.cliente_nombre} — ${formData.producto}` })
+      setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", vendedor: "", lineas: [emptyLinea()] })
+      toast({
+        title: lineasValidas.length === 1 ? "Venta registrada" : `${lineasValidas.length} ventas registradas`,
+        description: `${formData.cliente_nombre} — ${lineasValidas.map(l => l.producto).join(", ")}`
+      })
     } catch (err: any) {
       toast({ title: "Error al guardar", description: err?.message ?? "Error desconocido", variant: "destructive" })
     }
+  }
+
+  const updateLinea = (i: number, field: string, value: string) => {
+    const lineas = formData.lineas.map((l, idx) => idx === i ? { ...l, [field]: value } : l)
+    setFormData({ ...formData, lineas })
+  }
+
+  const addLinea = () => setFormData({ ...formData, lineas: [...formData.lineas, emptyLinea()] })
+
+  const removeLinea = (i: number) => {
+    if (formData.lineas.length === 1) return
+    setFormData({ ...formData, lineas: formData.lineas.filter((_, idx) => idx !== i) })
   }
 
   const handleEdit = (venta: Venta) => {
@@ -179,15 +198,21 @@ export function VentasContent() {
               <DialogTitle>Nueva Venta</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label>Fecha</Label>
-                <Input 
-                  type="date" 
-                  value={formData.fecha} 
-                  max={new Date().toISOString().split('T')[0]}
-                  onChange={(e) => setFormData({...formData, fecha: e.target.value})} 
-                  required 
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label>Fecha</Label>
+                  <Input
+                    type="date"
+                    value={formData.fecha}
+                    max={new Date().toISOString().split('T')[0]}
+                    onChange={(e) => setFormData({...formData, fecha: e.target.value})}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label>Vendedor (opcional)</Label>
+                  <Input value={formData.vendedor} onChange={(e) => setFormData({...formData, vendedor: e.target.value})} />
+                </div>
               </div>
               <div>
                 <Label>Cliente</Label>
@@ -202,35 +227,62 @@ export function VentasContent() {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label>Producto</Label>
-                <Select value={formData.producto} onValueChange={(value) => setFormData({...formData, producto: value})} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar producto" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {productosActivos.map(p => (
-                      <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+
+              {/* Líneas de productos */}
+              <div className="space-y-3">
+                <Label>Artículos</Label>
+                {formData.lineas.map((linea, i) => (
+                  <div key={i} className="flex gap-2 items-start rounded-lg border p-3">
+                    <div className="flex-1 space-y-2">
+                      <Select value={linea.producto} onValueChange={(v) => updateLinea(i, "producto", v)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Producto" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {productosActivos.map(p => (
+                            <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="Cantidad"
+                          value={linea.cantidad}
+                          onChange={(e) => updateLinea(i, "cantidad", e.target.value)}
+                        />
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="Precio unit."
+                          value={linea.precio_unitario}
+                          onChange={(e) => updateLinea(i, "precio_unitario", e.target.value)}
+                        />
+                      </div>
+                      {linea.cantidad && linea.precio_unitario && (
+                        <p className="text-xs text-muted-foreground text-right">
+                          Total: {new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(parseFloat(linea.cantidad) * parseFloat(linea.precio_unitario))}
+                        </p>
+                      )}
+                    </div>
+                    {formData.lineas.length > 1 && (
+                      <Button type="button" variant="ghost" size="icon" className="mt-1 shrink-0 text-destructive" onClick={() => removeLinea(i)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Button type="button" variant="outline" size="sm" className="w-full" onClick={addLinea}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Agregar artículo
+                </Button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label>Cantidad</Label>
-                  <Input type="number" step="0.01" value={formData.cantidad} onChange={(e) => setFormData({...formData, cantidad: e.target.value})} required />
-                </div>
-                <div>
-                  <Label>Precio Unitario</Label>
-                  <Input type="number" step="0.01" value={formData.precio_unitario} onChange={(e) => setFormData({...formData, precio_unitario: e.target.value})} required />
-                </div>
-              </div>
-              <div>
-                <Label>Vendedor (opcional)</Label>
-                <Input value={formData.vendedor} onChange={(e) => setFormData({...formData, vendedor: e.target.value})} />
-              </div>
+
               <DialogFooter>
-                <Button type="submit">Guardar</Button>
+                <Button type="submit" disabled={!formData.cliente_nombre || formData.lineas.every(l => !l.producto)}>
+                  Guardar {formData.lineas.filter(l => l.producto).length > 1 ? `(${formData.lineas.filter(l => l.producto).length} ventas)` : ""}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
