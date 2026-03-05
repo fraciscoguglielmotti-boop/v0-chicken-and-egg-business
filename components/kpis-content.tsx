@@ -303,8 +303,8 @@ export function KpisContent() {
             {metodosChart.length === 0 ? (
               <p className="text-muted-foreground text-sm py-8 text-center">Sin datos de cobros</p>
             ) : (
-              <div className="flex items-center gap-4">
-                <ResponsiveContainer width="60%" height={200}>
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <ResponsiveContainer width="100%" height={180} className="sm:w-[60%] sm:flex-none">
                   <PieChart>
                     <Pie data={metodosChart} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" nameKey="name">
                       {metodosChart.map((_, i) => (

@@ -151,7 +151,7 @@ export function DashboardContent() {
   return (
     <div className="space-y-8">
       {/* Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Total Ventas" value={<CurrencyDisplay amount={stats.ventasMes} />} subtitle="Registradas" icon={ShoppingCart} variant="success" />
         <StatCard title="Total Cobros" value={<CurrencyDisplay amount={stats.cobrosMes} />} subtitle="Recaudado" icon={TrendingUp} variant="default" />
         <StatCard title="Cobros" value={<CurrencyDisplay amount={stats.cobrosMes} />} subtitle="Total cobrado" icon={Receipt} variant="success" />
@@ -159,7 +159,7 @@ export function DashboardContent() {
       </div>
 
       {/* Comparativas */}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="rounded-xl border bg-card p-6">
           <h3 className="text-lg font-semibold mb-4">Comparativa Mes vs Mes</h3>
           <div className="space-y-3">
@@ -216,7 +216,7 @@ export function DashboardContent() {
       </div>
 
       {/* Quick Actions + Top Deudores */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-xl border bg-card p-6">
           <h3 className="text-lg font-semibold text-foreground">Resumen</h3>
           <div className="mt-4 space-y-4">

@@ -392,14 +392,13 @@ export function CuentasContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <h2 className="text-xl font-semibold">Cuentas Corrientes</h2>
-        
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
             <div className="flex items-center gap-2">
-              <Label htmlFor="desde" className="text-sm">Desde:</Label>
+              <Label htmlFor="desde" className="text-sm whitespace-nowrap">Desde:</Label>
               <Input
                 id="desde"
                 type="date"
@@ -409,7 +408,7 @@ export function CuentasContent() {
               />
             </div>
             <div className="flex items-center gap-2">
-              <Label htmlFor="hasta" className="text-sm">Hasta:</Label>
+              <Label htmlFor="hasta" className="text-sm whitespace-nowrap">Hasta:</Label>
               <Input
                 id="hasta"
                 type="date"
@@ -423,15 +422,14 @@ export function CuentasContent() {
                 Limpiar
               </Button>
             )}
-          </div>
         </div>
       </div>
 
       <Tabs defaultValue="clientes" className="w-full">
-        <TabsList className="grid w-full max-w-2xl grid-cols-3">
+        <TabsList className="grid w-full grid-cols-3 sm:max-w-2xl">
           <TabsTrigger value="clientes">Clientes</TabsTrigger>
           <TabsTrigger value="proveedores">Proveedores</TabsTrigger>
-          <TabsTrigger value="transferencias">Transferencias Agroaves</TabsTrigger>
+          <TabsTrigger value="transferencias"><span className="hidden sm:inline">Transferencias Agroaves</span><span className="sm:hidden">Transf.</span></TabsTrigger>
         </TabsList>
 
         <TabsContent value="clientes" className="space-y-2 mt-4">
@@ -476,8 +474,8 @@ export function CuentasContent() {
                   </div>
                   
                   <CollapsibleContent>
-                    <div className="border-t">
-                      <table className="w-full">
+                    <div className="border-t overflow-x-auto">
+                      <table className="w-full min-w-[400px]">
                         <thead className="bg-muted/50">
                           <tr className="text-xs">
                             <th className="text-left p-2 font-medium">Fecha</th>
@@ -531,8 +529,8 @@ export function CuentasContent() {
                   </div>
                   
                   <CollapsibleContent>
-                    <div className="border-t">
-                      <table className="w-full">
+                    <div className="border-t overflow-x-auto">
+                      <table className="w-full min-w-[400px]">
                         <thead className="bg-muted/50">
                           <tr className="text-xs">
                             <th className="text-left p-2 font-medium">Fecha</th>

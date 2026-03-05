@@ -119,8 +119,8 @@ export function PagosContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Buscar pagos..."
@@ -131,7 +131,7 @@ export function PagosContent() {
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button className="ml-auto">
               <Plus className="mr-2 h-4 w-4" />
               Nuevo Pago
             </Button>

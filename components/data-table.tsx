@@ -85,6 +85,7 @@ export function DataTable<T extends { id: string }>({
   return (
     <>
       <div className="rounded-lg border bg-card">
+        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -132,6 +133,7 @@ export function DataTable<T extends { id: string }>({
             )}
           </TableBody>
         </Table>
+        </div>
 
         {showPagination && (
           <div className="flex items-center justify-between border-t px-4 py-3">

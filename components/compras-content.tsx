@@ -222,7 +222,7 @@ export function ComprasContent() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label>Cantidad</Label>
                   <Input type="number" step="0.01" value={formData.cantidad} onChange={(e) => setFormData({...formData, cantidad: e.target.value})} required />
