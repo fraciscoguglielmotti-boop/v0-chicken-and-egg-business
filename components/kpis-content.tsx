@@ -26,6 +26,7 @@ interface Venta {
   fecha: string
   cliente_nombre: string
   vendedor?: string
+  producto_nombre?: string
   cantidad: number
   precio_unitario: number
 }
@@ -43,6 +44,7 @@ interface Compra {
   fecha: string
   precio_unitario: number
   cantidad?: number
+  producto?: string
 }
 
 const COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
@@ -203,6 +205,98 @@ export function KpisContent() {
     })
   }, [ventas])
 
+  // Cajones por día (últimos 14 días)
+  const cajonesPorDia = useMemo(() => {
+    const now = new Date()
+    return Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(now)
+      d.setDate(now.getDate() - (13 - i))
+      const dStr = d.toISOString().slice(0, 10)
+      const label = d.toLocaleString("es-AR", { day: "2-digit", month: "2-digit" })
+      const total = ventas
+        .filter(v => v.fecha.slice(0, 10) === dStr)
+        .reduce((acc, v) => acc + v.cantidad, 0)
+      return { label, cajones: Math.round(total) }
+    })
+  }, [ventas])
+
+  // Cajones por semana (últimas 8 semanas)
+  const cajonesPorSemana = useMemo(() => {
+    const now = new Date()
+    return Array.from({ length: 8 }, (_, i) => {
+      const inicio = new Date(now)
+      inicio.setDate(now.getDate() - now.getDay() - (7 - i) * 7)
+      const fin = new Date(inicio)
+      fin.setDate(inicio.getDate() + 6)
+      const label = `${inicio.getDate()}/${inicio.getMonth() + 1}`
+      const total = ventas.filter(v => {
+        const f = v.fecha.slice(0, 10)
+        return f >= inicio.toISOString().slice(0, 10) && f <= fin.toISOString().slice(0, 10)
+      }).reduce((acc, v) => acc + v.cantidad, 0)
+      return { label, cajones: Math.round(total) }
+    })
+  }, [ventas])
+
+  // Cajones por mes (últimos 6 meses)
+  const cajonesPorMes = useMemo(() => {
+    const now = new Date()
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+      const mes = d.getMonth()
+      const año = d.getFullYear()
+      const label = d.toLocaleString("es-AR", { month: "short" })
+      const total = ventas
+        .filter(v => { const f = new Date(v.fecha); return f.getMonth() === mes && f.getFullYear() === año })
+        .reduce((acc, v) => acc + v.cantidad, 0)
+      return { label, cajones: Math.round(total) }
+    })
+  }, [ventas])
+
+  // Top productos por cantidad vendida
+  const topProductos = useMemo(() => {
+    const map = new Map<string, { cantidad: number; total: number }>()
+    ventas.forEach(v => {
+      const nombre = v.producto_nombre || "Sin producto"
+      const prev = map.get(nombre) || { cantidad: 0, total: 0 }
+      map.set(nombre, { cantidad: prev.cantidad + v.cantidad, total: prev.total + v.cantidad * v.precio_unitario })
+    })
+    return Array.from(map.entries())
+      .map(([nombre, d]) => ({ nombre, ...d }))
+      .sort((a, b) => b.cantidad - a.cantidad)
+      .slice(0, 6)
+  }, [ventas])
+
+  // Deuda por cliente (top 8)
+  const deudaPorCliente = useMemo(() => {
+    const saldos = new Map<string, number>()
+    ventas.forEach(v => {
+      const k = v.cliente_nombre.toLowerCase().trim()
+      saldos.set(k, (saldos.get(k) || 0) + v.cantidad * v.precio_unitario)
+    })
+    cobros.forEach(c => {
+      const k = c.cliente_nombre.toLowerCase().trim()
+      saldos.set(k, (saldos.get(k) || 0) - Number(c.monto))
+    })
+    return Array.from(saldos.entries())
+      .filter(([, s]) => s > 0)
+      .map(([nombre, deuda]) => ({ nombre: nombre.charAt(0).toUpperCase() + nombre.slice(1), deuda: Math.round(deuda) }))
+      .sort((a, b) => b.deuda - a.deuda)
+      .slice(0, 8)
+  }, [ventas, cobros])
+
+  // Evolución deuda total por mes
+  const evolucionDeuda = useMemo(() => {
+    const now = new Date()
+    return Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - (5 - i) + 1, 0) // último día del mes
+      const dStr = d.toISOString().slice(0, 10)
+      const label = d.toLocaleString("es-AR", { month: "short" })
+      const totalVentas = ventas.filter(v => v.fecha.slice(0, 10) <= dStr).reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
+      const totalCobros = cobros.filter(c => c.fecha.slice(0, 10) <= dStr).reduce((acc, c) => acc + Number(c.monto), 0)
+      return { label, deuda: Math.max(0, Math.round(totalVentas - totalCobros)) }
+    })
+  }, [ventas, cobros])
+
   return (
     <div className="space-y-6">
       <div>
@@ -347,6 +441,113 @@ export function KpisContent() {
           </CardContent>
         </Card>
       </div>
+      {/* Cajones vendidos */}
+      <div>
+        <h3 className="text-lg font-semibold mb-4">Cajones Vendidos</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <Card>
+            <CardHeader><CardTitle className="text-base">Por día (últimas 2 semanas)</CardTitle></CardHeader>
+            <CardContent className="pl-0">
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={cajonesPorDia} margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+                  <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 11 }} width={36} />
+                  <Tooltip formatter={(v: number) => [`${v} u.`, "Cajones"]} />
+                  <Bar dataKey="cajones" name="Cajones" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">Por semana (últimas 8)</CardTitle></CardHeader>
+            <CardContent className="pl-0">
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={cajonesPorSemana} margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} width={36} />
+                  <Tooltip formatter={(v: number) => [`${v} u.`, "Cajones"]} />
+                  <Bar dataKey="cajones" name="Cajones" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">Por mes (últimos 6)</CardTitle></CardHeader>
+            <CardContent className="pl-0">
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={cajonesPorMes} margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} width={36} />
+                  <Tooltip formatter={(v: number) => [`${v} u.`, "Cajones"]} />
+                  <Bar dataKey="cajones" name="Cajones" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Cuentas corrientes / Deuda */}
+      <div>
+        <h3 className="text-lg font-semibold mb-4">Cuentas Corrientes</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Top deudores */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Deuda por Cliente (top 8)</CardTitle></CardHeader>
+            <CardContent className="pl-0">
+              {deudaPorCliente.length === 0 ? (
+                <p className="text-muted-foreground text-sm py-8 text-center">Sin deudas pendientes</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={deudaPorCliente} layout="vertical" margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} width={48} />
+                    <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={90} />
+                    <Tooltip formatter={(value: number) => hidden ? "••••••" : formatCurrency(value)} />
+                    <Bar dataKey="deuda" name="Deuda" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Evolución deuda total */}
+          <Card>
+            <CardHeader><CardTitle className="text-base">Evolución Deuda Total (últimos 6 meses)</CardTitle></CardHeader>
+            <CardContent className="pl-0">
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={evolucionDeuda} margin={{ top: 4, right: 12, left: 10, bottom: 0 }}>
+                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} width={48} />
+                  <Tooltip formatter={(value: number) => hidden ? "••••••" : formatCurrency(value)} />
+                  <Line type="monotone" dataKey="deuda" name="Deuda total" stroke="#ef4444" strokeWidth={2} dot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Top productos */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Top Productos por Cantidad Vendida</CardTitle></CardHeader>
+        <CardContent className="pl-0">
+          {topProductos.length === 0 ? (
+            <p className="text-muted-foreground text-sm py-8 text-center">Sin datos de productos</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={topProductos} margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+                <XAxis dataKey="nombre" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 11 }} width={40} />
+                <Tooltip formatter={(v: number, name: string) => [name === "cantidad" ? `${v} u.` : (hidden ? "••••••" : formatCurrency(v)), name === "cantidad" ? "Unidades" : "Total $"]} />
+                <Legend />
+                <Bar dataKey="cantidad" name="Unidades" fill="#22c55e" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
