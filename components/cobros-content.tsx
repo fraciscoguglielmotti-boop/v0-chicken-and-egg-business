@@ -160,8 +160,8 @@ export function CobrosContent() {
     { key: "fecha", header: "Fecha", render: (c: Cobro) => formatDate(new Date(c.fecha)) },
     { key: "cliente_nombre", header: "Cliente" },
     { key: "monto", header: "Monto", render: (c: Cobro) => <CurrencyDisplay amount={Number(c.monto)} className="font-semibold text-primary" /> },
-    { key: "metodo_pago", header: "Metodo", render: (c: Cobro) => <span className="capitalize">{c.metodo_pago || "-"}</span> },
-    { key: "cuenta_destino", header: "Destino", render: (c: Cobro) => c.cuenta_destino || "-" },
+    { key: "metodo_pago", header: "Metodo", render: (c: Cobro) => <span className="capitalize">{c.metodo_pago || "-"}</span>, mobileHidden: true },
+    { key: "cuenta_destino", header: "Destino", render: (c: Cobro) => c.cuenta_destino || "-", mobileHidden: true },
     { key: "verificado_agroaves", header: "Verificado", render: (c: Cobro) => (
       <Badge
         variant={c.verificado_agroaves ? "default" : "outline"}

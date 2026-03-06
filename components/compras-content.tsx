@@ -141,8 +141,8 @@ export function ComprasContent() {
     { key: "fecha", header: "Fecha", render: (c: Compra) => formatDate(new Date(c.fecha)) },
     { key: "proveedor_nombre", header: "Proveedor" },
     { key: "producto", header: "Producto" },
-    { key: "cantidad", header: "Cantidad" },
-    { key: "precio_unitario", header: "Precio Unit.", render: (c: Compra) => <CurrencyDisplay amount={c.precio_unitario} /> },
+    { key: "cantidad", header: "Cantidad", mobileHidden: true },
+    { key: "precio_unitario", header: "Precio Unit.", render: (c: Compra) => <CurrencyDisplay amount={c.precio_unitario} />, mobileHidden: true },
     { key: "total", header: "Total", render: (c: Compra) => <CurrencyDisplay amount={c.total} className="font-semibold" /> },
     { key: "estado", header: "Estado", render: (c: Compra) => (
       <Badge variant={c.estado === "pagado" ? "default" : "outline"}>

@@ -157,10 +157,10 @@ export function VentasContent() {
     { key: "fecha", header: "Fecha", render: (v: Venta) => formatDate(new Date(v.fecha)) },
     { key: "cliente_nombre", header: "Cliente" },
     { key: "producto_nombre", header: "Producto", render: (v: Venta) => v.producto_nombre || "-" },
-    { key: "cantidad", header: "Cantidad" },
-    { key: "precio_unitario", header: "Precio Unit.", render: (v: Venta) => <CurrencyDisplay amount={v.precio_unitario} /> },
+    { key: "cantidad", header: "Cantidad", mobileHidden: true },
+    { key: "precio_unitario", header: "Precio Unit.", render: (v: Venta) => <CurrencyDisplay amount={v.precio_unitario} />, mobileHidden: true },
     { key: "total", header: "Total", render: (v: Venta) => <CurrencyDisplay amount={v.cantidad * v.precio_unitario} className="font-semibold" /> },
-    { key: "vendedor", header: "Vendedor", render: (v: Venta) => v.vendedor || "-" },
+    { key: "vendedor", header: "Vendedor", render: (v: Venta) => v.vendedor || "-", mobileHidden: true },
   ]
 
   return (

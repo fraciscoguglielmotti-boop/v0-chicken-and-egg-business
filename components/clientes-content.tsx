@@ -169,11 +169,11 @@ export function ClientesContent() {
 
   const columns = [
     { key: "nombre", header: "Nombre", render: (c: Cliente) => <span className="font-medium">{c.nombre}</span> },
-    { key: "cuit", header: "CUIT", render: (c: Cliente) => c.cuit || "-" },
+    { key: "cuit", header: "CUIT", render: (c: Cliente) => c.cuit || "-", mobileHidden: true },
     { key: "telefono", header: "Telefono", render: (c: Cliente) => c.telefono || "-" },
-    { key: "direccion", header: "Direccion", render: (c: Cliente) => c.direccion || "-" },
+    { key: "direccion", header: "Direccion", render: (c: Cliente) => c.direccion || "-", mobileHidden: true },
     { key: "saldo_inicial", header: "Saldo Inicial", render: (c: Cliente) => <Badge variant={c.saldo_inicial > 0 ? "destructive" : "outline"}>{formatCurrency(c.saldo_inicial)}</Badge> },
-    { key: "fecha_alta", header: "Fecha Alta", render: (c: Cliente) => formatDate(new Date(c.fecha_alta)) },
+    { key: "fecha_alta", header: "Fecha Alta", render: (c: Cliente) => formatDate(new Date(c.fecha_alta)), mobileHidden: true },
     {
       key: "whatsapp",
       header: "WhatsApp",

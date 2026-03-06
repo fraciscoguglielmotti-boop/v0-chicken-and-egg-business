@@ -31,6 +31,7 @@ interface Column<T> {
   header: string
   render?: (item: T) => React.ReactNode
   className?: string
+  mobileHidden?: boolean // ocultar en pantallas pequeñas
 }
 
 interface DataTableProps<T> {
@@ -106,9 +107,10 @@ export function DataTable<T extends { id: string }>({
         ...columns,
         {
           key: "__actions__",
-          header: "Acciones",
+          header: "",
+          className: "sticky right-0 bg-card w-[1%] whitespace-nowrap",
           render: (item: T) => (
-            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+            <div className="flex gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
               {onEdit && (
                 <Button variant="ghost" size="icon" onClick={() => onEdit(item)}>
                   <Pencil className="h-4 w-4" />
@@ -139,7 +141,7 @@ export function DataTable<T extends { id: string }>({
                 return (
                   <TableHead
                     key={key}
-                    className={cn("font-semibold", column.className, isSortable && "cursor-pointer select-none hover:bg-muted/50")}
+                    className={cn("font-semibold", column.className, isSortable && "cursor-pointer select-none hover:bg-muted/50", column.mobileHidden && "hidden sm:table-cell")}
                     onClick={() => isSortable && handleSort(key)}
                   >
                     <span className="inline-flex items-center gap-1">
@@ -179,7 +181,7 @@ export function DataTable<T extends { id: string }>({
                   {effectiveColumns.map((column) => (
                     <TableCell
                       key={`${item.id}-${String(column.key)}`}
-                      className={column.className}
+                      className={cn(column.className, column.mobileHidden && "hidden sm:table-cell")}
                     >
                       {column.render
                         ? column.render(item)

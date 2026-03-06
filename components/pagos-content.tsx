@@ -114,7 +114,7 @@ export function PagosContent() {
     { key: "fecha", header: "Fecha", render: (p: Pago) => formatDate(new Date(p.fecha)) },
     { key: "proveedor_nombre", header: "Proveedor" },
     { key: "monto", header: "Monto", render: (p: Pago) => <CurrencyDisplay amount={Number(p.monto)} className="font-semibold text-destructive" /> },
-    { key: "metodo_pago", header: "Metodo", render: (p: Pago) => p.metodo_pago || "-" },
+    { key: "metodo_pago", header: "Metodo", render: (p: Pago) => p.metodo_pago || "-", mobileHidden: true },
   ]
 
   return (
