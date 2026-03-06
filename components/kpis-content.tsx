@@ -259,11 +259,11 @@ export function KpisContent() {
           <CardHeader>
             <CardTitle className="text-base">Ventas vs Cobros (últimos 6 meses)</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pl-0">
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={ventasCobrosChart} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+              <BarChart data={ventasCobrosChart} margin={{ top: 4, right: 12, left: 10, bottom: 0 }}>
                 <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} width={48} />
                 <Tooltip formatter={(value: number) => hidden ? "••••••" : formatCurrency(value)} />
                 <Legend />
                 <Bar dataKey="ventas" name="Ventas" fill="#22c55e" radius={[4, 4, 0, 0]} />
@@ -278,14 +278,14 @@ export function KpisContent() {
           <CardHeader>
             <CardTitle className="text-base">Top 5 Vendedores</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pl-0">
             {vendedoresChart.length === 0 ? (
               <p className="text-muted-foreground text-sm py-8 text-center">Sin datos de vendedores</p>
             ) : (
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={vendedoresChart} layout="vertical" margin={{ top: 0, right: 10, left: 10, bottom: 0 }}>
-                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-                  <YAxis type="category" dataKey="nombre" tick={{ fontSize: 12 }} width={90} />
+                <BarChart data={vendedoresChart} layout="vertical" margin={{ top: 4, right: 12, left: 4, bottom: 0 }}>
+                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} width={48} />
+                  <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={80} />
                   <Tooltip formatter={(value: number) => hidden ? "••••••" : formatCurrency(value)} />
                   <Bar dataKey="total" name="Total Vendido" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -304,17 +304,19 @@ export function KpisContent() {
               <p className="text-muted-foreground text-sm py-8 text-center">Sin datos de cobros</p>
             ) : (
               <div className="flex flex-col sm:flex-row items-center gap-4">
-                <ResponsiveContainer width="100%" height={180} className="sm:w-[60%] sm:flex-none">
-                  <PieChart>
-                    <Pie data={metodosChart} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value" nameKey="name">
-                      {metodosChart.map((_, i) => (
-                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value: number) => hidden ? "••••••" : formatCurrency(value)} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="flex-1 space-y-2">
+                <div className="w-full sm:w-[55%] shrink-0">
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie data={metodosChart} cx="50%" cy="50%" innerRadius={50} outerRadius={75} dataKey="value" nameKey="name">
+                        {metodosChart.map((_, i) => (
+                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value: number) => hidden ? "••••••" : formatCurrency(value)} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex-1 space-y-2 w-full sm:w-auto">
                   {metodosChart.map((entry, i) => (
                     <div key={i} className="flex items-center gap-2 text-sm">
                       <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
@@ -333,11 +335,11 @@ export function KpisContent() {
           <CardHeader>
             <CardTitle className="text-base">Evolución Ticket Promedio</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pl-0">
             <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={ticketMensualChart} margin={{ top: 0, right: 10, left: 0, bottom: 0 }}>
+              <LineChart data={ticketMensualChart} margin={{ top: 4, right: 12, left: 10, bottom: 0 }}>
                 <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} width={48} />
                 <Tooltip formatter={(value: number) => hidden ? "••••••" : formatCurrency(value)} />
                 <Line type="monotone" dataKey="ticket" name="Ticket Prom." stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
               </LineChart>
