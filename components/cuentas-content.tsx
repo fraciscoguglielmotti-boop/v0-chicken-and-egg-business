@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ChevronDown, ChevronRight, Download, Calendar, Check, Receipt } from "lucide-react"
+import { ChevronDown, ChevronRight, Download, Calendar, Check, Receipt, LayoutList, AlignJustify } from "lucide-react"
 import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -98,6 +98,7 @@ export function CuentasContent() {
   const { toast } = useToast()
   const [cobrarCliente, setCobrarCliente] = useState<string | null>(null)
   const [cobrarForm, setCobrarForm] = useState({ monto: "", metodo_pago: "efectivo", fecha: new Date().toISOString().split('T')[0] })
+  const [vistaLista, setVistaLista] = useState(false)
 
   // Clientes con movimientos
   const clientesConMovimientos = useMemo(() => {
@@ -426,16 +427,108 @@ export function CuentasContent() {
       </div>
 
       <Tabs defaultValue="clientes" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 sm:max-w-2xl">
-          <TabsTrigger value="clientes">Clientes</TabsTrigger>
-          <TabsTrigger value="proveedores">Proveedores</TabsTrigger>
-          <TabsTrigger value="transferencias"><span className="hidden sm:inline">Transferencias Agroaves</span><span className="sm:hidden">Transf.</span></TabsTrigger>
-        </TabsList>
+        <div className="flex items-center gap-3">
+          <TabsList className="grid grid-cols-3 sm:max-w-2xl">
+            <TabsTrigger value="clientes">Clientes</TabsTrigger>
+            <TabsTrigger value="proveedores">Proveedores</TabsTrigger>
+            <TabsTrigger value="transferencias"><span className="hidden sm:inline">Transferencias Agroaves</span><span className="sm:hidden">Transf.</span></TabsTrigger>
+          </TabsList>
+          <div className="ml-auto flex items-center border rounded-lg overflow-hidden">
+            <Button
+              variant={vistaLista ? "ghost" : "secondary"}
+              size="sm"
+              className="rounded-none h-9 px-3"
+              onClick={() => setVistaLista(false)}
+              title="Vista detallada"
+            >
+              <AlignJustify className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={vistaLista ? "secondary" : "ghost"}
+              size="sm"
+              className="rounded-none h-9 px-3 border-l"
+              onClick={() => setVistaLista(true)}
+              title="Vista lista"
+            >
+              <LayoutList className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
 
         <TabsContent value="clientes" className="space-y-2 mt-4">
           {clientesConMovimientos.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
               No hay datos de clientes
+            </div>
+          ) : vistaLista ? (
+            /* ── Vista lista compacta ── */
+            <div className="rounded-lg border bg-card overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-xs">
+                  <tr>
+                    <th className="text-left p-3 font-semibold">#</th>
+                    <th className="text-left p-3 font-semibold">Cliente</th>
+                    <th className="text-right p-3 font-semibold hidden sm:table-cell">Total vendido</th>
+                    <th className="text-right p-3 font-semibold hidden sm:table-cell">Total cobrado</th>
+                    <th className="text-right p-3 font-semibold">Saldo</th>
+                    <th className="p-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientesConMovimientos.map((cliente, i) => (
+                    <tr key={cliente.nombre} className="border-t hover:bg-muted/30 transition-colors">
+                      <td className="p-3 text-muted-foreground">{i + 1}</td>
+                      <td className="p-3 font-medium">{cliente.nombre}</td>
+                      <td className="p-3 text-right hidden sm:table-cell text-muted-foreground">
+                        {formatCurrency(cliente.totalVentas)}
+                      </td>
+                      <td className="p-3 text-right hidden sm:table-cell text-green-600">
+                        {formatCurrency(cliente.totalCobros)}
+                      </td>
+                      <td className="p-3 text-right">
+                        <Badge variant={cliente.saldo > 0 ? "destructive" : cliente.saldo < 0 ? "default" : "outline"}>
+                          {formatCurrency(cliente.saldo)}
+                        </Badge>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex gap-1 justify-end">
+                          {cliente.saldo > 0 && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1 h-7 px-2 text-xs"
+                              onClick={() => { setCobrarCliente(cliente.nombre); setCobrarForm(f => ({ ...f, monto: String(Math.round(cliente.saldo)) })) }}
+                            >
+                              <Receipt className="h-3 w-3" />
+                              Cobrar
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => exportClientePDF(cliente)}>
+                            <Download className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-muted/50 border-t font-semibold text-sm">
+                  <tr>
+                    <td colSpan={2} className="p-3">Total</td>
+                    <td className="p-3 text-right hidden sm:table-cell text-muted-foreground">
+                      {formatCurrency(clientesConMovimientos.reduce((s, c) => s + c.totalVentas, 0))}
+                    </td>
+                    <td className="p-3 text-right hidden sm:table-cell text-green-600">
+                      {formatCurrency(clientesConMovimientos.reduce((s, c) => s + c.totalCobros, 0))}
+                    </td>
+                    <td className="p-3 text-right">
+                      <Badge variant="destructive">
+                        {formatCurrency(clientesConMovimientos.filter(c => c.saldo > 0).reduce((s, c) => s + c.saldo, 0))}
+                      </Badge>
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           ) : (
             clientesConMovimientos.map((cliente) => (
