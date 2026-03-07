@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useSupabase } from "@/hooks/use-supabase"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/utils"
@@ -297,6 +297,35 @@ export function KpisContent() {
     })
   }, [ventas, cobros])
 
+  const [periodoClientes, setPeriodoClientes] = useState<'dia' | 'semana' | 'mes' | 'anio'>('mes')
+
+  const cajonesPorCliente = useMemo(() => {
+    const now = new Date()
+    let desde: Date
+    if (periodoClientes === 'dia') {
+      desde = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    } else if (periodoClientes === 'semana') {
+      desde = new Date(now)
+      desde.setDate(now.getDate() - 6)
+    } else if (periodoClientes === 'mes') {
+      desde = new Date(now.getFullYear(), now.getMonth(), 1)
+    } else {
+      desde = new Date(now.getFullYear(), 0, 1)
+    }
+    const desdeStr = desde.toISOString().slice(0, 10)
+    const hastaStr = now.toISOString().slice(0, 10)
+    const map = new Map<string, number>()
+    ventas
+      .filter(v => v.fecha.slice(0, 10) >= desdeStr && v.fecha.slice(0, 10) <= hastaStr)
+      .forEach(v => { map.set(v.cliente_nombre, (map.get(v.cliente_nombre) || 0) + v.cantidad) })
+    return Array.from(map.entries())
+      .map(([nombre, cajones]) => ({ nombre, cajones }))
+      .sort((a, b) => b.cajones - a.cajones)
+      .slice(0, 12)
+  }, [ventas, periodoClientes])
+
+  const periodoLabels = { dia: 'Hoy', semana: 'Últ. 7 días', mes: 'Este mes', anio: 'Este año' }
+
   return (
     <div className="space-y-6">
       <div>
@@ -527,6 +556,44 @@ export function KpisContent() {
             </CardContent>
           </Card>
         </div>
+      </div>
+
+      {/* Cajones por cliente */}
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h3 className="text-lg font-semibold">Cajones por Cliente</h3>
+          <div className="flex items-center border rounded-lg overflow-hidden text-sm">
+            {(['dia', 'semana', 'mes', 'anio'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => setPeriodoClientes(p)}
+                className={`px-3 py-1.5 transition-colors ${periodoClientes === p ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+              >
+                {periodoLabels[p]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Card>
+          <CardContent className="pl-0 pt-4">
+            {cajonesPorCliente.length === 0 ? (
+              <p className="text-muted-foreground text-sm py-8 text-center">Sin ventas en este período</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(180, cajonesPorCliente.length * 36)}>
+                <BarChart data={cajonesPorCliente} layout="vertical" margin={{ top: 4, right: 40, left: 4, bottom: 0 }}>
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="nombre" tick={{ fontSize: 12 }} width={110} />
+                  <Tooltip formatter={(v: number) => [`${v} cajones`, "Cantidad"]} />
+                  <Bar dataKey="cajones" name="Cajones" fill="#22c55e" radius={[0, 4, 4, 0]}>
+                    {cajonesPorCliente.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Top productos */}
