@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Plus, Trash2, FileDown, ClipboardList, RotateCcw, ShoppingCart, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -25,6 +25,14 @@ interface Pedido {
   precio_unitario: number
   observaciones: string
   created_at: string
+}
+
+interface Venta {
+  id: string
+  fecha: string
+  cliente_nombre: string
+  producto_nombre: string
+  precio_unitario: number
 }
 
 interface Cliente {
@@ -52,6 +60,27 @@ export function PedidosContent() {
   const { data: clientes = [] } = useSupabase<Cliente>("clientes")
   const { data: productosAll = [] } = useSupabase<Producto>("productos")
   const { data: vehiculos = [] } = useSupabase<{ id: string; patente: string; marca: string; modelo: string }>("vehiculos")
+  const { data: ventas = [] } = useSupabase<Venta>("ventas")
+
+  // Mapa: "cliente__producto" → último precio unitario
+  const ultimosPreciosMap = useMemo(() => {
+    const map = new Map<string, { precio: number; fecha: string }>()
+    ventas.forEach(v => {
+      const key = `${v.cliente_nombre.toLowerCase().trim()}__${(v.producto_nombre || "").toLowerCase().trim()}`
+      const existing = map.get(key)
+      if (!existing || v.fecha > existing.fecha) {
+        map.set(key, { precio: v.precio_unitario, fecha: v.fecha })
+      }
+    })
+    return map
+  }, [ventas])
+
+  const getUltimoPrecio = (cliente: string, producto: string): string => {
+    if (!cliente || !producto) return ""
+    const key = `${cliente.toLowerCase().trim()}__${producto.toLowerCase().trim()}`
+    const found = ultimosPreciosMap.get(key)
+    return found ? String(found.precio) : ""
+  }
   const productos = productosAll.filter((p) => p.activo)
   const pedidos = [...pedidosDesc].reverse() // mostrar en orden de carga (más nuevo al final)
   const [form, setForm] = useState(emptyForm)
@@ -324,7 +353,10 @@ export function PedidosContent() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
               <Label>Cliente *</Label>
-              <Select value={form.cliente} onValueChange={(v) => setForm({ ...form, cliente: v })}>
+              <Select value={form.cliente} onValueChange={(v) => {
+                const precio = getUltimoPrecio(v, form.producto)
+                setForm({ ...form, cliente: v, precio_unitario: precio || form.precio_unitario })
+              }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccioná un cliente" />
                 </SelectTrigger>
@@ -337,7 +369,10 @@ export function PedidosContent() {
             </div>
             <div>
               <Label>Producto *</Label>
-              <Select value={form.producto} onValueChange={(v) => setForm({ ...form, producto: v })}>
+              <Select value={form.producto} onValueChange={(v) => {
+                const precio = getUltimoPrecio(form.cliente, v)
+                setForm({ ...form, producto: v, precio_unitario: precio || form.precio_unitario })
+              }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccioná un producto" />
                 </SelectTrigger>
@@ -361,7 +396,12 @@ export function PedidosContent() {
               />
             </div>
             <div>
-              <Label>Precio unitario (opcional)</Label>
+              <div className="flex items-center justify-between">
+                <Label>Precio unitario (opcional)</Label>
+                {form.precio_unitario && getUltimoPrecio(form.cliente, form.producto) === form.precio_unitario && (
+                  <span className="text-xs text-muted-foreground">último precio</span>
+                )}
+              </div>
               <Input
                 type="number"
                 step="0.01"
