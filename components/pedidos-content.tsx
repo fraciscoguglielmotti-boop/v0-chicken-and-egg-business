@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
 import { useSupabase, insertRow, deleteRow, updateRow } from "@/hooks/use-supabase"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { RepartosBoard } from "./repartos-board"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 
@@ -49,6 +51,7 @@ export function PedidosContent() {
   const { data: pedidosDesc = [], isLoading, mutate } = useSupabase<Pedido>("pedidos_dia")
   const { data: clientes = [] } = useSupabase<Cliente>("clientes")
   const { data: productosAll = [] } = useSupabase<Producto>("productos")
+  const { data: vehiculos = [] } = useSupabase<{ id: string; patente: string; marca: string; modelo: string }>("vehiculos")
   const productos = productosAll.filter((p) => p.activo)
   const pedidos = [...pedidosDesc].reverse() // mostrar en orden de carga (más nuevo al final)
   const [form, setForm] = useState(emptyForm)
@@ -292,6 +295,24 @@ export function PedidosContent() {
   }
 
   return (
+    <Tabs defaultValue="pedidos" className="space-y-6">
+      <TabsList>
+        <TabsTrigger value="pedidos">Pedidos del día</TabsTrigger>
+        <TabsTrigger value="repartos">
+          Repartos
+          {pedidos.length > 0 && (
+            <span className="ml-2 rounded-full bg-primary text-primary-foreground text-xs px-1.5 py-0.5">
+              {pedidos.length}
+            </span>
+          )}
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="repartos">
+        <RepartosBoard pedidos={pedidos} vehiculos={vehiculos} />
+      </TabsContent>
+
+      <TabsContent value="pedidos">
     <div className="space-y-6">
       {/* Form */}
       <div className="rounded-lg border bg-card p-5">
@@ -537,5 +558,7 @@ export function PedidosContent() {
         </DialogContent>
       </Dialog>
     </div>
+      </TabsContent>
+    </Tabs>
   )
 }
