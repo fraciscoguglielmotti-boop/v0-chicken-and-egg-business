@@ -80,11 +80,25 @@ export function ResumenVentasContent() {
       })
   }, [ventas, desde, hasta])
 
-  const totalesGlobales = useMemo(() => ({
-    totalVentas: resumenPorDia.reduce((s, d) => s + d.totalVentas, 0),
-    totalOperaciones: resumenPorDia.reduce((s, d) => s + d.cantidadOperaciones, 0),
-    diasConVentas: resumenPorDia.length,
-  }), [resumenPorDia])
+  const totalesGlobales = useMemo(() => {
+    const prodMap = new Map<string, { cantidad: number; total: number }>()
+    resumenPorDia.forEach(dia => {
+      dia.productosMas.forEach(p => {
+        const prev = prodMap.get(p.nombre) || { cantidad: 0, total: 0 }
+        prodMap.set(p.nombre, { cantidad: prev.cantidad + p.cantidad, total: prev.total + p.total })
+      })
+    })
+    const cajonesPorProducto = Array.from(prodMap.entries())
+      .map(([nombre, d]) => ({ nombre, ...d }))
+      .sort((a, b) => b.cantidad - a.cantidad)
+
+    return {
+      totalVentas: resumenPorDia.reduce((s, d) => s + d.totalVentas, 0),
+      totalOperaciones: resumenPorDia.reduce((s, d) => s + d.cantidadOperaciones, 0),
+      diasConVentas: resumenPorDia.length,
+      cajonesPorProducto,
+    }
+  }, [resumenPorDia])
 
   const promediodiario = totalesGlobales.diasConVentas > 0
     ? totalesGlobales.totalVentas / totalesGlobales.diasConVentas
@@ -143,6 +157,21 @@ export function ResumenVentasContent() {
           </div>
         </Card>
       </div>
+
+      {/* Cajones por producto */}
+      {totalesGlobales.cajonesPorProducto.length > 0 && (
+        <Card className="p-5">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">Cajones vendidos por producto</p>
+          <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+            {totalesGlobales.cajonesPorProducto.map(p => (
+              <div key={p.nombre} className="flex items-center justify-between rounded-md border px-3 py-2">
+                <span className="text-sm font-medium">{p.nombre}</span>
+                <Badge variant="secondary">{p.cantidad} caj.</Badge>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Lista por día */}
       <div className="space-y-3">

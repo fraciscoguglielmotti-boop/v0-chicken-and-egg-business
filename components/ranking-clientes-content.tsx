@@ -55,7 +55,7 @@ export function RankingClientesContent() {
       totalVentas: number
       totalCobrado: number
       saldoPendiente: number
-      cantidadVentas: number
+      totalCajones: number
       ultimaVenta: string
       productos: Map<string, number>
       rentabilidad: number
@@ -84,7 +84,7 @@ export function RankingClientesContent() {
         totalVentas: 0,
         totalCobrado: 0,
         saldoPendiente: 0,
-        cantidadVentas: 0,
+        totalCajones: 0,
         ultimaVenta: v.fecha,
         productos: new Map(),
         rentabilidad: 0
@@ -96,7 +96,7 @@ export function RankingClientesContent() {
       const ganancia = totalVenta - (v.cantidad * costoUnitario)
 
       cliente.totalVentas += totalVenta
-      cliente.cantidadVentas += 1
+      cliente.totalCajones += v.cantidad
       cliente.rentabilidad += ganancia
 
       if (v.fecha > cliente.ultimaVenta) {
@@ -127,7 +127,7 @@ export function RankingClientesContent() {
 
     return {
       porVolumen: [...clientesArray].sort((a, b) => b.totalVentas - a.totalVentas).slice(0, 10),
-      porFrecuencia: [...clientesArray].sort((a, b) => b.cantidadVentas - a.cantidadVentas).slice(0, 10),
+      porCajones: [...clientesArray].sort((a, b) => b.totalCajones - a.totalCajones).slice(0, 10),
       porRentabilidad: [...clientesArray].sort((a, b) => b.rentabilidad - a.rentabilidad).slice(0, 10),
       morosos: [...clientesArray]
         .filter(c => c.saldoPendiente > 0)
@@ -151,8 +151,14 @@ export function RankingClientesContent() {
                 <span className="font-medium">{formatCurrency(cliente.totalVentas)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Cantidad Ventas:</span>
-                <span className="font-medium">{cliente.cantidadVentas}</span>
+                <span className="text-muted-foreground">Cajones comprados:</span>
+                <span className="font-medium">{cliente.totalCajones} caj.</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Ganancia generada:</span>
+                <span className={`font-medium ${cliente.rentabilidad > 0 ? "text-green-600" : "text-muted-foreground"}`}>
+                  {formatCurrency(cliente.rentabilidad)}
+                </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Última Venta:</span>
@@ -230,7 +236,7 @@ export function RankingClientesContent() {
       <Tabs defaultValue="volumen" className="w-full">
         <TabsList className="grid w-full max-w-2xl grid-cols-5">
           <TabsTrigger value="volumen">Por Volumen</TabsTrigger>
-          <TabsTrigger value="frecuencia">Frecuencia</TabsTrigger>
+          <TabsTrigger value="cajones">Cajones</TabsTrigger>
           <TabsTrigger value="rentabilidad">Rentabilidad</TabsTrigger>
           <TabsTrigger value="morosos">Morosos</TabsTrigger>
           <TabsTrigger value="inactivos">Inactivos</TabsTrigger>
@@ -271,34 +277,34 @@ export function RankingClientesContent() {
           </div>
         </TabsContent>
 
-        <TabsContent value="frecuencia" className="space-y-4 mt-4">
-          {rankings.porFrecuencia.length > 0 && (
+        <TabsContent value="cajones" className="space-y-4 mt-4">
+          {rankings.porCajones.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-medium">Top 10 por Cantidad de Compras</CardTitle>
+                <CardTitle className="text-sm font-medium">Top 10 por Cajones Comprados</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart
-                    data={rankings.porFrecuencia.map(c => ({ nombre: c.nombre.split(" ")[0], compras: c.cantidadVentas }))}
+                    data={rankings.porCajones.map(c => ({ nombre: c.nombre.split(" ")[0], cajones: c.totalCajones }))}
                     layout="vertical"
                     margin={{ top: 0, right: 10, left: 10, bottom: 0 }}
                   >
                     <XAxis type="number" tick={{ fontSize: 11 }} />
                     <YAxis type="category" dataKey="nombre" tick={{ fontSize: 12 }} width={80} />
-                    <Tooltip />
-                    <Bar dataKey="compras" name="Cantidad Compras" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                    <Tooltip formatter={(v: number) => [`${v} caj.`, "Cajones"]} />
+                    <Bar dataKey="cajones" name="Cajones" fill="#3b82f6" radius={[0, 4, 4, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
           )}
           <div className="space-y-3">
-            {rankings.porFrecuencia.map((cliente, idx) => (
+            {rankings.porCajones.map((cliente, idx) => (
               <ClientCard
                 key={idx}
                 cliente={cliente}
-                metric={`${cliente.cantidadVentas} compras`}
+                metric={`${cliente.totalCajones} cajones`}
                 icon={Clock}
                 color="text-blue-600"
               />

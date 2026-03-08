@@ -38,6 +38,16 @@ interface Proveedor {
 
 const CUENTAS_DESTINO = ["Agroaves", "Francisco", "Diego", "Otra"]
 
+function formatMonto(value: string): string {
+  const raw = value.replace(/\./g, "").replace(/[^\d]/g, "")
+  if (!raw) return ""
+  return parseInt(raw, 10).toLocaleString("es-AR")
+}
+
+function parseMonto(value: string): number {
+  return parseFloat(value.replace(/\./g, "")) || 0
+}
+
 export function CobrosContent() {
   const { data: cobros = [], isLoading, mutate } = useSupabase<Cobro>("cobros")
   const { data: clientes = [] } = useSupabase<Cliente>("clientes")
@@ -73,7 +83,7 @@ export function CobrosContent() {
       await insertRow("cobros", {
         fecha: formData.fecha,
         cliente_nombre: formData.cliente_nombre,
-        monto: parseFloat(formData.monto),
+        monto: parseMonto(formData.monto),
         metodo_pago: formData.metodo_pago,
         cuenta_destino: formData.metodo_pago === "transferencia" ? formData.cuenta_destino : null,
         observaciones: formData.observaciones || null,
@@ -89,7 +99,7 @@ export function CobrosContent() {
           await insertRow("pagos", {
             fecha: formData.fecha,
             proveedor_nombre: proveedorAgroaves.nombre,
-            monto: parseFloat(formData.monto),
+            monto: parseMonto(formData.monto),
             metodo_pago: "Transferencia directa",
             observaciones: `Transferencia directa desde ${formData.cliente_nombre}`
           })
@@ -112,7 +122,7 @@ export function CobrosContent() {
     setEditFormData({
       fecha: cobro.fecha?.split('T')[0] ?? "",
       cliente_nombre: cobro.cliente_nombre ?? "",
-      monto: String(cobro.monto ?? ""),
+      monto: cobro.monto != null ? formatMonto(String(Math.round(cobro.monto))) : "",
       metodo_pago: cobro.metodo_pago ?? "efectivo",
       cuenta_destino: cobro.cuenta_destino ?? "",
       observaciones: cobro.observaciones ?? ""
@@ -127,7 +137,7 @@ export function CobrosContent() {
       await updateRow("cobros", editingCobro.id, {
         fecha: editFormData.fecha,
         cliente_nombre: editFormData.cliente_nombre,
-        monto: parseFloat(editFormData.monto),
+        monto: parseMonto(editFormData.monto),
         metodo_pago: editFormData.metodo_pago,
         cuenta_destino: editFormData.metodo_pago === "transferencia" ? editFormData.cuenta_destino : null,
         observaciones: editFormData.observaciones || null
@@ -231,7 +241,7 @@ export function CobrosContent() {
               </div>
               <div>
                 <Label>Monto</Label>
-                <Input type="number" step="0.01" value={formData.monto} onChange={(e) => setFormData({...formData, monto: e.target.value})} required />
+                <Input type="text" inputMode="numeric" placeholder="0" value={formData.monto} onChange={(e) => setFormData({...formData, monto: formatMonto(e.target.value)})} required />
               </div>
               <div>
                 <Label>Metodo de Pago</Label>
@@ -304,7 +314,7 @@ export function CobrosContent() {
             </div>
             <div>
               <Label>Monto</Label>
-              <Input type="number" step="0.01" value={editFormData.monto} onChange={(e) => setEditFormData({ ...editFormData, monto: e.target.value })} required />
+              <Input type="text" inputMode="numeric" placeholder="0" value={editFormData.monto} onChange={(e) => setEditFormData({ ...editFormData, monto: formatMonto(e.target.value) })} required />
             </div>
             <div>
               <Label>Metodo de Pago</Label>

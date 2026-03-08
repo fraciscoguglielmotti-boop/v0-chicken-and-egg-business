@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
+import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
@@ -24,6 +25,7 @@ interface Compra {
   precio_unitario: number
   total: number
   estado: string
+  verificado: boolean
 }
 
 interface Proveedor {
@@ -52,7 +54,8 @@ export function ComprasContent() {
     producto: "",
     cantidad: "",
     precio_unitario: "",
-    estado: "pendiente"
+    estado: "pendiente",
+    verificado: false
   })
   const [editingCompra, setEditingCompra] = useState<Compra | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
@@ -62,7 +65,8 @@ export function ComprasContent() {
     producto: "",
     cantidad: "",
     precio_unitario: "",
-    estado: "pendiente"
+    estado: "pendiente",
+    verificado: false
   })
 
   const productosActivos = productos.filter(p => p.activo)
@@ -78,11 +82,12 @@ export function ComprasContent() {
       cantidad,
       precio_unitario: precio,
       total: cantidad * precio,
-      estado: formData.estado
+      estado: formData.estado,
+      verificado: formData.verificado
     })
     mutate()
     setIsDialogOpen(false)
-    setFormData({ fecha: new Date().toISOString().split('T')[0], proveedor_nombre: "", producto: "", cantidad: "", precio_unitario: "", estado: "pendiente" })
+    setFormData({ fecha: new Date().toISOString().split('T')[0], proveedor_nombre: "", producto: "", cantidad: "", precio_unitario: "", estado: "pendiente", verificado: false })
   }
 
   const handleEdit = (compra: Compra) => {
@@ -93,7 +98,8 @@ export function ComprasContent() {
       producto: compra.producto ?? "",
       cantidad: String(compra.cantidad ?? ""),
       precio_unitario: String(compra.precio_unitario ?? ""),
-      estado: compra.estado ?? "pendiente"
+      estado: compra.estado ?? "pendiente",
+      verificado: compra.verificado ?? false
     })
     setIsEditDialogOpen(true)
   }
@@ -121,7 +127,8 @@ export function ComprasContent() {
         cantidad,
         precio_unitario: precio,
         total: cantidad * precio,
-        estado: editFormData.estado
+        estado: editFormData.estado,
+        verificado: editFormData.verificado
       })
       await mutate()
       setIsEditDialogOpen(false)
@@ -147,6 +154,23 @@ export function ComprasContent() {
     { key: "estado", header: "Estado", render: (c: Compra) => (
       <Badge variant={c.estado === "pagado" ? "default" : "outline"}>
         {c.estado}
+      </Badge>
+    )},
+    { key: "verificado", header: "Verificado", render: (c: Compra) => (
+      <Badge
+        variant={c.verificado ? "default" : "outline"}
+        className="cursor-pointer select-none"
+        onClick={async (e) => {
+          e.stopPropagation()
+          try {
+            await updateRow("compras", c.id, { verificado: !c.verificado })
+            mutate()
+          } catch (err: any) {
+            toast({ title: "Error", description: err?.message ?? "No se pudo actualizar", variant: "destructive" })
+          }
+        }}
+      >
+        {c.verificado ? "✓" : "-"}
       </Badge>
     )},
   ]
@@ -244,6 +268,10 @@ export function ComprasContent() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="flex items-center gap-2">
+                <Checkbox id="verificado_new" checked={formData.verificado} onCheckedChange={(checked) => setFormData({...formData, verificado: checked as boolean})} />
+                <Label htmlFor="verificado_new" className="cursor-pointer text-sm">Verificado en cuenta corriente del proveedor</Label>
+              </div>
               <DialogFooter>
                 <Button type="submit">Guardar</Button>
               </DialogFooter>
@@ -323,6 +351,10 @@ export function ComprasContent() {
                   <SelectItem value="pagado">Pagado</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox id="verificado_edit" checked={editFormData.verificado} onCheckedChange={(checked) => setEditFormData({ ...editFormData, verificado: checked as boolean })} />
+              <Label htmlFor="verificado_edit" className="cursor-pointer text-sm">Verificado en cuenta corriente del proveedor</Label>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancelar</Button>

@@ -27,6 +27,16 @@ interface Proveedor {
   nombre: string
 }
 
+function formatMonto(value: string): string {
+  const raw = value.replace(/\./g, "").replace(/[^\d]/g, "")
+  if (!raw) return ""
+  return parseInt(raw, 10).toLocaleString("es-AR")
+}
+
+function parseMonto(value: string): number {
+  return parseFloat(value.replace(/\./g, "")) || 0
+}
+
 export function PagosContent() {
   const { data: pagos = [], isLoading, mutate } = useSupabase<Pago>("pagos")
   const { data: proveedores = [] } = useSupabase<Proveedor>("proveedores")
@@ -55,7 +65,7 @@ export function PagosContent() {
     await insertRow("pagos", {
       fecha: formData.fecha,
       proveedor_nombre: formData.proveedor_nombre,
-      monto: parseFloat(formData.monto),
+      monto: parseMonto(formData.monto),
       metodo_pago: formData.metodo_pago || null,
       observaciones: formData.observaciones || null
     })
@@ -69,7 +79,7 @@ export function PagosContent() {
     setEditFormData({
       fecha: pago.fecha?.split('T')[0] ?? "",
       proveedor_nombre: pago.proveedor_nombre ?? "",
-      monto: String(pago.monto ?? ""),
+      monto: pago.monto != null ? formatMonto(String(Math.round(pago.monto))) : "",
       metodo_pago: pago.metodo_pago ?? "",
       observaciones: pago.observaciones ?? ""
     })
@@ -83,7 +93,7 @@ export function PagosContent() {
       await updateRow("pagos", editingPago.id, {
         fecha: editFormData.fecha,
         proveedor_nombre: editFormData.proveedor_nombre,
-        monto: parseFloat(editFormData.monto),
+        monto: parseMonto(editFormData.monto),
         metodo_pago: editFormData.metodo_pago || null,
         observaciones: editFormData.observaciones || null
       })
@@ -156,7 +166,7 @@ export function PagosContent() {
               </div>
               <div>
                 <Label>Monto</Label>
-                <Input type="number" step="0.01" value={formData.monto} onChange={(e) => setFormData({...formData, monto: e.target.value})} required />
+                <Input type="text" inputMode="numeric" placeholder="0" value={formData.monto} onChange={(e) => setFormData({...formData, monto: formatMonto(e.target.value)})} required />
               </div>
               <div>
                 <Label>Metodo de Pago</Label>
@@ -210,7 +220,7 @@ export function PagosContent() {
             </div>
             <div>
               <Label>Monto</Label>
-              <Input type="number" step="0.01" value={editFormData.monto} onChange={(e) => setEditFormData({ ...editFormData, monto: e.target.value })} required />
+              <Input type="text" inputMode="numeric" placeholder="0" value={editFormData.monto} onChange={(e) => setEditFormData({ ...editFormData, monto: formatMonto(e.target.value) })} required />
             </div>
             <div>
               <Label>Metodo de Pago</Label>
