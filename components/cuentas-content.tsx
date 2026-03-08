@@ -21,6 +21,7 @@ interface Cliente {
   id: string
   nombre: string
   saldo_inicial: number
+  saldo_verificado: boolean
 }
 
 interface Proveedor {
@@ -84,7 +85,7 @@ type MovimientoProveedor = {
 }
 
 export function CuentasContent() {
-  const { data: clientes = [] } = useSupabase<Cliente>("clientes")
+  const { data: clientes = [], mutate: mutateClientes } = useSupabase<Cliente>("clientes")
   const { data: proveedores = [] } = useSupabase<Proveedor>("proveedores")
   const { data: ventas = [] } = useSupabase<Venta>("ventas")
   const { data: cobros = [], mutate: mutateCobros } = useSupabase<Cobro>("cobros")
@@ -99,20 +100,29 @@ export function CuentasContent() {
   const [cobrarCliente, setCobrarCliente] = useState<string | null>(null)
   const [cobrarForm, setCobrarForm] = useState({ monto: "", metodo_pago: "efectivo", fecha: new Date().toISOString().split('T')[0] })
   const [vistaLista, setVistaLista] = useState(false)
+  const [sortCol, setSortCol] = useState<"nombre" | "totalVentas" | "totalCobros" | "saldo">("saldo")
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
+
+  const handleSort = (col: typeof sortCol) => {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc")
+    else { setSortCol(col); setSortDir(col === "nombre" ? "asc" : "desc") }
+  }
 
   // Clientes con movimientos
   const clientesConMovimientos = useMemo(() => {
-    const clientesMap = new Map<string, { nombre: string; saldo: number; movimientos: MovimientoCliente[]; saldoAnterior: number; totalVentas: number; totalCobros: number }>()
+    const clientesMap = new Map<string, { id: string; nombre: string; saldo: number; movimientos: MovimientoCliente[]; saldoAnterior: number; totalVentas: number; totalCobros: number; saldo_verificado: boolean }>()
 
     clientes.forEach((c) => {
       const key = c.nombre.toLowerCase().trim()
-      clientesMap.set(key, { 
-        nombre: c.nombre, 
+      clientesMap.set(key, {
+        id: c.id,
+        nombre: c.nombre,
         saldo: c.saldo_inicial || 0,
         saldoAnterior: c.saldo_inicial || 0,
         totalVentas: 0,
         totalCobros: 0,
-        movimientos: []
+        movimientos: [],
+        saldo_verificado: c.saldo_verificado || false
       })
     })
 
@@ -122,7 +132,7 @@ export function CuentasContent() {
       const producto = v.productos?.nombre || 'Producto'
       
       if (!clientesMap.has(key)) {
-        clientesMap.set(key, { nombre: v.cliente_nombre, saldo: 0, saldoAnterior: 0, totalVentas: 0, totalCobros: 0, movimientos: [] })
+        clientesMap.set(key, { id: "", nombre: v.cliente_nombre, saldo: 0, saldoAnterior: 0, totalVentas: 0, totalCobros: 0, movimientos: [], saldo_verificado: false })
       }
       
       const cliente = clientesMap.get(key)!
@@ -275,6 +285,16 @@ export function CuentasContent() {
       newSet.has(nombre) ? newSet.delete(nombre) : newSet.add(nombre)
       return newSet
     })
+  }
+
+  const handleVerificarSaldo = async (clienteId: string, currentStatus: boolean) => {
+    try {
+      await updateRow("clientes", clienteId, { saldo_verificado: !currentStatus })
+      await mutateClientes()
+      toast({ title: !currentStatus ? "Saldo verificado ✓" : "Verificación removida", description: !currentStatus ? "El saldo fue marcado como coincidente" : "Se desmarcó la verificación" })
+    } catch (error) {
+      toast({ title: "Error", description: "No se pudo actualizar", variant: "destructive" })
+    }
   }
 
   const handleVerifyTransfer = async (cobroId: string, currentStatus: boolean) => {
@@ -467,15 +487,26 @@ export function CuentasContent() {
                 <thead className="bg-muted/50 text-xs">
                   <tr>
                     <th className="text-left p-3 font-semibold">#</th>
-                    <th className="text-left p-3 font-semibold">Cliente</th>
-                    <th className="text-right p-3 font-semibold hidden sm:table-cell">Total vendido</th>
-                    <th className="text-right p-3 font-semibold hidden sm:table-cell">Total cobrado</th>
-                    <th className="text-right p-3 font-semibold">Saldo</th>
+                    {(["nombre", "totalVentas", "totalCobros", "saldo"] as const).map((col) => {
+                      const labels: Record<string, string> = { nombre: "Cliente", totalVentas: "Total vendido", totalCobros: "Total cobrado", saldo: "Saldo" }
+                      const hidden = col === "totalVentas" || col === "totalCobros" ? "hidden sm:table-cell" : ""
+                      const align = col === "nombre" ? "text-left" : "text-right"
+                      return (
+                        <th key={col} className={`p-3 font-semibold cursor-pointer select-none hover:text-foreground ${align} ${hidden}`} onClick={() => handleSort(col)}>
+                          {labels[col]}{sortCol === col ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                        </th>
+                      )
+                    })}
+                    <th className="text-center p-3 font-semibold">Verificado</th>
                     <th className="p-3" />
                   </tr>
                 </thead>
                 <tbody>
-                  {clientesConMovimientos.map((cliente, i) => (
+                  {[...clientesConMovimientos].sort((a, b) => {
+                    const dir = sortDir === "asc" ? 1 : -1
+                    if (sortCol === "nombre") return a.nombre.localeCompare(b.nombre) * dir
+                    return (a[sortCol] - b[sortCol]) * dir
+                  }).map((cliente, i) => (
                     <tr key={cliente.nombre} className="border-t hover:bg-muted/30 transition-colors">
                       <td className="p-3 text-muted-foreground">{i + 1}</td>
                       <td className="p-3 font-medium">{cliente.nombre}</td>
@@ -489,6 +520,17 @@ export function CuentasContent() {
                         <Badge variant={cliente.saldo > 0 ? "destructive" : cliente.saldo < 0 ? "default" : "outline"}>
                           {formatCurrency(cliente.saldo)}
                         </Badge>
+                      </td>
+                      <td className="p-3 text-center">
+                        {cliente.id ? (
+                          <Badge
+                            variant={cliente.saldo_verificado ? "default" : "outline"}
+                            className="cursor-pointer select-none"
+                            onClick={() => handleVerificarSaldo(cliente.id, cliente.saldo_verificado)}
+                          >
+                            {cliente.saldo_verificado ? "✓ Coincide" : "Pendiente"}
+                          </Badge>
+                        ) : "-"}
                       </td>
                       <td className="p-3">
                         <div className="flex gap-1 justify-end">
@@ -549,6 +591,15 @@ export function CuentasContent() {
                       <Badge variant={cliente.saldo > 0 ? "destructive" : cliente.saldo < 0 ? "default" : "outline"}>
                         {formatCurrency(cliente.saldo)}
                       </Badge>
+                      {cliente.id && (
+                        <Badge
+                          variant={cliente.saldo_verificado ? "default" : "outline"}
+                          className="cursor-pointer select-none"
+                          onClick={(e) => { e.stopPropagation(); handleVerificarSaldo(cliente.id, cliente.saldo_verificado) }}
+                        >
+                          {cliente.saldo_verificado ? "✓ Verificado" : "Sin verificar"}
+                        </Badge>
+                      )}
                       {cliente.saldo > 0 && (
                         <Button
                           variant="outline"

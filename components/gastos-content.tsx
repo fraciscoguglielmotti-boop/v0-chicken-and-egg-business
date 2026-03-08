@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Search, Pencil, Trash2, CreditCard } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, CreditCard, Tag } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,6 +14,11 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ImportarTarjeta } from "./importar-tarjeta"
+
+interface CategoriaGasto {
+  id: string
+  nombre: string
+}
 
 interface Gasto {
   id: string
@@ -29,24 +34,17 @@ interface Gasto {
   cuotas_total?: number
 }
 
-const CATEGORIAS = [
-  "Combustibles",
-  "Sueldos",
-  "Comisiones",
-  "Servicios",
-  "Mantenimiento",
-  "Alquiler",
-  "Impuestos",
-  "Otros"
-]
-
 const MEDIOS_PAGO = ["Efectivo", "Transferencia", "Tarjeta Credito", "Tarjeta Debito"]
 const TARJETAS = ["Visa", "Mastercard", "Amex", "Otra"]
 const BANCOS = ["Santander", "Galicia", "BBVA", "Macro", "Otro"]
 
 export function GastosContent() {
   const { data: gastos = [], isLoading, mutate } = useSupabase<Gasto>("gastos")
+  const { data: categorias = [], mutate: mutateCategorias } = useSupabase<CategoriaGasto>("categorias_gastos")
   const { toast } = useToast()
+  const [catDialogOpen, setCatDialogOpen] = useState(false)
+  const [editingCat, setEditingCat] = useState<CategoriaGasto | null>(null)
+  const [catNombre, setCatNombre] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
   const [categoriaFiltro, setCategoriaFiltro] = useState("todas")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -64,6 +62,37 @@ export function GastosContent() {
     cuota_actual: 1,
     cuotas_total: 1
   })
+
+  const handleCatSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const nombre = catNombre.trim()
+    if (!nombre) return
+    try {
+      if (editingCat) {
+        await updateRow("categorias_gastos", editingCat.id, { nombre })
+        toast({ title: "Categoría actualizada" })
+      } else {
+        await insertRow("categorias_gastos", { nombre })
+        toast({ title: "Categoría agregada" })
+      }
+      await mutateCategorias()
+      setCatDialogOpen(false)
+      setEditingCat(null)
+      setCatNombre("")
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message, variant: "destructive" })
+    }
+  }
+
+  const handleCatDelete = async (id: string) => {
+    try {
+      await deleteRow("categorias_gastos", id)
+      await mutateCategorias()
+      toast({ title: "Categoría eliminada" })
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message, variant: "destructive" })
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -138,7 +167,9 @@ export function GastosContent() {
     return matchSearch && matchCategoria
   })
 
-  const gastosPorCategoria = CATEGORIAS.map(cat => ({
+  const categoriaNombres = categorias.map(c => c.nombre)
+
+  const gastosPorCategoria = categoriaNombres.map(cat => ({
     categoria: cat,
     total: gastos.filter(g => g.categoria === cat).reduce((sum, g) => sum + g.monto, 0)
   })).filter(c => c.total > 0)
@@ -176,6 +207,7 @@ export function GastosContent() {
         <TabsList>
           <TabsTrigger value="listado">Listado</TabsTrigger>
           <TabsTrigger value="resumen">Resumen por Categoria</TabsTrigger>
+          <TabsTrigger value="categorias"><Tag className="h-3.5 w-3.5 mr-1" />Categorías</TabsTrigger>
         </TabsList>
 
         <TabsContent value="listado" className="space-y-4">
@@ -203,7 +235,7 @@ export function GastosContent() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todas">Todas las categorías</SelectItem>
-                  {CATEGORIAS.map((cat) => (
+                  {categoriaNombres.map((cat) => (
                     <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                   ))}
                 </SelectContent>
@@ -250,7 +282,7 @@ export function GastosContent() {
                           <SelectValue placeholder="Seleccionar categoria" />
                         </SelectTrigger>
                         <SelectContent>
-                          {CATEGORIAS.map(cat => (
+                          {categoriaNombres.map(cat => (
                             <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                           ))}
                         </SelectContent>
@@ -355,7 +387,50 @@ export function GastosContent() {
             ))}
           </div>
         </TabsContent>
+
+        <TabsContent value="categorias" className="space-y-4 mt-4">
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-muted-foreground">{categorias.length} categorías</p>
+            <Button size="sm" onClick={() => { setEditingCat(null); setCatNombre(""); setCatDialogOpen(true) }}>
+              <Plus className="mr-2 h-4 w-4" />
+              Nueva categoría
+            </Button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+            {categorias.map((cat) => (
+              <div key={cat.id} className="flex items-center justify-between rounded-lg border px-4 py-3">
+                <span className="font-medium">{cat.nombre}</span>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditingCat(cat); setCatNombre(cat.nombre); setCatDialogOpen(true) }}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleCatDelete(cat.id)}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </TabsContent>
       </Tabs>
+
+      <Dialog open={catDialogOpen} onOpenChange={(open) => { setCatDialogOpen(open); if (!open) { setEditingCat(null); setCatNombre("") } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{editingCat ? "Editar categoría" : "Nueva categoría"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCatSubmit} className="space-y-4">
+            <div>
+              <Label>Nombre</Label>
+              <Input value={catNombre} onChange={(e) => setCatNombre(e.target.value)} placeholder="Ej: Fletes" autoFocus required />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCatDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit">{editingCat ? "Guardar cambios" : "Agregar"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
