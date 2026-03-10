@@ -487,16 +487,18 @@ export function CuentasContent() {
                 <thead className="bg-muted/50 text-xs">
                   <tr>
                     <th className="text-left p-3 font-semibold">#</th>
-                    {(["nombre", "totalVentas", "totalCobros", "saldo"] as const).map((col) => {
-                      const labels: Record<string, string> = { nombre: "Cliente", totalVentas: "Total vendido", totalCobros: "Total cobrado", saldo: "Saldo" }
-                      const hidden = col === "totalVentas" || col === "totalCobros" ? "hidden sm:table-cell" : ""
-                      const align = col === "nombre" ? "text-left" : "text-right"
-                      return (
-                        <th key={col} className={`p-3 font-semibold cursor-pointer select-none hover:text-foreground ${align} ${hidden}`} onClick={() => handleSort(col)}>
-                          {labels[col]}{sortCol === col ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
-                        </th>
-                      )
-                    })}
+                    <th className="text-left p-3 font-semibold cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("nombre")}>
+                      Cliente{sortCol === "nombre" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                    </th>
+                    <th className="text-right p-3 font-semibold cursor-pointer select-none hover:text-foreground hidden sm:table-cell" onClick={() => handleSort("totalVentas")}>
+                      Total vendido{sortCol === "totalVentas" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                    </th>
+                    <th className="text-right p-3 font-semibold cursor-pointer select-none hover:text-foreground hidden sm:table-cell" onClick={() => handleSort("totalCobros")}>
+                      Total cobrado{sortCol === "totalCobros" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                    </th>
+                    <th className="text-right p-3 font-semibold cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("saldo")}>
+                      Saldo{sortCol === "saldo" ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+                    </th>
                     <th className="text-center p-3 font-semibold">Verificado</th>
                     <th className="p-3" />
                   </tr>
