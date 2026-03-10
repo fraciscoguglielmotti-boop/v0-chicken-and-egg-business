@@ -71,11 +71,10 @@ export function ContabilidadContent() {
       .filter(g => filtrarPorFecha(g.fecha))
       .reduce((sum, g) => sum + g.monto, 0)
 
-    const ingresos = totalCobros
-    const egresos = totalPagos + totalGastos
-    const resultadoNeto = ingresos - egresos
-    const cuentasPorCobrar = totalVentas - totalCobros
-    const cuentasPorPagar = totalCompras - totalPagos
+    const egresos = totalCompras + totalGastos
+    const resultadoNeto = totalVentas - egresos
+    const pendienteCobro = totalVentas - totalCobros
+    const pendientePago = totalCompras - totalPagos
 
     return {
       totalVentas,
@@ -83,11 +82,10 @@ export function ContabilidadContent() {
       totalCompras,
       totalPagos,
       totalGastos,
-      ingresos,
       egresos,
       resultadoNeto,
-      cuentasPorCobrar,
-      cuentasPorPagar
+      pendienteCobro,
+      pendientePago,
     }
   }, [ventas, cobros, compras, pagos, gastos, mes, anio])
 
@@ -155,8 +153,8 @@ export function ContabilidadContent() {
         <Card className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Ingresos</p>
-              <p className="text-2xl font-bold text-green-600">{formatCurrency(estadisticas.ingresos)}</p>
+              <p className="text-sm font-medium text-muted-foreground">Ventas del período</p>
+              <p className="text-2xl font-bold text-green-600">{formatCurrency(estadisticas.totalVentas)}</p>
             </div>
             <TrendingUp className="h-8 w-8 text-green-600" />
           </div>
@@ -165,7 +163,7 @@ export function ContabilidadContent() {
         <Card className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Egresos</p>
+              <p className="text-sm font-medium text-muted-foreground">Egresos (compras + gastos)</p>
               <p className="text-2xl font-bold text-red-600">{formatCurrency(estadisticas.egresos)}</p>
             </div>
             <TrendingDown className="h-8 w-8 text-red-600" />
@@ -187,8 +185,8 @@ export function ContabilidadContent() {
         <Card className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-muted-foreground">Cuentas por Cobrar</p>
-              <p className="text-2xl font-bold">{formatCurrency(estadisticas.cuentasPorCobrar)}</p>
+              <p className="text-sm font-medium text-muted-foreground">Pendiente de cobro</p>
+              <p className="text-2xl font-bold">{formatCurrency(estadisticas.pendienteCobro)}</p>
             </div>
             <Calendar className="h-8 w-8 text-muted-foreground" />
           </div>
@@ -197,19 +195,19 @@ export function ContabilidadContent() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="p-6">
-          <h3 className="font-semibold mb-4">Detalle de Ingresos</h3>
+          <h3 className="font-semibold mb-4">Detalle de Ventas y Cobros</h3>
           <div className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Ventas Facturadas</span>
-              <span className="font-medium">{formatCurrency(estadisticas.totalVentas)}</span>
+              <span className="text-muted-foreground">Ventas del período</span>
+              <span className="font-medium text-green-600">{formatCurrency(estadisticas.totalVentas)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Cobros Realizados</span>
+              <span className="text-muted-foreground">Cobrado en caja</span>
               <span className="font-medium">{formatCurrency(estadisticas.totalCobros)}</span>
             </div>
             <div className="flex justify-between border-t pt-2">
-              <span className="font-semibold">Total Ingresos</span>
-              <span className="font-bold text-green-600">{formatCurrency(estadisticas.ingresos)}</span>
+              <span className="font-semibold">Pendiente de cobro</span>
+              <span className="font-bold text-orange-500">{formatCurrency(estadisticas.pendienteCobro)}</span>
             </div>
           </div>
         </Card>
@@ -218,20 +216,24 @@ export function ContabilidadContent() {
           <h3 className="font-semibold mb-4">Detalle de Egresos</h3>
           <div className="space-y-2">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Compras</span>
-              <span className="font-medium">{formatCurrency(estadisticas.totalCompras)}</span>
+              <span className="text-muted-foreground">Compras a proveedores</span>
+              <span className="font-medium text-red-600">{formatCurrency(estadisticas.totalCompras)}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Pagos a Proveedores</span>
-              <span className="font-medium">{formatCurrency(estadisticas.totalPagos)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Gastos Operativos</span>
-              <span className="font-medium">{formatCurrency(estadisticas.totalGastos)}</span>
+              <span className="text-muted-foreground">Gastos operativos</span>
+              <span className="font-medium text-red-600">{formatCurrency(estadisticas.totalGastos)}</span>
             </div>
             <div className="flex justify-between border-t pt-2">
               <span className="font-semibold">Total Egresos</span>
               <span className="font-bold text-red-600">{formatCurrency(estadisticas.egresos)}</span>
+            </div>
+            <div className="flex justify-between border-t pt-2 mt-2">
+              <span className="text-muted-foreground text-sm">Pagado a proveedores</span>
+              <span className="text-sm">{formatCurrency(estadisticas.totalPagos)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground text-sm">Pendiente de pago</span>
+              <span className="text-sm text-orange-500">{formatCurrency(estadisticas.pendientePago)}</span>
             </div>
           </div>
         </Card>
