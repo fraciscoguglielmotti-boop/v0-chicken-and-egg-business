@@ -98,7 +98,7 @@ export function CuentasContent() {
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
   const { toast } = useToast()
   const [cobrarCliente, setCobrarCliente] = useState<string | null>(null)
-  const [cobrarForm, setCobrarForm] = useState({ monto: "", metodo_pago: "efectivo", fecha: new Date().toISOString().split('T')[0] })
+  const [cobrarForm, setCobrarForm] = useState({ monto: "", metodo_pago: "efectivo", cuenta_destino: "", fecha: new Date().toISOString().split('T')[0] })
   const [vistaLista, setVistaLista] = useState(false)
   const [sortCol, setSortCol] = useState<"nombre" | "totalVentas" | "totalCobros" | "saldo">("saldo")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
@@ -316,11 +316,12 @@ export function CuentasContent() {
         cliente_nombre: cobrarCliente,
         monto: parseFloat(cobrarForm.monto),
         metodo_pago: cobrarForm.metodo_pago,
+        cuenta_destino: cobrarForm.metodo_pago === "transferencia" ? cobrarForm.cuenta_destino : null,
         verificado_agroaves: false
       })
       await mutateCobros()
       setCobrarCliente(null)
-      setCobrarForm({ monto: "", metodo_pago: "efectivo", fecha: new Date().toISOString().split('T')[0] })
+      setCobrarForm({ monto: "", metodo_pago: "efectivo", cuenta_destino: "", fecha: new Date().toISOString().split('T')[0] })
       toast({ title: "Cobro registrado", description: `Cobro a ${cobrarCliente} guardado correctamente.` })
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" })
@@ -808,7 +809,7 @@ export function CuentasContent() {
             </div>
             <div>
               <Label>Metodo de Pago</Label>
-              <Select value={cobrarForm.metodo_pago} onValueChange={(value) => setCobrarForm({ ...cobrarForm, metodo_pago: value })}>
+              <Select value={cobrarForm.metodo_pago} onValueChange={(value) => setCobrarForm({ ...cobrarForm, metodo_pago: value, cuenta_destino: "" })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="efectivo">Efectivo</SelectItem>
@@ -816,6 +817,19 @@ export function CuentasContent() {
                 </SelectContent>
               </Select>
             </div>
+            {cobrarForm.metodo_pago === "transferencia" && (
+              <div>
+                <Label>Cuenta Destino</Label>
+                <Select value={cobrarForm.cuenta_destino} onValueChange={(value) => setCobrarForm({ ...cobrarForm, cuenta_destino: value })}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar cuenta" /></SelectTrigger>
+                  <SelectContent>
+                    {["Agroaves", "Francisco", "Diego", "Otra"].map(c => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setCobrarCliente(null)}>Cancelar</Button>
               <Button type="submit">Registrar Cobro</Button>
