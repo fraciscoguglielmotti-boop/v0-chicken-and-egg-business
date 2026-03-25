@@ -24,6 +24,7 @@ import {
   Landmark,
   FileText,
   CalendarDays,
+  BookOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -64,6 +65,7 @@ const navSections = [
       { name: "Presupuestos", href: "/presupuestos", icon: Target },
       { name: "Flujo de Fondos", href: "/flujo", icon: Wallet },
       { name: "KPIs Ejecutivos", href: "/kpis", icon: LineChart },
+      { name: "Reportes Ejecutivos", href: "/reportes-ejecutivos", icon: BookOpen },
     ],
   },
 
