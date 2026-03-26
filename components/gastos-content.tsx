@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Plus, Search, Pencil, Trash2, CreditCard, Tag } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -169,6 +169,15 @@ export function GastosContent() {
 
   const categoriaNombres = categorias.map(c => c.nombre)
 
+  // When editing, include the gasto's current category even if it's not in the table
+  const categoriaOptions = useMemo(() => {
+    const set = new Set(categoriaNombres)
+    if (editingId && formData.categoria && !set.has(formData.categoria)) {
+      return [...categoriaNombres, formData.categoria]
+    }
+    return categoriaNombres
+  }, [categoriaNombres, editingId, formData.categoria])
+
   const gastosPorCategoria = categoriaNombres.map(cat => ({
     categoria: cat,
     total: gastos.filter(g => g.categoria === cat).reduce((sum, g) => sum + g.monto, 0)
@@ -282,11 +291,18 @@ export function GastosContent() {
                           <SelectValue placeholder="Seleccionar categoria" />
                         </SelectTrigger>
                         <SelectContent>
-                          {categoriaNombres.map(cat => (
-                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                          ))}
+                          {categoriaOptions.length === 0 ? (
+                            <div className="px-3 py-2 text-xs text-muted-foreground">Agregá categorías en la pestaña "Categorías"</div>
+                          ) : (
+                            categoriaOptions.map(cat => (
+                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                            ))
+                          )}
                         </SelectContent>
                       </Select>
+                      {categoriaNombres.length === 0 && (
+                        <p className="text-xs text-amber-600 mt-1">Primero creá categorías en la pestaña "Categorías"</p>
+                      )}
                     </div>
                   </div>
 

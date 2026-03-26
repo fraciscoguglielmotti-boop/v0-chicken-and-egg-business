@@ -186,6 +186,15 @@ export function CuentasContent() {
     return Array.from(clientesMap.values()).sort((a, b) => b.saldo - a.saldo)
   }, [ventas, cobros, clientes, dateRange])
 
+  const totalPendienteCobro = useMemo(
+    () => clientesConMovimientos.filter(c => c.saldo > 0).reduce((s, c) => s + c.saldo, 0),
+    [clientesConMovimientos]
+  )
+  const clientesConDeuda = useMemo(
+    () => clientesConMovimientos.filter(c => c.saldo > 0).length,
+    [clientesConMovimientos]
+  )
+
   // Proveedores con movimientos
   const proveedoresConMovimientos = useMemo(() => {
     const proveedoresMap = new Map<string, { nombre: string; saldo: number; movimientos: MovimientoProveedor[]; totalCompras: number; totalPagos: number }>()
@@ -476,7 +485,20 @@ export function CuentasContent() {
           </div>
         </div>
 
-        <TabsContent value="clientes" className="space-y-2 mt-4">
+        <TabsContent value="clientes" className="space-y-4 mt-4">
+          {clientesConDeuda > 0 && (
+            <Card className="p-4 border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-200">Pendiente de Cobro</p>
+                  <p className="text-2xl font-bold text-amber-700 dark:text-amber-300">{formatCurrency(totalPendienteCobro)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-amber-700 dark:text-amber-300">{clientesConDeuda} cliente{clientesConDeuda !== 1 ? "s" : ""} con saldo</p>
+                </div>
+              </div>
+            </Card>
+          )}
           {clientesConMovimientos.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
               No hay datos de clientes
