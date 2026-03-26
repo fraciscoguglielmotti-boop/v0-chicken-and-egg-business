@@ -6,8 +6,6 @@ import { Resend } from "resend"
 //   RESEND_FROM      → dirección remitente, ej: "Reportes <reportes@tudominio.com>"
 //   RESEND_TO        → tu casilla de email destino
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 function formatCurrency(n: number) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n)
 }
@@ -248,6 +246,8 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       )
     }
+
+    const resend = new Resend(apiKey)
 
     const subjectMap: Record<string, string> = {
       diario: `Reporte Diario — ${datos.fecha ?? new Date().toLocaleDateString("es-AR")}`,
