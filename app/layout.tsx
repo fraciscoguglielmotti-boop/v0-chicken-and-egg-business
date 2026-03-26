@@ -4,6 +4,8 @@ import { Inter } from 'next/font/google'
 import { Toaster } from '@/components/ui/toaster'
 import { BalanceVisibilityProvider } from '@/contexts/balance-visibility'
 import { ThemeProvider } from '@/components/theme-provider'
+import { ErrorBoundary } from '@/components/error-boundary'
+import { Providers } from '@/components/providers'
 
 import './globals.css'
 
@@ -24,7 +26,11 @@ export default function RootLayout({
       <body className="font-sans antialiased" suppressHydrationWarning>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <BalanceVisibilityProvider>
-            {children}
+            <ErrorBoundary>
+              <Providers>
+                {children}
+              </Providers>
+            </ErrorBoundary>
           </BalanceVisibilityProvider>
         </ThemeProvider>
         <Toaster />
