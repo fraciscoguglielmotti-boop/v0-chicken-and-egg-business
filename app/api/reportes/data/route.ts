@@ -69,6 +69,10 @@ function sumVentas(rows: { cantidad?: number; precio_unitario?: number }[]) {
   return rows.reduce((s, r) => s + (r.cantidad ?? 0) * (r.precio_unitario ?? 0), 0)
 }
 
+function sumCantidad(rows: { cantidad?: number }[]) {
+  return rows.reduce((s, r) => s + (r.cantidad ?? 0), 0)
+}
+
 function sumMonto(rows: { monto?: number }[]) {
   return rows.reduce((s, r) => s + (r.monto ?? 0), 0)
 }
@@ -132,7 +136,7 @@ export async function GET(req: NextRequest) {
         { data: cAyer },
         { data: gHoy },
       ] = await Promise.all([
-        supabase.from("ventas").select("cliente_nombre,cantidad,precio_unitario").eq("fecha", d.today),
+        supabase.from("ventas").select("cliente_nombre,producto_nombre,cantidad,precio_unitario").eq("fecha", d.today),
         supabase.from("ventas").select("cantidad,precio_unitario").eq("fecha", d.yesterday),
         supabase.from("cobros").select("monto").eq("fecha", d.today),
         supabase.from("cobros").select("monto").eq("fecha", d.yesterday),
@@ -148,18 +152,22 @@ export async function GET(req: NextRequest) {
         weekday: "long", year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
       })
 
+      const cajonesHoy = Math.round(sumCantidad(vHoy ?? []))
+      const cajonesAyer = Math.round(sumCantidad(vAyer ?? []))
+
       return NextResponse.json({
         fecha: fechaFmt.charAt(0).toUpperCase() + fechaFmt.slice(1),
         ventas: { hoy: Math.round(totalVHoy), ayer: Math.round(totalVAyer), delta: round1(pct(totalVHoy, totalVAyer)) },
         cobros: { hoy: Math.round(totalCHoy), ayer: Math.round(totalCAyer), delta: round1(pct(totalCHoy, totalCAyer)) },
-        pedidos: {
-          hoy: vHoy?.length ?? 0,
-          ayer: vAyer?.length ?? 0,
-          delta: round1(pct(vHoy?.length ?? 0, vAyer?.length ?? 0)),
+        cajones: {
+          hoy: cajonesHoy,
+          ayer: cajonesAyer,
+          delta: round1(pct(cajonesHoy, cajonesAyer)),
         },
         topClientes: topClientes(vHoy ?? [], 3),
+        desglose: topProductos(vHoy ?? [], 10),
         gastos: Math.round(sumMonto(gHoy ?? [])),
-        stockCritico: [], // TODO: agregar cuando se implemente tabla de stock
+        stockCritico: [],
       })
     }
 
@@ -219,8 +227,11 @@ export async function GET(req: NextRequest) {
         tasaCobranza,
         ventasPorDia,
         topClientes: topClientes(vSem ?? [], 5),
-        productosMasVendidos: topProductos(vSem ?? [], 4),
-        cuentasVencidas: 0,  // TODO: calcular deudas > 7 días
+        productosMasVendidos: topProductos(vSem ?? [], 10),
+        desglose: topProductos(vSem ?? [], 10),
+        cajonesSemana: Math.round(sumCantidad(vSem ?? [])),
+        cajonesAntSemana: Math.round(sumCantidad(vAntSem ?? [])),
+        cuentasVencidas: 0,
         montoVencido: 0,
       })
     }
