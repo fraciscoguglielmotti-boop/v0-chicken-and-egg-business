@@ -124,6 +124,18 @@ export function formatDateForSheets(date: Date | string | number): string {
   }
 }
 
+// Format a numeric string with Argentine thousands separator (for input fields)
+export function formatMonto(value: string): string {
+  const raw = value.replace(/\./g, "").replace(/[^\d]/g, "")
+  if (!raw) return ""
+  return parseInt(raw, 10).toLocaleString("es-AR")
+}
+
+// Parse a formatted monto string back to a number
+export function parseMonto(value: string): number {
+  return parseFloat(value.replace(/\./g, "")) || 0
+}
+
 /**
  * Parse a number from a Google Sheets cell that may have currency formatting.
  * Handles: "$68,500", "$70.000", "68500", "68,500.50", "$1.234,56", etc.

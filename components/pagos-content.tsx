@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { DataTable } from "./data-table"
 import { CurrencyDisplay } from "./currency-display"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
-import { formatDate } from "@/lib/utils"
+import { formatDate, formatMonto, parseMonto } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 
 interface Pago {
@@ -25,16 +25,6 @@ interface Pago {
 interface Proveedor {
   id: string
   nombre: string
-}
-
-function formatMonto(value: string): string {
-  const raw = value.replace(/\./g, "").replace(/[^\d]/g, "")
-  if (!raw) return ""
-  return parseInt(raw, 10).toLocaleString("es-AR")
-}
-
-function parseMonto(value: string): number {
-  return parseFloat(value.replace(/\./g, "")) || 0
 }
 
 export function PagosContent() {

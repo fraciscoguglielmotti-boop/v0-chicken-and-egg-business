@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus, Search, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -42,9 +42,15 @@ export function VentasContent() {
   const { data: productos = [] } = useSupabase<Producto>("productos")
   const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [fechaDesde, setFechaDesde] = useState("")
   const [fechaHasta, setFechaHasta] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
 
   const emptyLinea = () => ({ producto: "", cantidad: "", precio_unitario: "" })
   const [formData, setFormData] = useState({
@@ -81,7 +87,7 @@ export function VentasContent() {
           vendedor: formData.vendedor || null
         })
       ))
-      mutate()
+      await mutate()
       setIsDialogOpen(false)
       setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", vendedor: "", lineas: [emptyLinea()] })
       toast({
@@ -149,7 +155,7 @@ export function VentasContent() {
   }
 
   const filteredVentas = ventas
-    .filter((v) => v.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter((v) => v.cliente_nombre.toLowerCase().includes(debouncedSearch.toLowerCase()))
     .filter((v) => !fechaDesde || v.fecha >= fechaDesde)
     .filter((v) => !fechaHasta || v.fecha <= fechaHasta)
 
@@ -289,6 +295,9 @@ export function VentasContent() {
         </Dialog>
       </div>
 
+      {!isLoading && (debouncedSearch || fechaDesde || fechaHasta) && (
+        <p className="text-sm text-muted-foreground">{filteredVentas.length} resultado{filteredVentas.length !== 1 ? "s" : ""}</p>
+      )}
       <DataTable
         columns={columns}
         data={filteredVentas}

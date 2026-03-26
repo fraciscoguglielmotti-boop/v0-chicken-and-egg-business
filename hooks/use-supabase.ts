@@ -1,10 +1,9 @@
 import useSWR from "swr"
 import { createClient } from "@/lib/supabase/client"
 
-const supabase = createClient()
-
 // Generic fetcher for SWR
 async function fetcher<T>(table: string): Promise<T[]> {
+  const supabase = createClient()
   const { data, error } = await supabase.from(table).select("*").order("created_at", { ascending: false })
   if (error) throw error
   return (data as T[]) || []
@@ -24,6 +23,7 @@ export function useSupabase<T = any>(table: string) {
 
 // Insert a new row
 export async function insertRow(table: string, data: Record<string, any>) {
+  const supabase = createClient()
   const { data: inserted, error } = await supabase.from(table).insert([data]).select().single()
   if (error) throw error
   return inserted
@@ -31,6 +31,7 @@ export async function insertRow(table: string, data: Record<string, any>) {
 
 // Update a row by ID
 export async function updateRow(table: string, id: string, data: Record<string, any>) {
+  const supabase = createClient()
   const { data: updated, error } = await supabase.from(table).update(data).eq("id", id).select().single()
   if (error) throw error
   return updated
@@ -38,12 +39,14 @@ export async function updateRow(table: string, id: string, data: Record<string, 
 
 // Delete a row by ID
 export async function deleteRow(table: string, id: string) {
+  const supabase = createClient()
   const { error } = await supabase.from(table).delete().eq("id", id)
   if (error) throw error
 }
 
 // Get a single row by ID
 export async function getRow<T = any>(table: string, id: string): Promise<T | null> {
+  const supabase = createClient()
   const { data, error } = await supabase.from(table).select("*").eq("id", id).single()
   if (error) {
     if (error.code === "PGRST116") return null // Not found
@@ -58,6 +61,7 @@ export async function queryRows<T = any>(
   filters?: Record<string, any>,
   orderBy?: { column: string; ascending?: boolean }
 ): Promise<T[]> {
+  const supabase = createClient()
   let query = supabase.from(table).select("*")
 
   if (filters) {

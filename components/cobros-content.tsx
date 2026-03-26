@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Plus, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { DataTable } from "./data-table"
 import { CurrencyDisplay } from "./currency-display"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
-import { formatDate } from "@/lib/utils"
+import { formatDate, formatMonto, parseMonto } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 
@@ -38,25 +38,21 @@ interface Proveedor {
 
 const CUENTAS_DESTINO = ["Agroaves", "Francisco", "Diego", "Otra"]
 
-function formatMonto(value: string): string {
-  const raw = value.replace(/\./g, "").replace(/[^\d]/g, "")
-  if (!raw) return ""
-  return parseInt(raw, 10).toLocaleString("es-AR")
-}
-
-function parseMonto(value: string): number {
-  return parseFloat(value.replace(/\./g, "")) || 0
-}
-
 export function CobrosContent() {
   const { data: cobros = [], isLoading, mutate } = useSupabase<Cobro>("cobros")
   const { data: clientes = [] } = useSupabase<Cliente>("clientes")
   const { data: proveedores = [] } = useSupabase<Proveedor>("proveedores")
   const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [fechaDesde, setFechaDesde] = useState("")
   const [fechaHasta, setFechaHasta] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchTerm), 300)
+    return () => clearTimeout(t)
+  }, [searchTerm])
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
     cliente_nombre: "",
@@ -109,7 +105,7 @@ export function CobrosContent() {
         toast({ title: "Cobro registrado", description: "El cobro se ha guardado correctamente" })
       }
 
-      mutate()
+      await mutate()
       setIsDialogOpen(false)
       setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", monto: "", metodo_pago: "efectivo", cuenta_destino: "", observaciones: "", verificado_agroaves: false })
     } catch (error) {
@@ -162,7 +158,7 @@ export function CobrosContent() {
   }
 
   const filteredCobros = cobros
-    .filter((c) => c.cliente_nombre.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter((c) => c.cliente_nombre.toLowerCase().includes(debouncedSearch.toLowerCase()))
     .filter((c) => !fechaDesde || c.fecha >= fechaDesde)
     .filter((c) => !fechaHasta || c.fecha <= fechaHasta)
 
@@ -285,6 +281,9 @@ export function CobrosContent() {
         </Dialog>
       </div>
 
+      {!isLoading && (debouncedSearch || fechaDesde || fechaHasta) && (
+        <p className="text-sm text-muted-foreground">{filteredCobros.length} resultado{filteredCobros.length !== 1 ? "s" : ""}</p>
+      )}
       <DataTable
         columns={columns}
         data={filteredCobros}

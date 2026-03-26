@@ -18,8 +18,8 @@ import {
   Calendar,
   CalendarDays,
   CalendarRange,
-  AlertTriangle,
   CheckCircle2,
+  AlertTriangle,
   ArrowUpRight,
   ArrowDownRight,
   FileDown,
@@ -60,7 +60,6 @@ interface DatosDiarios {
   topClientes: { nombre: string; monto: number }[]
   desglose: DesgloseProd[]
   gastos: number
-  stockCritico: { producto: string; stock: number; minimo: number }[]
 }
 
 interface DatosSemanales {
@@ -319,26 +318,6 @@ function ReporteDiario({ data, isLoading, pdfRef }: { data: DatosDiarios | null;
           </Card>
 
           <div className="space-y-4">
-            {(!isLoading && data?.stockCritico?.length > 0) && (
-              <Card className="border-orange-200 bg-orange-50/50 dark:border-orange-900 dark:bg-orange-950/20">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium flex items-center gap-2 text-orange-700 dark:text-orange-400">
-                    <AlertTriangle className="h-4 w-4" />Stock Crítico
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {data!.stockCritico.map((s) => (
-                    <div key={s.producto} className="flex items-center justify-between text-sm">
-                      <span>{s.producto}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-orange-700 dark:text-orange-400">{s.stock} u.</span>
-                        <span className="text-muted-foreground text-xs">(mín. {s.minimo})</span>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            )}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">

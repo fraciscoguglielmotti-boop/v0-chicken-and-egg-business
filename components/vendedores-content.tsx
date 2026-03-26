@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Plus, Search, DollarSign, Pencil, Trash2 } from "lucide-react"
+import { Plus, Search, DollarSign, Pencil, Trash2, CheckCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,6 +12,7 @@ import { DataTable } from "./data-table"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/hooks/use-toast"
 
 interface Vendedor {
   id: string
@@ -41,7 +42,9 @@ export function VendedoresContent() {
   const { data: vendedores = [], mutate, isLoading } = useSupabase<Vendedor>("vendedores")
   const { data: ventas = [] } = useSupabase<Venta>("ventas")
   const { data: compras = [] } = useSupabase<Compra>("compras")
+  const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
+  const [payingComision, setPayingComision] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingVendedor, setEditingVendedor] = useState<Vendedor | null>(null)
   const [form, setForm] = useState({ nombre: "", comision: "0" })
@@ -135,6 +138,23 @@ export function VendedoresContent() {
     }
   }
 
+  const handlePagarComision = async (nombre: string, monto: number) => {
+    setPayingComision(nombre)
+    try {
+      await insertRow("gastos", {
+        fecha: new Date().toISOString().split("T")[0],
+        categoria: "Comisiones",
+        monto,
+        descripcion: `Comisión ${nombre} — ${new Date().toLocaleDateString("es-AR", { month: "long", year: "numeric" })}`,
+      })
+      toast({ title: "Comisión pagada", description: `Se registró el gasto por comisión de ${nombre}` })
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message ?? "No se pudo registrar el pago", variant: "destructive" })
+    } finally {
+      setPayingComision(null)
+    }
+  }
+
   const columns = [
     { key: "nombre", header: "Nombre", render: (v: Vendedor) => <span className="font-medium">{v.nombre}</span> },
     { key: "comision", header: "Comision %", render: (v: Vendedor) => `${v.comision}%` },
@@ -165,6 +185,18 @@ export function VendedoresContent() {
     { key: "porcentaje", header: "% Comisión", render: (c: ComisionRow) => `${c.porcentaje}%` },
     { key: "comision", header: "Comisión a Pagar", render: (c: ComisionRow) => (
       <Badge variant="default" className="text-base font-semibold">{formatCurrency(c.comision)}</Badge>
+    )},
+    { key: "pagar", header: "", render: (c: ComisionRow) => (
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={payingComision === c.nombre || c.comision <= 0}
+        onClick={() => handlePagarComision(c.nombre, c.comision)}
+        className="gap-1"
+      >
+        <CheckCircle className="h-4 w-4" />
+        Pagar
+      </Button>
     )},
   ]
 
