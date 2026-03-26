@@ -82,13 +82,16 @@ export function ClientesContent() {
           telefono: form.telefono || null,
           direccion: form.direccion || null,
           saldo_inicial: Number(form.saldo_inicial),
+          fecha_alta: new Date().toISOString().split('T')[0],
         })
       }
       await mutate()
       setDialogOpen(false)
       resetForm()
-    } catch (error) {
+      toast({ title: editingCliente ? "Cliente actualizado" : "Cliente creado" })
+    } catch (error: any) {
       console.error("[v0] Error guardando cliente:", error)
+      toast({ title: "Error al guardar", description: error?.message ?? "No se pudo guardar el cliente", variant: "destructive" })
     }
   }
 
@@ -109,8 +112,9 @@ export function ClientesContent() {
     try {
       await deleteRow("clientes", id)
       await mutate()
-    } catch (error) {
-      console.error("[v0] Error eliminando cliente:", error)
+      toast({ title: "Cliente eliminado" })
+    } catch (error: any) {
+      toast({ title: "Error al eliminar", description: error?.message ?? "No se pudo eliminar", variant: "destructive" })
     }
   }
 
