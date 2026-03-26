@@ -155,6 +155,10 @@ export async function GET(req: NextRequest) {
       const cajonesHoy = Math.round(sumCantidad(vHoy ?? []))
       const cajonesAyer = Math.round(sumCantidad(vAyer ?? []))
 
+      const tasaCobranzaDia = totalVHoy > 0 ? round1((totalCHoy / totalVHoy) * 100) : 0
+      const pendienteDia = Math.round(totalVHoy - totalCHoy)
+      const ticketPromedioDia = (vHoy?.length ?? 0) > 0 ? Math.round(totalVHoy / (vHoy?.length ?? 1)) : 0
+
       return NextResponse.json({
         fecha: fechaFmt.charAt(0).toUpperCase() + fechaFmt.slice(1),
         ventas: { hoy: Math.round(totalVHoy), ayer: Math.round(totalVAyer), delta: round1(pct(totalVHoy, totalVAyer)) },
@@ -164,10 +168,12 @@ export async function GET(req: NextRequest) {
           ayer: cajonesAyer,
           delta: round1(pct(cajonesHoy, cajonesAyer)),
         },
+        tasaCobranza: tasaCobranzaDia,
+        pendiente: pendienteDia,
+        ticketPromedio: ticketPromedioDia,
         topClientes: topClientes(vHoy ?? [], 3),
         desglose: topProductos(vHoy ?? [], 10),
         gastos: Math.round(sumMonto(gHoy ?? [])),
-        stockCritico: [],
       })
     }
 
