@@ -37,7 +37,7 @@ interface Cobro {
 
 interface Compra {
   id: string
-  producto_nombre: string
+  producto: string
   fecha: string
   precio_unitario: number
 }
@@ -64,8 +64,8 @@ export function RankingClientesContent() {
     // Calcular costo promedio por producto
     const costosPromedio = new Map<string, number[]>()
     compras.forEach(c => {
-      if (!c.producto_nombre) return
-      const key = c.producto_nombre.toLowerCase().trim()
+      if (!c.producto) return
+      const key = c.producto.toLowerCase().trim()
       const existing = costosPromedio.get(key) || []
       costosPromedio.set(key, [...existing, c.precio_unitario])
     })

@@ -34,9 +34,8 @@ interface Gasto {
   cuotas_total?: number
 }
 
-const MEDIOS_PAGO = ["Efectivo", "Transferencia", "Tarjeta Credito", "Tarjeta Debito"]
-const TARJETAS = ["Visa", "Mastercard", "Amex", "Otra"]
-const BANCOS = ["Santander", "Galicia", "BBVA", "Macro", "Otro"]
+const MEDIOS_PAGO = ["Efectivo", "Cuenta Francisco", "Cuenta Diego", "MercadoPago", "Tarjeta Credito"]
+const TARJETAS = ["Visa (empresa)", "Visa (personal Francisco)", "Visa (Damián)", "Master", "Tarjeta MP"]
 
 export function GastosContent() {
   const { data: gastos = [], isLoading, mutate } = useSupabase<Gasto>("gastos")
@@ -336,33 +335,18 @@ export function GastosContent() {
 
                   {formData.medio_pago === "Tarjeta Credito" && (
                     <>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <Label>Tarjeta</Label>
-                          <Select value={formData.tarjeta} onValueChange={(value) => setFormData({...formData, tarjeta: value})}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar tarjeta" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {TARJETAS.map(t => (
-                                <SelectItem key={t} value={t}>{t}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Label>Banco</Label>
-                          <Select value={formData.banco} onValueChange={(value) => setFormData({...formData, banco: value})}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar banco" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {BANCOS.map(b => (
-                                <SelectItem key={b} value={b}>{b}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
+                      <div>
+                        <Label>Tarjeta</Label>
+                        <Select value={formData.tarjeta} onValueChange={(value) => setFormData({...formData, tarjeta: value})}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar tarjeta" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TARJETAS.map(t => (
+                              <SelectItem key={t} value={t}>{t}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
 
                       <div className="grid grid-cols-2 gap-4">
