@@ -15,7 +15,7 @@ import {
 } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { GripVertical, Truck, AlertTriangle, CheckCircle2, FileDown } from "lucide-react"
+import { GripVertical, Truck, AlertTriangle, CheckCircle2, FileDown, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -90,6 +90,8 @@ function VehiculoColumna({
   allPedidos,
   capacidad,
   onCapacidadChange,
+  sortField,
+  sortDir,
 }: {
   vehiculoId: string
   label: string
@@ -97,12 +99,22 @@ function VehiculoColumna({
   allPedidos: Pedido[]
   capacidad: number
   onCapacidadChange: (val: number) => void
+  sortField: "cliente" | "cantidad" | null
+  sortDir: "asc" | "desc"
 }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: vehiculoId })
 
-  const pedidosColumna = pedidosIds
-    .map(id => allPedidos.find(p => p.id === id))
-    .filter(Boolean) as Pedido[]
+  const pedidosColumna = useMemo(() => {
+    const base = pedidosIds
+      .map(id => allPedidos.find(p => p.id === id))
+      .filter(Boolean) as Pedido[]
+    if (!sortField) return base
+    return [...base].sort((a, b) =>
+      sortField === "cliente"
+        ? sortDir === "asc" ? a.cliente.localeCompare(b.cliente, "es") : b.cliente.localeCompare(a.cliente, "es")
+        : sortDir === "asc" ? a.cantidad - b.cantidad : b.cantidad - a.cantidad
+    )
+  }, [pedidosIds, allPedidos, sortField, sortDir])
 
   const totalUnidades = pedidosColumna.reduce((sum, p) => sum + p.cantidad, 0)
   const totalMonto = pedidosColumna.reduce((sum, p) => sum + p.cantidad * p.precio_unitario, 0)
@@ -199,6 +211,17 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
   })
 
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [sortField, setSortField] = useState<"cliente" | "cantidad" | null>(null)
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  const toggleSort = (field: "cliente" | "cantidad") => {
+    if (sortField === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDir("asc")
+    }
+  }
   const activePedido = activeId ? pedidos.find(p => p.id === activeId) : null
 
   const sensors = useSensors(
@@ -374,10 +397,25 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
     <div className="space-y-4">
       {/* Resumen */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex flex-wrap gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
           <Badge variant="outline">{pedidos.length} pedidos totales</Badge>
           <Badge variant="default">{totalAsignados} asignados</Badge>
           {totalSinAsignar > 0 && <Badge variant="secondary">{totalSinAsignar} sin asignar</Badge>}
+          {pedidos.length > 1 && (
+            <div className="flex items-center gap-1 ml-1">
+              <Button variant={sortField === "cliente" ? "secondary" : "ghost"} size="sm" className="h-7 gap-1 text-xs px-2" onClick={() => toggleSort("cliente")}>
+                {sortField === "cliente" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
+                Nombre
+              </Button>
+              <Button variant={sortField === "cantidad" ? "secondary" : "ghost"} size="sm" className="h-7 gap-1 text-xs px-2" onClick={() => toggleSort("cantidad")}>
+                {sortField === "cantidad" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
+                Cantidad
+              </Button>
+              {sortField && (
+                <Button variant="ghost" size="sm" className="h-7 text-xs px-2 text-muted-foreground" onClick={() => setSortField(null)}>✕</Button>
+              )}
+            </div>
+          )}
         </div>
         {totalAsignados > 0 && (
           <Button variant="outline" size="sm" className="gap-2" onClick={handleGenerarPDF}>
@@ -413,6 +451,8 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
                 onCapacidadChange={val =>
                   setCapacidades(prev => ({ ...prev, [col.id]: val }))
                 }
+                sortField={sortField}
+                sortDir={sortDir}
               />
             ))}
           </div>
