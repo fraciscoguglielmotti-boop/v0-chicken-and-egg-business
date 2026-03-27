@@ -306,22 +306,48 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
         .filter(Boolean) as Pedido[]
 
       const label = `${v.patente} · ${v.marca} ${v.modelo}`
-      let acumulado = 0
 
-      const rows = pedidosVehiculo.map(p => {
-        acumulado += p.cantidad
+      // Agrupar por calibre (última palabra del producto: A, B, N1, etc.)
+      const grupos = new Map<string, Pedido[]>()
+      pedidosVehiculo.forEach(p => {
         const parts = p.producto.trim().split(/\s+/)
         const calibre = parts[parts.length - 1]
-        return [p.cliente, p.cantidad, calibre, acumulado]
+        if (!grupos.has(calibre)) grupos.set(calibre, [])
+        grupos.get(calibre)!.push(p)
+      })
+
+      const body: any[] = []
+      grupos.forEach((peds, calibre) => {
+        // Encabezado de grupo
+        body.push([{
+          content: `Pollo ${calibre}`,
+          colSpan: 4,
+          styles: { fillColor: [55, 55, 55], textColor: 255, fontStyle: "bold", fontSize: 8 },
+        }])
+
+        let acumulado = 0
+        peds.forEach(p => {
+          acumulado += p.cantidad
+          body.push([p.cliente, p.cantidad, calibre, acumulado])
+        })
+
+        // Fila de total por grupo
+        const totalGrupo = peds.reduce((s, p) => s + p.cantidad, 0)
+        body.push([
+          { content: `Total Pollo ${calibre}`, colSpan: 3, styles: { fontStyle: "bold", fillColor: [230, 230, 230] } },
+          { content: totalGrupo, styles: { fontStyle: "bold", halign: "right", fillColor: [230, 230, 230] } },
+        ])
+        // Fila vacía separadora entre grupos
+        body.push([{ content: "", colSpan: 4, styles: { cellPadding: 1 } }])
       })
 
       autoTable(doc, {
         startY: y,
         head: [[label, "Cantidad", "Calibre", "Sumatoria"]],
-        body: rows,
+        body,
         styles: { fontSize: 9, cellPadding: 2.5 },
-        headStyles: { fillColor: [30, 30, 30], textColor: 255, fontStyle: "bold" },
-        alternateRowStyles: { fillColor: [248, 248, 248] },
+        headStyles: { fillColor: [20, 20, 20], textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: {},
         columnStyles: {
           0: { cellWidth: 80 },
           1: { halign: "center", cellWidth: 25 },
