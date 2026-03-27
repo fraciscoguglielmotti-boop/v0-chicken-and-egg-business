@@ -389,27 +389,34 @@ export function CuentasContent() {
     doc.text(formatCurrency(cliente.saldo), 105, yPos + 14, { align: "center" })
     
     yPos += 28
-    doc.setFontSize(10)
-    doc.text("FECHA", 22, yPos)
-    doc.text("DETALLE", 55, yPos)
-    doc.text("DEBE", 145, yPos, { align: "right" })
-    doc.text("HABER", 180, yPos, { align: "right" })
-    
-    yPos += 2
     doc.setLineWidth(0.5)
     doc.line(20, yPos, 190, yPos)
     yPos += 6
-    
+
+    doc.setFontSize(10)
+    doc.setTextColor(0, 0, 0)
+    doc.text("FECHA", 22, yPos)
+    doc.text("DETALLE", 55, yPos)
+    doc.text("DEBE", 133, yPos, { align: "right" })
+    doc.text("HABER", 162, yPos, { align: "right" })
+    doc.text("SALDO", 190, yPos, { align: "right" })
+    yPos += 2
+    doc.line(20, yPos, 190, yPos)
+    yPos += 5
+
     doc.setFontSize(9)
+    let saldoPDF = cliente.saldoAnterior
     cliente.movimientos.forEach((mov) => {
       if (yPos > 270) {
         doc.addPage()
         yPos = 20
       }
+      saldoPDF += mov.debe - mov.haber
       doc.text(formatDate(new Date(mov.fecha)), 22, yPos)
-      doc.text(mov.descripcion.substring(0, 47), 55, yPos)
-      doc.text(mov.debe > 0 ? formatCurrency(mov.debe) : "", 145, yPos, { align: "right" })
-      doc.text(mov.haber > 0 ? formatCurrency(mov.haber) : "", 180, yPos, { align: "right" })
+      doc.text(mov.descripcion.substring(0, 38), 55, yPos)
+      doc.text(mov.debe > 0 ? formatCurrency(mov.debe) : "", 133, yPos, { align: "right" })
+      doc.text(mov.haber > 0 ? formatCurrency(mov.haber) : "", 162, yPos, { align: "right" })
+      doc.text(formatCurrency(saldoPDF), 190, yPos, { align: "right" })
       yPos += 6
     })
     
@@ -651,17 +658,36 @@ export function CuentasContent() {
                             <th className="text-left p-2 font-medium">Descripcion</th>
                             <th className="text-right p-2 font-medium">Debe</th>
                             <th className="text-right p-2 font-medium">Haber</th>
+                            <th className="text-right p-2 font-medium">Saldo</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {cliente.movimientos.map((mov, idx) => (
-                            <tr key={idx} className="border-t text-sm">
-                              <td className="p-2 text-muted-foreground">{formatDate(new Date(mov.fecha))}</td>
-                              <td className="p-2">{mov.descripcion}</td>
-                              <td className="p-2 text-right text-destructive">{mov.debe > 0 ? formatCurrency(mov.debe) : '-'}</td>
-                              <td className="p-2 text-right text-green-600">{mov.haber > 0 ? formatCurrency(mov.haber) : '-'}</td>
+                          {cliente.saldoAnterior !== 0 && (
+                            <tr className="border-t text-sm bg-muted/20">
+                              <td className="p-2 text-muted-foreground">—</td>
+                              <td className="p-2 text-muted-foreground italic">Saldo inicial</td>
+                              <td className="p-2 text-right">-</td>
+                              <td className="p-2 text-right">-</td>
+                              <td className="p-2 text-right font-medium">{formatCurrency(cliente.saldoAnterior)}</td>
                             </tr>
-                          ))}
+                          )}
+                          {(() => {
+                            let saldoAcum = cliente.saldoAnterior
+                            return cliente.movimientos.map((mov, idx) => {
+                              saldoAcum += mov.debe - mov.haber
+                              return (
+                                <tr key={idx} className="border-t text-sm">
+                                  <td className="p-2 text-muted-foreground">{formatDate(new Date(mov.fecha))}</td>
+                                  <td className="p-2">{mov.descripcion}</td>
+                                  <td className="p-2 text-right text-destructive">{mov.debe > 0 ? formatCurrency(mov.debe) : '-'}</td>
+                                  <td className="p-2 text-right text-green-600">{mov.haber > 0 ? formatCurrency(mov.haber) : '-'}</td>
+                                  <td className={`p-2 text-right font-medium ${saldoAcum > 0 ? "text-destructive" : saldoAcum < 0 ? "text-green-600" : "text-muted-foreground"}`}>
+                                    {formatCurrency(saldoAcum)}
+                                  </td>
+                                </tr>
+                              )
+                            })
+                          })()}
                         </tbody>
                       </table>
                     </div>
