@@ -63,6 +63,7 @@ interface DatosDiarios {
   topClientes: { nombre: string; monto: number }[]
   desglose: DesgloseProd[]
   gastos: number
+  clientesSinComprar: { nombre: string; diasSinComprar: number }[]
 }
 
 interface DatosSemanales {
@@ -557,10 +558,22 @@ function PdfTemplateMensual({ data }: { data: DatosMensuales }) {
 
 // ─── Reporte Diario ───────────────────────────────────────────────────────────
 
-function ReporteDiario({ data, isLoading, pdfRef, printRef }: { data: DatosDiarios | null; isLoading: boolean; pdfRef: React.RefObject<HTMLDivElement | null>; printRef: React.RefObject<HTMLDivElement | null> }) {
+function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange }: {
+  data: DatosDiarios | null; isLoading: boolean
+  pdfRef: React.RefObject<HTMLDivElement | null>; printRef: React.RefObject<HTMLDivElement | null>
+  fecha: string; onFechaChange: (v: string) => void
+}) {
   return (
     <div className="space-y-6">
-      <ReportHeader titulo="Reporte Diario" subtitulo={data?.fecha ?? "—"} tipo="diario" datos={data} pdfRef={pdfRef} printRef={printRef} />
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <ReportHeader titulo="Reporte Diario" subtitulo={data?.fecha ?? "—"} tipo="diario" datos={data} pdfRef={pdfRef} printRef={printRef} />
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">Fecha:</span>
+        <input type="date" value={fecha} max={new Date().toISOString().split("T")[0]}
+          onChange={(e) => onFechaChange(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-3 text-sm shadow-sm" />
+      </div>
 
       {/* Hidden PDF template */}
       <div style={{ position: "absolute", top: 0, left: "-9999px", overflow: "visible" }}>
@@ -624,6 +637,24 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef }: { data: DatosDiari
                 {isLoading || !data ? <Skeleton className="h-8 w-36" /> : <div className="text-2xl font-bold">{formatCurrency(data.gastos)}</div>}
               </CardContent>
             </Card>
+            {!isLoading && data?.clientesSinComprar && data.clientesSinComprar.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-500" />
+                    Sin comprar +7 días
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {data.clientesSinComprar.map((c) => (
+                    <div key={c.nombre} className="flex items-center justify-between text-sm">
+                      <span className="truncate">{c.nombre}</span>
+                      <Badge variant="outline" className="text-amber-600 border-amber-300 shrink-0 ml-2">{c.diasSinComprar}d</Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>
@@ -633,10 +664,16 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef }: { data: DatosDiari
 
 // ─── Reporte Semanal ──────────────────────────────────────────────────────────
 
-function ReporteSemanal({ data, isLoading, pdfRef, printRef }: { data: DatosSemanales | null; isLoading: boolean; pdfRef: React.RefObject<HTMLDivElement | null>; printRef: React.RefObject<HTMLDivElement | null> }) {
+function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaChange }: { data: DatosSemanales | null; isLoading: boolean; pdfRef: React.RefObject<HTMLDivElement | null>; printRef: React.RefObject<HTMLDivElement | null>; semana: string; onSemanaChange: (v: string) => void }) {
   return (
     <div className="space-y-6">
       <ReportHeader titulo="Reporte Semanal" subtitulo={data?.semana ?? "—"} tipo="semanal" datos={data} pdfRef={pdfRef} printRef={printRef} />
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">Semana del:</span>
+        <input type="date" value={semana} max={new Date().toISOString().split("T")[0]}
+          onChange={(e) => onSemanaChange(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-3 text-sm shadow-sm" />
+      </div>
       <div style={{ position: "absolute", top: 0, left: "-9999px", overflow: "visible" }}>
         <div ref={printRef}>{data && <PdfTemplateSemanal data={data} />}</div>
       </div>
@@ -726,10 +763,16 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef }: { data: DatosSema
 
 // ─── Reporte Mensual ──────────────────────────────────────────────────────────
 
-function ReporteMensual({ data, isLoading, pdfRef, printRef }: { data: DatosMensuales | null; isLoading: boolean; pdfRef: React.RefObject<HTMLDivElement | null>; printRef: React.RefObject<HTMLDivElement | null> }) {
+function ReporteMensual({ data, isLoading, pdfRef, printRef, mes, onMesChange }: { data: DatosMensuales | null; isLoading: boolean; pdfRef: React.RefObject<HTMLDivElement | null>; printRef: React.RefObject<HTMLDivElement | null>; mes: string; onMesChange: (v: string) => void }) {
   return (
     <div className="space-y-6">
       <ReportHeader titulo="Reporte Mensual" subtitulo={data?.mes ?? "—"} tipo="mensual" datos={data} pdfRef={pdfRef} printRef={printRef} />
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">Mes:</span>
+        <input type="month" value={mes} max={new Date().toISOString().slice(0, 7)}
+          onChange={(e) => onMesChange(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background px-3 text-sm shadow-sm" />
+      </div>
       <div style={{ position: "absolute", top: 0, left: "-9999px", overflow: "visible" }}>
         <div ref={printRef}>{data && <PdfTemplateMensual data={data} />}</div>
       </div>
@@ -902,6 +945,9 @@ export function ReportesEjecutivosContent() {
   const [loadingDiario, setLoadingDiario] = useState(false)
   const [loadingSemanal, setLoadingSemanal] = useState(false)
   const [loadingMensual, setLoadingMensual] = useState(false)
+  const [fechaDiario, setFechaDiario] = useState(new Date().toISOString().split("T")[0])
+  const [semana, setSemana] = useState(new Date().toISOString().split("T")[0])
+  const [mesSeleccionado, setMesSeleccionado] = useState(new Date().toISOString().slice(0, 7))
   const pdfRefDiario = useRef<HTMLDivElement>(null)
   const pdfRefSemanal = useRef<HTMLDivElement>(null)
   const pdfRefMensual = useRef<HTMLDivElement>(null)
@@ -909,12 +955,13 @@ export function ReportesEjecutivosContent() {
   const printRefSemanal = useRef<HTMLDivElement>(null)
   const printRefMensual = useRef<HTMLDivElement>(null)
 
-  const fetchData = useCallback(async (tipo: string) => {
+  const fetchData = useCallback(async (tipo: string, extraParams: Record<string, string> = {}) => {
     const setLoading = tipo === "diario" ? setLoadingDiario : tipo === "semanal" ? setLoadingSemanal : setLoadingMensual
     const setData = (tipo === "diario" ? setDataDiario : tipo === "semanal" ? setDataSemanal : setDataMensual) as (v: any) => void
     setLoading(true)
     try {
-      const res = await fetch(`/api/reportes/data?tipo=${tipo}`)
+      const params = new URLSearchParams({ tipo, ...extraParams })
+      const res = await fetch(`/api/reportes/data?${params}`)
       if (!res.ok) throw new Error()
       setData(await res.json())
     } catch {
@@ -925,10 +972,16 @@ export function ReportesEjecutivosContent() {
   }, [])
 
   useEffect(() => {
-    if (activeTab === "diario" && !dataDiario) fetchData("diario")
-    if (activeTab === "semanal" && !dataSemanal) fetchData("semanal")
-    if (activeTab === "mensual" && !dataMensual) fetchData("mensual")
-  }, [activeTab, dataDiario, dataSemanal, dataMensual, fetchData])
+    if (activeTab === "diario") fetchData("diario", { fecha: fechaDiario })
+  }, [activeTab, fechaDiario, fetchData])
+
+  useEffect(() => {
+    if (activeTab === "semanal") fetchData("semanal", { semana })
+  }, [activeTab, semana, fetchData])
+
+  useEffect(() => {
+    if (activeTab === "mensual") fetchData("mensual", { mes: mesSeleccionado })
+  }, [activeTab, mesSeleccionado, fetchData])
 
   return (
     <div className="space-y-6">
@@ -939,13 +992,13 @@ export function ReportesEjecutivosContent() {
           <TabsTrigger value="mensual" className="gap-1.5"><CalendarRange className="h-3.5 w-3.5" />Mensual</TabsTrigger>
         </TabsList>
         <TabsContent value="diario" className="mt-6">
-          <ReporteDiario data={dataDiario} isLoading={loadingDiario} pdfRef={pdfRefDiario} printRef={printRefDiario} />
+          <ReporteDiario data={dataDiario} isLoading={loadingDiario} pdfRef={pdfRefDiario} printRef={printRefDiario} fecha={fechaDiario} onFechaChange={setFechaDiario} />
         </TabsContent>
         <TabsContent value="semanal" className="mt-6">
-          <ReporteSemanal data={dataSemanal} isLoading={loadingSemanal} pdfRef={pdfRefSemanal} printRef={printRefSemanal} />
+          <ReporteSemanal data={dataSemanal} isLoading={loadingSemanal} pdfRef={pdfRefSemanal} printRef={printRefSemanal} semana={semana} onSemanaChange={setSemana} />
         </TabsContent>
         <TabsContent value="mensual" className="mt-6">
-          <ReporteMensual data={dataMensual} isLoading={loadingMensual} pdfRef={pdfRefMensual} printRef={printRefMensual} />
+          <ReporteMensual data={dataMensual} isLoading={loadingMensual} pdfRef={pdfRefMensual} printRef={printRefMensual} mes={mesSeleccionado} onMesChange={setMesSeleccionado} />
         </TabsContent>
       </Tabs>
     </div>

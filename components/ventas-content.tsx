@@ -28,6 +28,12 @@ interface Venta {
 interface Cliente {
   id: string
   nombre: string
+  vendedor_nombre?: string
+}
+
+interface Vendedor {
+  id: string
+  nombre: string
 }
 
 interface Producto {
@@ -40,6 +46,7 @@ export function VentasContent() {
   const { data: ventas = [], isLoading, mutate } = useSupabase<Venta>("ventas")
   const { data: clientes = [] } = useSupabase<Cliente>("clientes")
   const { data: productos = [] } = useSupabase<Producto>("productos")
+  const { data: vendedores = [] } = useSupabase<Vendedor>("vendedores")
   const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
   const [debouncedSearch, setDebouncedSearch] = useState("")
@@ -67,6 +74,7 @@ export function VentasContent() {
     producto_nombre: "",
     cantidad: "",
     precio_unitario: "",
+    vendedor: "",
     observaciones: ""
   })
 
@@ -119,6 +127,7 @@ export function VentasContent() {
       producto_nombre: venta.producto_nombre ?? "",
       cantidad: String(venta.cantidad ?? ""),
       precio_unitario: String(venta.precio_unitario ?? ""),
+      vendedor: venta.vendedor ?? clientes.find(c => c.nombre === venta.cliente_nombre)?.vendedor_nombre ?? "",
       observaciones: venta.observaciones ?? ""
     })
     setIsEditDialogOpen(true)
@@ -144,6 +153,7 @@ export function VentasContent() {
         producto_nombre: editFormData.producto_nombre || null,
         cantidad: parseFloat(editFormData.cantidad),
         precio_unitario: parseFloat(editFormData.precio_unitario),
+        vendedor: editFormData.vendedor || null,
       })
       await mutate()
       setIsEditDialogOpen(false)
@@ -216,13 +226,26 @@ export function VentasContent() {
                   />
                 </div>
                 <div>
-                  <Label>Vendedor (opcional)</Label>
-                  <Input value={formData.vendedor} onChange={(e) => setFormData({...formData, vendedor: e.target.value})} />
+                  <Label>Vendedor</Label>
+                  <Select value={formData.vendedor} onValueChange={(v) => setFormData({ ...formData, vendedor: v === "__none__" ? "" : v })}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sin asignar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sin asignar</SelectItem>
+                      {vendedores.map(v => (
+                        <SelectItem key={v.id} value={v.nombre}>{v.nombre}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div>
                 <Label>Cliente</Label>
-                <Select value={formData.cliente_nombre} onValueChange={(value) => setFormData({...formData, cliente_nombre: value})}>
+                <Select value={formData.cliente_nombre} onValueChange={(value) => {
+                  const cliente = clientes.find(c => c.nombre === value)
+                  setFormData({ ...formData, cliente_nombre: value, vendedor: cliente?.vendedor_nombre ?? formData.vendedor })
+                }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar cliente" />
                   </SelectTrigger>
@@ -324,13 +347,30 @@ export function VentasContent() {
             </div>
             <div>
               <Label>Cliente</Label>
-              <Select value={editFormData.cliente_nombre} onValueChange={(value) => setEditFormData({ ...editFormData, cliente_nombre: value })}>
+              <Select value={editFormData.cliente_nombre} onValueChange={(value) => {
+                const cliente = clientes.find(c => c.nombre === value)
+                setEditFormData({ ...editFormData, cliente_nombre: value, vendedor: cliente?.vendedor_nombre ?? editFormData.vendedor })
+              }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar cliente" />
                 </SelectTrigger>
                 <SelectContent>
                   {clientes.map(c => (
                     <SelectItem key={c.id} value={c.nombre}>{c.nombre}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Vendedor</Label>
+              <Select value={editFormData.vendedor} onValueChange={(v) => setEditFormData({ ...editFormData, vendedor: v === "__none__" ? "" : v })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin asignar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sin asignar</SelectItem>
+                  {vendedores.map(v => (
+                    <SelectItem key={v.id} value={v.nombre}>{v.nombre}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
