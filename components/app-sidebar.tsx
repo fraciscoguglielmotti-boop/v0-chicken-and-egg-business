@@ -25,6 +25,7 @@ import {
   FileText,
   CalendarDays,
   BookOpen,
+  MessagesSquare,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -53,6 +54,7 @@ const navSections = [
       { name: "Vendedores", href: "/vendedores", icon: UserCheck },
       { name: "Inventario", href: "/stock", icon: Package },
       { name: "Vehiculos", href: "/vehiculos", icon: Car },
+      { name: "Asesor (Federico)", href: "/asesor", icon: MessagesSquare },
     ],
   },
   {
