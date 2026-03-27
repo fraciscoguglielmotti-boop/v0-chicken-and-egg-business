@@ -377,15 +377,57 @@ export function GastosContent() {
           )}
         </TabsContent>
 
-        <TabsContent value="resumen">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {gastosPorCategoria.map((item) => (
-              <div key={item.categoria} className="rounded-lg border p-4">
-                <h3 className="font-semibold">{item.categoria}</h3>
-                <p className="text-2xl font-bold text-destructive mt-2">{formatCurrency(item.total)}</p>
-              </div>
-            ))}
+        <TabsContent value="resumen" className="space-y-6">
+          {/* Total por categoría */}
+          <div>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Total por categoría</h3>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {gastosPorCategoria.map((item) => (
+                <div key={item.categoria} className="rounded-lg border p-4">
+                  <h3 className="font-semibold">{item.categoria}</h3>
+                  <p className="text-2xl font-bold text-destructive mt-2">{formatCurrency(item.total)}</p>
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* Gastos de tarjeta por categoría */}
+          {TARJETAS.map((tarjeta) => {
+            const gastosTarjeta = gastos.filter(g => g.medio_pago === "Tarjeta Credito" && g.tarjeta === tarjeta)
+            if (gastosTarjeta.length === 0) return null
+            const totalTarjeta = gastosTarjeta.reduce((s, g) => s + g.monto, 0)
+            const porCategoria = categoriaNombres
+              .map(cat => ({
+                cat,
+                total: gastosTarjeta.filter(g => g.categoria === cat).reduce((s, g) => s + g.monto, 0)
+              }))
+              .filter(x => x.total > 0)
+              .sort((a, b) => b.total - a.total)
+            return (
+              <div key={tarjeta}>
+                <div className="flex items-center gap-2 mb-3">
+                  <CreditCard className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{tarjeta}</h3>
+                  <span className="ml-auto text-sm font-semibold text-destructive">{formatCurrency(totalTarjeta)}</span>
+                </div>
+                <div className="rounded-lg border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <tbody>
+                      {porCategoria.map(({ cat, total }) => (
+                        <tr key={cat} className="border-b last:border-0">
+                          <td className="px-4 py-2 text-muted-foreground">{cat}</td>
+                          <td className="px-4 py-2 text-right font-medium text-destructive">{formatCurrency(total)}</td>
+                          <td className="px-4 py-2 text-right text-muted-foreground text-xs">
+                            {((total / totalTarjeta) * 100).toFixed(1)}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          })}
         </TabsContent>
 
         <TabsContent value="categorias" className="space-y-4 mt-4">
