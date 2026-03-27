@@ -8,6 +8,7 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
@@ -96,6 +97,8 @@ function VehiculoColumna({
   capacidad: number
   onCapacidadChange: (val: number) => void
 }) {
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: vehiculoId })
+
   const pedidosColumna = pedidosIds
     .map(id => allPedidos.find(p => p.id === id))
     .filter(Boolean) as Pedido[]
@@ -156,9 +159,11 @@ function VehiculoColumna({
       {/* Zona drop */}
       <SortableContext items={pedidosIds} strategy={verticalListSortingStrategy}>
         <div
+          ref={setDropRef}
           className={cn(
             "flex-1 rounded-b-lg border border-t-0 p-2 space-y-2 min-h-[120px] transition-colors",
-            excede ? "border-red-200 dark:border-red-800" : "border-border"
+            excede ? "border-red-200 dark:border-red-800" : "border-border",
+            isOver && !excede && "bg-muted/40 border-primary/50"
           )}
         >
           {pedidosColumna.map(p => (
