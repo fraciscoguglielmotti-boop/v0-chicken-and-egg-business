@@ -15,9 +15,10 @@ import {
 } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { GripVertical, Truck, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { GripVertical, Truck, AlertTriangle, CheckCircle2, FileDown } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { formatCurrency } from "@/lib/utils"
@@ -277,13 +278,79 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
     .reduce((sum, [, ids]) => sum + ids.length, 0)
   const totalSinAsignar = (asignaciones[SIN_ASIGNAR] ?? []).length
 
+  const handleGenerarPDF = async () => {
+    const vehiculosConPedidos = vehiculos.filter(v => (asignaciones[v.id] ?? []).length > 0)
+    if (vehiculosConPedidos.length === 0) return
+
+    const jsPDF = (await import("jspdf")).jsPDF
+    const autoTable = (await import("jspdf-autotable")).default
+    const doc = new jsPDF()
+
+    const fecha = new Date().toLocaleDateString("es-AR", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    })
+    doc.setFontSize(16)
+    doc.setFont("helvetica", "bold")
+    doc.text("AviGest — Repartos del día", 14, 18)
+    doc.setFontSize(10)
+    doc.setFont("helvetica", "normal")
+    doc.setTextColor(100)
+    doc.text(fecha.charAt(0).toUpperCase() + fecha.slice(1), 14, 25)
+    doc.setTextColor(0)
+
+    let y = 32
+
+    vehiculosConPedidos.forEach((v, idx) => {
+      const pedidosVehiculo = (asignaciones[v.id] ?? [])
+        .map(id => pedidos.find(p => p.id === id))
+        .filter(Boolean) as Pedido[]
+
+      const label = `${v.patente} · ${v.marca} ${v.modelo}`
+      let acumulado = 0
+
+      const rows = pedidosVehiculo.map(p => {
+        acumulado += p.cantidad
+        const parts = p.producto.trim().split(/\s+/)
+        const calibre = parts[parts.length - 1]
+        return [p.cliente, p.cantidad, calibre, acumulado]
+      })
+
+      autoTable(doc, {
+        startY: y,
+        head: [[label, "Cantidad", "Calibre", "Sumatoria"]],
+        body: rows,
+        styles: { fontSize: 9, cellPadding: 2.5 },
+        headStyles: { fillColor: [30, 30, 30], textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [248, 248, 248] },
+        columnStyles: {
+          0: { cellWidth: 80 },
+          1: { halign: "center", cellWidth: 25 },
+          2: { halign: "center", cellWidth: 25 },
+          3: { halign: "right", cellWidth: 30, fontStyle: "bold" },
+        },
+      })
+
+      y = (doc as any).lastAutoTable.finalY + (idx < vehiculosConPedidos.length - 1 ? 12 : 0)
+    })
+
+    doc.save(`repartos-${new Date().toISOString().split("T")[0]}.pdf`)
+  }
+
   return (
     <div className="space-y-4">
       {/* Resumen */}
-      <div className="flex flex-wrap gap-3 text-sm">
-        <Badge variant="outline">{pedidos.length} pedidos totales</Badge>
-        <Badge variant="default">{totalAsignados} asignados</Badge>
-        {totalSinAsignar > 0 && <Badge variant="secondary">{totalSinAsignar} sin asignar</Badge>}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3 text-sm">
+          <Badge variant="outline">{pedidos.length} pedidos totales</Badge>
+          <Badge variant="default">{totalAsignados} asignados</Badge>
+          {totalSinAsignar > 0 && <Badge variant="secondary">{totalSinAsignar} sin asignar</Badge>}
+        </div>
+        {totalAsignados > 0 && (
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleGenerarPDF}>
+            <FileDown className="h-4 w-4" />
+            PDF de repartos
+          </Button>
+        )}
       </div>
 
       {vehiculos.length === 0 && (
