@@ -341,6 +341,14 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
         body.push([{ content: "", colSpan: 4, styles: { cellPadding: 1 } }])
       })
 
+      // Total general del vehículo (A + B + ...)
+      const totalVehiculo = pedidosVehiculo.reduce((s, p) => s + p.cantidad, 0)
+      const etiquetas = Array.from(grupos.keys()).join(" + ")
+      body.push([
+        { content: `TOTAL ${etiquetas}`, colSpan: 3, styles: { fontStyle: "bold", fillColor: [20, 20, 20], textColor: 255, fontSize: 9 } },
+        { content: totalVehiculo, styles: { fontStyle: "bold", halign: "right", fillColor: [20, 20, 20], textColor: 255, fontSize: 9 } },
+      ])
+
       autoTable(doc, {
         startY: y,
         head: [[label, "Cantidad", "Calibre", "Sumatoria"]],
