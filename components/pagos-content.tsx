@@ -164,8 +164,9 @@ export function PagosContent() {
                   <SelectTrigger><SelectValue placeholder="Seleccionar metodo" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Efectivo">Efectivo</SelectItem>
-                    <SelectItem value="Transferencia">Transferencia</SelectItem>
-                    <SelectItem value="Cheque">Cheque</SelectItem>
+                    <SelectItem value="Cuenta Francisco">Cuenta Francisco</SelectItem>
+                    <SelectItem value="Cuenta Diego">Cuenta Diego</SelectItem>
+                    <SelectItem value="MercadoPago">MercadoPago</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

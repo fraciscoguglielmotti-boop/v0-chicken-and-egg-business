@@ -36,7 +36,7 @@ interface Proveedor {
   nombre: string
 }
 
-const CUENTAS_DESTINO = ["Agroaves", "Francisco", "Diego", "Otra"]
+const CUENTAS_DESTINO = ["Agroaves", "Francisco", "Diego", "MercadoPago", "Otra"]
 
 export function CobrosContent() {
   const { data: cobros = [], isLoading, mutate } = useSupabase<Cobro>("cobros")
