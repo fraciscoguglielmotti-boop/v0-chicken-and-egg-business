@@ -138,9 +138,12 @@ export function GastosContent() {
   }
 
   const handleDelete = async (id: string) => {
-    if (confirm("¿Eliminar este gasto?")) {
+    if (!confirm("¿Eliminar este gasto?")) return
+    try {
       await deleteRow("gastos", id)
-      mutate()
+      await mutate()
+    } catch (err: any) {
+      toast({ title: "Error al eliminar", description: err?.message ?? "No se pudo eliminar el gasto", variant: "destructive" })
     }
   }
 

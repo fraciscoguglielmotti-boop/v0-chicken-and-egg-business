@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { formatCurrency } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/hooks/use-toast"
 
 interface Presupuesto {
   id: string
@@ -54,6 +55,7 @@ const MESES = [
 export function PresupuestosContent() {
   const { data: presupuestos = [], isLoading, mutate } = useSupabase<Presupuesto>("presupuestos")
   const { data: gastos = [] } = useSupabase<Gasto>("gastos")
+  const { toast } = useToast()
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [selectedMes, setSelectedMes] = useState(new Date().getMonth() + 1)
@@ -68,22 +70,26 @@ export function PresupuestosContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const data = {
-      ...formData,
-      monto: parseFloat(formData.monto),
-      mes: parseInt(formData.mes.toString()),
-      anio: parseInt(formData.anio.toString())
+    try {
+      const data = {
+        ...formData,
+        monto: parseFloat(formData.monto),
+        mes: parseInt(formData.mes.toString()),
+        anio: parseInt(formData.anio.toString())
+      }
+      if (editingId) {
+        await updateRow("presupuestos", editingId, data)
+        setEditingId(null)
+      } else {
+        await insertRow("presupuestos", data)
+      }
+      await mutate()
+      setIsDialogOpen(false)
+      resetForm()
+      toast({ title: editingId ? "Presupuesto actualizado" : "Presupuesto creado" })
+    } catch (err: any) {
+      toast({ title: "Error al guardar", description: err?.message ?? "No se pudo guardar el presupuesto", variant: "destructive" })
     }
-    
-    if (editingId) {
-      await updateRow("presupuestos", editingId, data)
-      setEditingId(null)
-    } else {
-      await insertRow("presupuestos", data)
-    }
-    mutate()
-    setIsDialogOpen(false)
-    resetForm()
   }
 
   const handleEdit = (presupuesto: Presupuesto) => {
@@ -98,9 +104,13 @@ export function PresupuestosContent() {
   }
 
   const handleDelete = async (id: string) => {
-    if (confirm("¿Eliminar este presupuesto?")) {
+    if (!confirm("¿Eliminar este presupuesto?")) return
+    try {
       await deleteRow("presupuestos", id)
-      mutate()
+      await mutate()
+      toast({ title: "Presupuesto eliminado" })
+    } catch (err: any) {
+      toast({ title: "Error al eliminar", description: err?.message ?? "No se pudo eliminar el presupuesto", variant: "destructive" })
     }
   }
 
