@@ -158,6 +158,11 @@ export function RankingClientesContent() {
                 <span className="text-muted-foreground">Ganancia generada:</span>
                 <span className={`font-medium ${cliente.rentabilidad > 0 ? "text-green-600" : "text-muted-foreground"}`}>
                   {formatCurrency(cliente.rentabilidad)}
+                  {cliente.totalVentas > 0 && (
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      ({((cliente.rentabilidad / cliente.totalVentas) * 100).toFixed(1)}% margen)
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
