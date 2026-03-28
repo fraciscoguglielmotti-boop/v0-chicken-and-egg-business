@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { ChevronDown, ChevronUp, TrendingUp, ShoppingCart, DollarSign } from "lucide-react"
+import { ChevronDown, ChevronUp, TrendingUp, ShoppingCart, DollarSign, Package } from "lucide-react"
 
 interface Venta {
   id: string
@@ -92,11 +92,17 @@ export function ResumenVentasContent() {
       .map(([nombre, d]) => ({ nombre, ...d }))
       .sort((a, b) => b.cantidad - a.cantidad)
 
+    const esPollo = (nombre: string) => nombre.toLowerCase().includes("pollo")
+    const cajonesPollo = cajonesPorProducto
+      .filter(p => esPollo(p.nombre))
+      .reduce((s, p) => s + p.cantidad, 0)
+
     return {
       totalVentas: resumenPorDia.reduce((s, d) => s + d.totalVentas, 0),
       totalOperaciones: resumenPorDia.reduce((s, d) => s + d.cantidadOperaciones, 0),
       diasConVentas: resumenPorDia.length,
       cajonesPorProducto,
+      cajonesPollo,
     }
   }, [resumenPorDia])
 
@@ -120,10 +126,19 @@ export function ResumenVentasContent() {
 
       {/* KPIs del período */}
       <div className="grid gap-4 md:grid-cols-4">
+        <Card className="p-5 border-primary/30">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground">Cajones pollo (A+B)</p>
+              <p className="text-2xl font-bold text-primary">{totalesGlobales.cajonesPollo} caj.</p>
+            </div>
+            <Package className="h-7 w-7 text-primary" />
+          </div>
+        </Card>
         <Card className="p-5">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground">Total del período</p>
+              <p className="text-xs font-medium text-muted-foreground">Total facturado</p>
               <p className="text-2xl font-bold text-green-600">{formatCurrency(totalesGlobales.totalVentas)}</p>
             </div>
             <DollarSign className="h-7 w-7 text-green-600" />
@@ -143,15 +158,6 @@ export function ResumenVentasContent() {
             <div>
               <p className="text-xs font-medium text-muted-foreground">Días con ventas</p>
               <p className="text-2xl font-bold">{totalesGlobales.diasConVentas}</p>
-            </div>
-            <ShoppingCart className="h-7 w-7 text-muted-foreground" />
-          </div>
-        </Card>
-        <Card className="p-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Promedio diario</p>
-              <p className="text-2xl font-bold">{formatCurrency(promediodiario)}</p>
             </div>
             <TrendingUp className="h-7 w-7 text-muted-foreground" />
           </div>

@@ -25,7 +25,7 @@ interface Venta {
   fecha: string
   cantidad: number
   precio_unitario: number
-  producto_nombre: string
+  producto_nombre?: string
 }
 
 interface Cobro {
@@ -61,19 +61,14 @@ export function RankingClientesContent() {
       rentabilidad: number
     }>()
 
-    // Calcular costo promedio por producto
-    const costosPromedio = new Map<string, number[]>()
+    // Costo de la última compra por producto (compras viene ordenado por created_at DESC)
+    const costosPromedioFinal = new Map<string, number>()
     compras.forEach(c => {
       if (!c.producto) return
       const key = c.producto.toLowerCase().trim()
-      const existing = costosPromedio.get(key) || []
-      costosPromedio.set(key, [...existing, c.precio_unitario])
-    })
-
-    const costosPromedioFinal = new Map<string, number>()
-    costosPromedio.forEach((precios, producto) => {
-      const promedio = precios.reduce((a, b) => a + b, 0) / precios.length
-      costosPromedioFinal.set(producto, promedio)
+      if (!costosPromedioFinal.has(key)) {
+        costosPromedioFinal.set(key, c.precio_unitario)
+      }
     })
 
     // Procesar ventas
@@ -123,9 +118,15 @@ export function RankingClientesContent() {
       cliente.saldoPendiente = cliente.totalVentas - cliente.totalCobrado
     })
 
+    // Verificar productos de ventas sin costo en compras
+    const productosEnVentas = new Set<string>()
+    ventas.forEach(v => { if (v.producto_nombre) productosEnVentas.add(v.producto_nombre.toLowerCase().trim()) })
+    const productosSinCosto = Array.from(productosEnVentas).filter(p => !costosPromedioFinal.has(p))
+
     const clientesArray = Array.from(clientesMap.values())
 
     return {
+      productosSinCosto,
       porVolumen: [...clientesArray].sort((a, b) => b.totalVentas - a.totalVentas).slice(0, 10),
       porCajones: [...clientesArray].sort((a, b) => b.totalCajones - a.totalCajones).slice(0, 10),
       porRentabilidad: [...clientesArray].sort((a, b) => b.rentabilidad - a.rentabilidad).slice(0, 10),
@@ -158,6 +159,11 @@ export function RankingClientesContent() {
                 <span className="text-muted-foreground">Ganancia generada:</span>
                 <span className={`font-medium ${cliente.rentabilidad > 0 ? "text-green-600" : "text-muted-foreground"}`}>
                   {formatCurrency(cliente.rentabilidad)}
+                  {cliente.totalVentas > 0 && (
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      ({((cliente.rentabilidad / cliente.totalVentas) * 100).toFixed(1)}% margen)
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
@@ -313,6 +319,18 @@ export function RankingClientesContent() {
         </TabsContent>
 
         <TabsContent value="rentabilidad" className="space-y-4 mt-4">
+          {rankings.productosSinCosto.length > 0 && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+              <p className="font-semibold text-amber-700 dark:text-amber-400 mb-1">Productos sin costo registrado — ganancia = 0 para esos productos</p>
+              <p className="text-amber-600 dark:text-amber-500 text-xs">
+                Estos nombres aparecen en ventas pero no tienen compra con el mismo nombre exacto:{" "}
+                <span className="font-mono">{rankings.productosSinCosto.join(", ")}</span>
+              </p>
+              <p className="text-amber-600 dark:text-amber-500 text-xs mt-1">
+                Revisá que el nombre del producto en Ventas coincida exactamente con el de Compras.
+              </p>
+            </div>
+          )}
           {rankings.porRentabilidad.length > 0 && (
             <Card>
               <CardHeader>
