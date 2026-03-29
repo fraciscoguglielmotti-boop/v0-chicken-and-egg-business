@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import {
   DndContext,
   DragOverlay,
@@ -191,6 +191,26 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
     vehiculos.forEach(v => { init[v.id] = 0 })
     return init
   })
+
+  const initializedRef = useRef(false)
+
+  // Re-initialize when pedidos/vehiculos first arrive (they're empty on first render while Supabase loads)
+  useEffect(() => {
+    if (pedidos.length === 0 && vehiculos.length === 0) return
+    if (initializedRef.current) return
+    initializedRef.current = true
+
+    setAsignaciones(() => {
+      const init: Record<string, string[]> = { [SIN_ASIGNAR]: pedidos.map(p => p.id) }
+      vehiculos.forEach(v => { init[v.id] = [] })
+      return init
+    })
+    setCapacidades(() => {
+      const init: Record<string, number> = {}
+      vehiculos.forEach(v => { init[v.id] = 0 })
+      return init
+    })
+  }, [pedidos, vehiculos])
 
   const [activeId, setActiveId] = useState<string | null>(null)
   const activePedido = activeId ? pedidos.find(p => p.id === activeId) : null
