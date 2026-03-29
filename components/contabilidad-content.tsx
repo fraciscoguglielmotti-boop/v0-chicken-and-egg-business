@@ -1,14 +1,14 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ChevronDown, ChevronRight } from "lucide-react"
+import { ChevronDown, ChevronRight, TrendingUp, TrendingDown } from "lucide-react"
 import { useSupabase } from "@/hooks/use-supabase"
 import { formatCurrency } from "@/lib/utils"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-const CATEGORIAS_SUELDOS = ["Comisiones", "Sueldos", "Sueldo"]
+const CATEGORIAS_SUELDOS = ["Comisiones", "Sueldos", "Sueldo", "Comisión"]
 
 interface Venta { fecha: string; cantidad: number; precio_unitario: number }
 interface Compra { fecha: string; total: number; cantidad: number; precio_unitario: number }
@@ -37,59 +37,73 @@ function EERRTotal({ label, value, pct }: { label: string; value: number; pct?: 
   )
 }
 
+function Delta({ actual, prev }: { actual: number; prev: number }) {
+  if (prev === 0) return <span className="text-xs text-muted-foreground">—</span>
+  const pct = ((actual - prev) / Math.abs(prev)) * 100
+  const up = pct >= 0
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${up ? "text-green-600" : "text-red-600"}`}>
+      {up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+      {up ? "+" : ""}{pct.toFixed(1)}%
+    </span>
+  )
+}
+
+function calcEERR(ventas: Venta[], compras: Compra[], gastos: Gasto[], month: string) {
+  const ventasFiltradas  = ventas.filter(v => v.fecha.startsWith(month))
+  const comprasFiltradas = compras.filter(c => c.fecha.startsWith(month))
+  const gastosFiltrados  = gastos.filter(g => g.fecha.startsWith(month))
+
+  const totalVentas = ventasFiltradas.reduce((s, v) => s + v.cantidad * v.precio_unitario, 0)
+  const totalCMV    = comprasFiltradas.reduce((s, c) => s + (c.total > 0 ? c.total : c.cantidad * c.precio_unitario), 0)
+  const margenBruto = totalVentas - totalCMV
+  const margenPct   = totalVentas > 0 ? (margenBruto / totalVentas) * 100 : 0
+
+  const esSueldo = (g: Gasto) => CATEGORIAS_SUELDOS.some(cat => g.categoria?.toLowerCase() === cat.toLowerCase())
+  const gastosOp     = gastosFiltrados.filter(g => !esSueldo(g))
+  const gastosSueldos = gastosFiltrados.filter(esSueldo)
+
+  const totalGastosOp = gastosOp.reduce((s, g) => s + g.monto, 0)
+  const totalSueldos  = gastosSueldos.reduce((s, g) => s + g.monto, 0)
+
+  const desglose: Record<string, number> = {}
+  gastosOp.forEach(g => {
+    const cat = g.categoria || "Sin categoría"
+    desglose[cat] = (desglose[cat] || 0) + g.monto
+  })
+
+  const resultadoOp      = margenBruto - totalGastosOp
+  const resultadoOpPct   = totalVentas > 0 ? (resultadoOp / totalVentas) * 100 : 0
+  const resultadoFinal   = resultadoOp - totalSueldos
+  const resultadoFinalPct = totalVentas > 0 ? (resultadoFinal / totalVentas) * 100 : 0
+
+  return { totalVentas, totalCMV, margenBruto, margenPct, totalGastosOp, desglose, totalSueldos, resultadoOp, resultadoOpPct, resultadoFinal, resultadoFinalPct }
+}
+
+function prevMonthStr(month: string) {
+  const [y, m] = month.split('-').map(Number)
+  if (m === 1) return `${y - 1}-12`
+  return `${y}-${String(m - 1).padStart(2, '0')}`
+}
+
 export function ContabilidadContent() {
-  const { data: ventas = [] } = useSupabase<Venta>("ventas")
+  const { data: ventas = [] }  = useSupabase<Venta>("ventas")
   const { data: compras = [] } = useSupabase<Compra>("compras")
-  const { data: gastos = [] } = useSupabase<Gasto>("gastos")
+  const { data: gastos = [] }  = useSupabase<Gasto>("gastos")
 
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
   const [gastosExpanded, setGastosExpanded] = useState(false)
 
-  const eerr = useMemo(() => {
-    const ventasFiltradas = ventas.filter(v => v.fecha.startsWith(selectedMonth))
-    const comprasFiltradas = compras.filter(c => c.fecha.startsWith(selectedMonth))
-    const gastosFiltrados = gastos.filter(g => g.fecha.startsWith(selectedMonth))
-
-    const totalVentas = ventasFiltradas.reduce((s, v) => s + v.cantidad * v.precio_unitario, 0)
-
-    const totalCMV = comprasFiltradas.reduce((s, c) => {
-      const total = c.total > 0 ? c.total : c.cantidad * c.precio_unitario
-      return s + total
-    }, 0)
-
-    const margenBruto = totalVentas - totalCMV
-    const margenPct = totalVentas > 0 ? (margenBruto / totalVentas) * 100 : 0
-
-    const gastosOp = gastosFiltrados.filter(g => !CATEGORIAS_SUELDOS.includes(g.categoria))
-    const gastosSueldos = gastosFiltrados.filter(g => CATEGORIAS_SUELDOS.includes(g.categoria))
-
-    const totalGastosOp = gastosOp.reduce((s, g) => s + g.monto, 0)
-    const totalSueldos = gastosSueldos.reduce((s, g) => s + g.monto, 0)
-
-    const desglose: Record<string, number> = {}
-    gastosOp.forEach(g => {
-      const cat = g.categoria || "Sin categoría"
-      desglose[cat] = (desglose[cat] || 0) + g.monto
-    })
-
-    const resultadoOp = margenBruto - totalGastosOp
-    const resultadoOpPct = totalVentas > 0 ? (resultadoOp / totalVentas) * 100 : 0
-    const resultadoBruto = resultadoOp - totalSueldos
-    const resultadoBrutoPct = totalVentas > 0 ? (resultadoBruto / totalVentas) * 100 : 0
-
-    return { totalVentas, totalCMV, margenBruto, margenPct, totalGastosOp, desglose, totalSueldos, resultadoOp, resultadoOpPct, resultadoBruto, resultadoBrutoPct }
-  }, [ventas, compras, gastos, selectedMonth])
+  const { eerr, prev } = useMemo(() => ({
+    eerr: calcEERR(ventas, compras, gastos, selectedMonth),
+    prev: calcEERR(ventas, compras, gastos, prevMonthStr(selectedMonth)),
+  }), [ventas, compras, gastos, selectedMonth])
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <Label>Período</Label>
-        <Input
-          type="month"
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(e.target.value)}
-          className="w-auto mt-1"
-        />
+        <Input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="w-auto mt-1" />
       </div>
 
       <Card className="p-6">
@@ -100,7 +114,6 @@ export function ContabilidadContent() {
           <EERRRow label="(−) Costo de mercadería vendida" value={eerr.totalCMV} />
           <EERRTotal label="= Margen Bruto" value={eerr.margenBruto} pct={eerr.margenPct} />
 
-          {/* Gastos operativos expandibles */}
           <button
             onClick={() => setGastosExpanded(!gastosExpanded)}
             className="flex items-center justify-between w-full py-2.5 border-b border-border/40 text-left hover:bg-muted/30 rounded transition-colors"
@@ -121,15 +134,54 @@ export function ContabilidadContent() {
                 </div>
               ))}
               {Object.keys(eerr.desglose).length === 0 && (
-                <p className="py-2 text-xs text-muted-foreground italic">Sin gastos en este período</p>
+                <p className="py-2 text-xs text-muted-foreground italic">Sin gastos operativos en este período</p>
               )}
             </div>
           )}
 
           <EERRTotal label="= Resultado Operativo" value={eerr.resultadoOp} pct={eerr.resultadoOpPct} />
-
           <EERRRow label="(−) Sueldos y Comisiones" value={eerr.totalSueldos} />
-          <EERRTotal label="= Resultado del Período" value={eerr.resultadoBruto} pct={eerr.resultadoBrutoPct} />
+          <EERRTotal label="= Resultado del Período" value={eerr.resultadoFinal} pct={eerr.resultadoFinalPct} />
+        </div>
+      </Card>
+
+      {/* Comparativa mes anterior */}
+      <Card className="p-6">
+        <h3 className="font-semibold text-base mb-4">Comparativa vs mes anterior</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left py-2 font-normal text-muted-foreground">Concepto</th>
+                <th className="text-right py-2 font-normal text-muted-foreground">Mes actual</th>
+                <th className="text-right py-2 font-normal text-muted-foreground">Mes anterior</th>
+                <th className="text-right py-2 font-normal text-muted-foreground">Variación</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { label: "Ventas",              actual: eerr.totalVentas,     prev: prev.totalVentas },
+                { label: "CMV",                 actual: eerr.totalCMV,        prev: prev.totalCMV },
+                { label: "Margen Bruto",        actual: eerr.margenBruto,     prev: prev.margenBruto },
+                { label: "Gastos Operativos",   actual: eerr.totalGastosOp,   prev: prev.totalGastosOp },
+                { label: "Resultado Operativo", actual: eerr.resultadoOp,     prev: prev.resultadoOp },
+                { label: "Sueldos",             actual: eerr.totalSueldos,    prev: prev.totalSueldos },
+              ].map(row => (
+                <tr key={row.label} className="border-b">
+                  <td className="py-2.5 text-muted-foreground">{row.label}</td>
+                  <td className="py-2.5 text-right font-medium tabular-nums">{formatCurrency(row.actual)}</td>
+                  <td className="py-2.5 text-right tabular-nums text-muted-foreground">{formatCurrency(row.prev)}</td>
+                  <td className="py-2.5 text-right"><Delta actual={row.actual} prev={row.prev} /></td>
+                </tr>
+              ))}
+              <tr className="border-t-2 font-semibold">
+                <td className="py-2.5">Resultado Final</td>
+                <td className={`py-2.5 text-right tabular-nums ${eerr.resultadoFinal >= 0 ? "text-green-600" : "text-red-600"}`}>{formatCurrency(eerr.resultadoFinal)}</td>
+                <td className={`py-2.5 text-right tabular-nums ${prev.resultadoFinal >= 0 ? "text-green-600" : "text-red-600"}`}>{formatCurrency(prev.resultadoFinal)}</td>
+                <td className="py-2.5 text-right"><Delta actual={eerr.resultadoFinal} prev={prev.resultadoFinal} /></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </Card>
     </div>
