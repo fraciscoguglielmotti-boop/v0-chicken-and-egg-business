@@ -56,6 +56,8 @@ interface GastoReview extends GastoExtraido {
 
 type Step = "upload" | "loading" | "review" | "saving" | "done"
 
+const TARJETAS_IMPORT = ["Visa (empresa)", "Visa (personal Francisco)", "Visa (Damián)", "Master", "Tarjeta MP"]
+
 interface ImportarTarjetaProps {
   onClose: () => void
   onImportComplete: () => void
@@ -67,6 +69,8 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
   const [step, setStep] = useState<Step>("upload")
   const [error, setError] = useState<string | null>(null)
   const [gastosReview, setGastosReview] = useState<GastoReview[]>([])
+  const [tarjetaSeleccionada, setTarjetaSeleccionada] = useState("")
+  const [fechaPago, setFechaPago] = useState("")
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -153,6 +157,8 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
             descripcion: g.descripcion_original,
             monto: g.monto,
             medio_pago: "Tarjeta Credito",
+            tarjeta: tarjetaSeleccionada || null,
+            fecha_pago: fechaPago || null,
           })
         )
       )
@@ -187,6 +193,24 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
             <p className="text-sm">{error}</p>
           </div>
         )}
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Tarjeta</label>
+            <Select value={tarjetaSeleccionada} onValueChange={setTarjetaSeleccionada}>
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccionar tarjeta" />
+              </SelectTrigger>
+              <SelectContent>
+                {TARJETAS_IMPORT.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Fecha de pago del resumen</label>
+            <Input type="date" value={fechaPago} onChange={e => setFechaPago(e.target.value)} />
+          </div>
+        </div>
 
         <div
           className="flex flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed border-muted-foreground/25 p-16 cursor-pointer hover:border-muted-foreground/50 transition-colors"
@@ -257,6 +281,8 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
           <h2 className="text-lg font-semibold">Revisar gastos extraídos</h2>
           <div className="flex flex-wrap gap-3 mt-1">
             <span className="text-sm text-muted-foreground">{gastosReview.length} gastos encontrados</span>
+            {tarjetaSeleccionada && <Badge variant="outline">{tarjetaSeleccionada}</Badge>}
+            {fechaPago && <Badge variant="outline">Vence: {new Date(fechaPago + "T12:00:00").toLocaleDateString()}</Badge>}
             <Badge variant="secondary">{conRegla} categorizados automáticamente</Badge>
             {sinCategoria > 0 && (
               <Badge variant="destructive">{sinCategoria} sin categoría</Badge>
