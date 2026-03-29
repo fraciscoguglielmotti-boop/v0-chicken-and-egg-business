@@ -10,7 +10,7 @@ import { ChevronDown, ChevronRight, TrendingUp, TrendingDown } from "lucide-reac
 
 interface Cobro { fecha: string; monto: number; metodo_pago: string }
 interface Pago { fecha: string; monto: number }
-interface Gasto { fecha: string; monto: number; categoria: string }
+interface Gasto { fecha: string; monto: number; categoria: string; medio_pago?: string; tarjeta?: string; fecha_pago?: string }
 
 function CashRow({ label, value, sub = false, sign = "", onClick, expandable, expanded }: {
   label: string; value: number; sub?: boolean; sign?: string
@@ -87,6 +87,23 @@ export function FlujoContent() {
       return acc
     }, {} as Record<string, number>)
 
+    // Vencimientos de tarjeta: gastos con fecha_pago agrupados por fecha
+    const hoy = new Date().toISOString().slice(0, 10)
+    const vencimientosTarjeta = gastos
+      .filter(g => g.fecha_pago && g.medio_pago === "Tarjeta Credito")
+      .reduce((acc, g) => {
+        const key = g.fecha_pago!
+        if (!acc[key]) acc[key] = { fecha: key, total: 0, tarjetas: new Map<string, number>() }
+        acc[key].total += g.monto
+        const t = g.tarjeta || "Sin tarjeta"
+        acc[key].tarjetas.set(t, (acc[key].tarjetas.get(t) || 0) + g.monto)
+        return acc
+      }, {} as Record<string, { fecha: string; total: number; tarjetas: Map<string, number> }>)
+    const vencimientosOrdenados = Object.values(vencimientosTarjeta)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+    const proximos = vencimientosOrdenados.filter(v => v.fecha >= hoy)
+    const vencidos = vencimientosOrdenados.filter(v => v.fecha < hoy)
+
     const prevIngresos         = cobros.filter(c => c.fecha.startsWith(prev)).reduce((s, c) => s + Number(c.monto), 0)
     const prevPagosProveedores = pagos.filter(p => p.fecha.startsWith(prev)).reduce((s, p) => s + Number(p.monto), 0)
     const prevGastosPagados    = gastos.filter(g => g.fecha.startsWith(prev)).reduce((s, g) => s + g.monto, 0)
@@ -96,6 +113,7 @@ export function FlujoContent() {
       totalIngresos, cobrosEfectivo, cobrosTransferencia,
       pagosProveedores, gastosPagados, gastosPorCategoria, resultado,
       prevIngresos, prevPagosProveedores, prevGastosPagados, prevResultado,
+      proximos, vencidos,
     }
   }, [cobros, pagos, gastos, selectedMonth])
 
@@ -144,6 +162,53 @@ export function FlujoContent() {
           <CashTotal label="= Resultado de Caja" value={flujo.resultado} />
         </div>
       </Card>
+
+      {/* Vencimientos de tarjetas */}
+      {(flujo.proximos.length > 0 || flujo.vencidos.length > 0) && (
+        <Card className="p-6">
+          <h3 className="font-semibold text-base mb-4">Vencimientos de tarjetas</h3>
+          <div className="space-y-3">
+            {flujo.vencidos.map(v => (
+              <div key={v.fecha} className="rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-medium text-red-600 uppercase tracking-wide">Vencido</span>
+                    <p className="font-semibold">{new Date(v.fecha + "T12:00:00").toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}</p>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {Array.from(v.tarjetas.entries()).map(([t, monto]) => (
+                        <span key={t} className="text-xs text-muted-foreground">{t}: {formatCurrency(monto)}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <span className="font-bold text-red-600 text-lg tabular-nums">{formatCurrency(v.total)}</span>
+                </div>
+              </div>
+            ))}
+            {flujo.proximos.map(v => {
+              const dias = Math.ceil((new Date(v.fecha).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+              const urgente = dias <= 7
+              return (
+                <div key={v.fecha} className={`rounded-lg border px-4 py-3 ${urgente ? "border-amber-500/40 bg-amber-500/5" : "border-border bg-muted/20"}`}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className={`text-xs font-medium uppercase tracking-wide ${urgente ? "text-amber-600" : "text-muted-foreground"}`}>
+                        {dias === 0 ? "Hoy" : `En ${dias} día${dias !== 1 ? "s" : ""}`}
+                      </span>
+                      <p className="font-semibold">{new Date(v.fecha + "T12:00:00").toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}</p>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {Array.from(v.tarjetas.entries()).map(([t, monto]) => (
+                          <span key={t} className="text-xs text-muted-foreground">{t}: {formatCurrency(monto)}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <span className={`font-bold text-lg tabular-nums ${urgente ? "text-amber-600" : ""}`}>{formatCurrency(v.total)}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      )}
 
       {/* Comparativa mes anterior */}
       <Card className="p-6">
