@@ -70,9 +70,13 @@ export function FlujoContent() {
   const flujo = useMemo(() => {
     const prev = prevMonth(selectedMonth)
 
+    // Para tarjeta con fecha_pago, usamos la fecha de pago (cuándo sale la plata)
+    const fechaEfectiva = (g: Gasto) =>
+      g.medio_pago === "Tarjeta Credito" && g.fecha_pago ? g.fecha_pago : g.fecha
+
     const cobrosFiltrados   = cobros.filter(c => c.fecha.startsWith(selectedMonth))
     const pagosFiltrados    = pagos.filter(p => p.fecha.startsWith(selectedMonth))
-    const gastosFiltrados   = gastos.filter(g => g.fecha.startsWith(selectedMonth))
+    const gastosFiltrados   = gastos.filter(g => fechaEfectiva(g).startsWith(selectedMonth))
 
     const totalIngresos      = cobrosFiltrados.reduce((s, c) => s + Number(c.monto), 0)
     const cobrosEfectivo     = cobrosFiltrados.filter(c => c.metodo_pago === "efectivo").reduce((s, c) => s + Number(c.monto), 0)
@@ -106,7 +110,7 @@ export function FlujoContent() {
 
     const prevIngresos         = cobros.filter(c => c.fecha.startsWith(prev)).reduce((s, c) => s + Number(c.monto), 0)
     const prevPagosProveedores = pagos.filter(p => p.fecha.startsWith(prev)).reduce((s, p) => s + Number(p.monto), 0)
-    const prevGastosPagados    = gastos.filter(g => g.fecha.startsWith(prev)).reduce((s, g) => s + g.monto, 0)
+    const prevGastosPagados    = gastos.filter(g => fechaEfectiva(g).startsWith(prev)).reduce((s, g) => s + g.monto, 0)
     const prevResultado        = prevIngresos - prevPagosProveedores - prevGastosPagados
 
     return {
