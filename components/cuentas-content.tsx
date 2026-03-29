@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ChevronDown, ChevronRight, Download, Calendar, Check, Receipt, LayoutList, AlignJustify } from "lucide-react"
+import { ChevronDown, ChevronRight, Download, Calendar, Check, Receipt, LayoutList, AlignJustify, FileSpreadsheet } from "lucide-react"
 import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -428,6 +428,45 @@ export function CuentasContent() {
     doc.save(`estado-cuenta-${cliente.nombre.replace(/\s+/g, '-')}.pdf`)
   }
 
+  const exportClienteCSV = (cliente: typeof clientesConMovimientos[0]) => {
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+    const rows: string[] = []
+
+    rows.push(`"Estado de cuenta — ${cliente.nombre}"`)
+    rows.push(`"Saldo anterior",${esc(cliente.saldoAnterior)}`)
+    rows.push(`"Total ventas",${esc(cliente.totalVentas)}`)
+    rows.push(`"Total cobros",${esc(cliente.totalCobros)}`)
+    rows.push(`"Saldo actual",${esc(cliente.saldo)}`)
+    rows.push("")
+    rows.push([esc("Fecha"), esc("Tipo"), esc("Descripción"), esc("Debe"), esc("Haber"), esc("Saldo")].join(","))
+
+    let saldoAcum = cliente.saldoAnterior
+    if (cliente.saldoAnterior !== 0) {
+      rows.push([esc(""), esc(""), esc("Saldo inicial"), esc(""), esc(""), esc(cliente.saldoAnterior)].join(","))
+    }
+    cliente.movimientos.forEach(mov => {
+      saldoAcum += mov.debe - mov.haber
+      rows.push([
+        esc(formatDate(new Date(mov.fecha + "T12:00:00"))),
+        esc(mov.tipo === "venta" ? "Venta" : "Cobro"),
+        esc(mov.descripcion),
+        esc(mov.debe > 0 ? mov.debe : ""),
+        esc(mov.haber > 0 ? mov.haber : ""),
+        esc(saldoAcum),
+      ].join(","))
+    })
+
+    // BOM para que Excel abra UTF-8 correctamente
+    const bom = "\uFEFF"
+    const blob = new Blob([bom + rows.join("\n")], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `cuenta-corriente-${cliente.nombre.replace(/\s+/g, '-')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -577,8 +616,11 @@ export function CuentasContent() {
                               Cobrar
                             </Button>
                           )}
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => exportClientePDF(cliente)}>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Exportar PDF" onClick={() => exportClientePDF(cliente)}>
                             <Download className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Exportar Excel" onClick={() => exportClienteCSV(cliente)}>
+                            <FileSpreadsheet className="h-3.5 w-3.5 text-green-600" />
                           </Button>
                         </div>
                       </td>
@@ -643,8 +685,11 @@ export function CuentasContent() {
                           Cobrar
                         </Button>
                       )}
-                      <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); exportClientePDF(cliente) }}>
+                      <Button variant="outline" size="sm" title="Exportar PDF" onClick={(e) => { e.stopPropagation(); exportClientePDF(cliente) }}>
                         <Download className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" title="Exportar Excel" onClick={(e) => { e.stopPropagation(); exportClienteCSV(cliente) }}>
+                        <FileSpreadsheet className="h-4 w-4 text-green-600" />
                       </Button>
                     </div>
                   </div>
