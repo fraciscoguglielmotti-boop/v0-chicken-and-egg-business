@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 const CATEGORIAS_SUELDOS = ["Comisiones", "Sueldos", "Sueldo", "Comisión"]
+const CATEGORIAS_RETIROS = ["Gastos Personales Francisco", "Retiro de socio", "Retiros"]
 
 interface Venta { fecha: string; cantidad: number; precio_unitario: number }
 interface Compra { fecha: string; total: number; cantidad: number; precio_unitario: number }
@@ -59,12 +60,15 @@ function calcEERR(ventas: Venta[], compras: Compra[], gastos: Gasto[], month: st
   const margenBruto = totalVentas - totalCMV
   const margenPct   = totalVentas > 0 ? (margenBruto / totalVentas) * 100 : 0
 
-  const esSueldo = (g: Gasto) => CATEGORIAS_SUELDOS.some(cat => g.categoria?.toLowerCase() === cat.toLowerCase())
-  const gastosOp     = gastosFiltrados.filter(g => !esSueldo(g))
+  const esSueldo  = (g: Gasto) => CATEGORIAS_SUELDOS.some(cat => g.categoria?.toLowerCase() === cat.toLowerCase())
+  const esRetiro  = (g: Gasto) => CATEGORIAS_RETIROS.some(cat => g.categoria?.toLowerCase() === cat.toLowerCase())
+  const gastosOp      = gastosFiltrados.filter(g => !esSueldo(g) && !esRetiro(g))
   const gastosSueldos = gastosFiltrados.filter(esSueldo)
+  const gastosRetiros = gastosFiltrados.filter(esRetiro)
 
   const totalGastosOp = gastosOp.reduce((s, g) => s + g.monto, 0)
   const totalSueldos  = gastosSueldos.reduce((s, g) => s + g.monto, 0)
+  const totalRetiros  = gastosRetiros.reduce((s, g) => s + g.monto, 0)
 
   const desglose: Record<string, number> = {}
   gastosOp.forEach(g => {
@@ -74,10 +78,10 @@ function calcEERR(ventas: Venta[], compras: Compra[], gastos: Gasto[], month: st
 
   const resultadoOp      = margenBruto - totalGastosOp
   const resultadoOpPct   = totalVentas > 0 ? (resultadoOp / totalVentas) * 100 : 0
-  const resultadoFinal   = resultadoOp - totalSueldos
+  const resultadoFinal   = resultadoOp - totalSueldos - totalRetiros
   const resultadoFinalPct = totalVentas > 0 ? (resultadoFinal / totalVentas) * 100 : 0
 
-  return { totalVentas, totalCMV, margenBruto, margenPct, totalGastosOp, desglose, totalSueldos, resultadoOp, resultadoOpPct, resultadoFinal, resultadoFinalPct }
+  return { totalVentas, totalCMV, margenBruto, margenPct, totalGastosOp, desglose, totalSueldos, totalRetiros, resultadoOp, resultadoOpPct, resultadoFinal, resultadoFinalPct }
 }
 
 function prevMonthStr(month: string) {
@@ -141,6 +145,7 @@ export function ContabilidadContent() {
 
           <EERRTotal label="= Resultado Operativo" value={eerr.resultadoOp} pct={eerr.resultadoOpPct} />
           <EERRRow label="(−) Sueldos y Comisiones" value={eerr.totalSueldos} />
+          {eerr.totalRetiros > 0 && <EERRRow label="(−) Retiros personales" value={eerr.totalRetiros} />}
           <EERRTotal label="= Resultado del Período" value={eerr.resultadoFinal} pct={eerr.resultadoFinalPct} />
         </div>
       </Card>
@@ -166,6 +171,7 @@ export function ContabilidadContent() {
                 { label: "Gastos Operativos",   actual: eerr.totalGastosOp,   prev: prev.totalGastosOp },
                 { label: "Resultado Operativo", actual: eerr.resultadoOp,     prev: prev.resultadoOp },
                 { label: "Sueldos",             actual: eerr.totalSueldos,    prev: prev.totalSueldos },
+                { label: "Retiros personales",  actual: eerr.totalRetiros,    prev: prev.totalRetiros },
               ].map(row => (
                 <tr key={row.label} className="border-b">
                   <td className="py-2.5 text-muted-foreground">{row.label}</td>
