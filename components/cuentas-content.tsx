@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ChevronDown, ChevronRight, Download, Calendar, Check, Receipt, LayoutList, AlignJustify, FileSpreadsheet } from "lucide-react"
+import { ChevronDown, ChevronRight, Download, Calendar, Check, Receipt, LayoutList, AlignJustify, FileSpreadsheet, EyeOff, Eye, UserX } from "lucide-react"
 import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +22,7 @@ interface Cliente {
   nombre: string
   saldo_inicial: number
   saldo_verificado: boolean
+  activo: boolean
 }
 
 interface Proveedor {
@@ -104,6 +105,7 @@ export function CuentasContent() {
 
   const [cobrarCliente, setCobrarCliente] = useState<string | null>(null)
   const [cobrarForm, setCobrarForm] = useState({ monto: "", metodo_pago: "efectivo", cuenta_destino: "", fecha: new Date().toISOString().split('T')[0] })
+  const [mostrarInactivos, setMostrarInactivos] = useState(false)
   const [vistaLista, setVistaLista] = useState(false)
   const [sortCol, setSortCol] = useState<"nombre" | "totalVentas" | "totalCobros" | "saldo">("saldo")
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc")
@@ -114,8 +116,13 @@ export function CuentasContent() {
   }
 
   // Clientes con movimientos
+  // Set de clientes inactivos (por nombre, para incluir los sin id)
+  const clientesInactivos = useMemo(() =>
+    new Set(clientes.filter(c => c.activo === false).map(c => c.nombre.toLowerCase().trim()))
+  , [clientes])
+
   const clientesConMovimientos = useMemo(() => {
-    const clientesMap = new Map<string, { id: string; nombre: string; saldo: number; movimientos: MovimientoCliente[]; saldoAnterior: number; totalVentas: number; totalCobros: number; saldo_verificado: boolean }>()
+    const clientesMap = new Map<string, { id: string; nombre: string; saldo: number; movimientos: MovimientoCliente[]; saldoAnterior: number; totalVentas: number; totalCobros: number; saldo_verificado: boolean; activo: boolean }>()
 
     clientes.forEach((c) => {
       const key = c.nombre.toLowerCase().trim()
@@ -127,7 +134,8 @@ export function CuentasContent() {
         totalVentas: 0,
         totalCobros: 0,
         movimientos: [],
-        saldo_verificado: c.saldo_verificado || false
+        saldo_verificado: c.saldo_verificado || false,
+        activo: c.activo !== false,
       })
     })
 
@@ -137,7 +145,7 @@ export function CuentasContent() {
       const producto = v.productos?.nombre || 'Producto'
       
       if (!clientesMap.has(key)) {
-        clientesMap.set(key, { id: "", nombre: v.cliente_nombre, saldo: 0, saldoAnterior: 0, totalVentas: 0, totalCobros: 0, movimientos: [], saldo_verificado: false })
+        clientesMap.set(key, { id: "", nombre: v.cliente_nombre, saldo: 0, saldoAnterior: 0, totalVentas: 0, totalCobros: 0, movimientos: [], saldo_verificado: false, activo: true })
       }
       
       const cliente = clientesMap.get(key)!
@@ -188,16 +196,25 @@ export function CuentasContent() {
       cliente.movimientos.sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
     })
 
-    return Array.from(clientesMap.values()).sort((a, b) => b.saldo - a.saldo)
-  }, [ventas, cobros, clientes, dateRange])
+    const todos = Array.from(clientesMap.values()).map(c => ({
+      ...c,
+      activo: !clientesInactivos.has(c.nombre.toLowerCase().trim()),
+    }))
+    return todos.sort((a, b) => b.saldo - a.saldo)
+  }, [ventas, cobros, clientes, dateRange, clientesInactivos])
+
+  const clientesFiltrados = useMemo(
+    () => mostrarInactivos ? clientesConMovimientos : clientesConMovimientos.filter(c => c.activo !== false),
+    [clientesConMovimientos, mostrarInactivos]
+  )
 
   const totalPendienteCobro = useMemo(
-    () => clientesConMovimientos.filter(c => c.saldo > 0).reduce((s, c) => s + c.saldo, 0),
-    [clientesConMovimientos]
+    () => clientesFiltrados.filter(c => c.saldo > 0).reduce((s, c) => s + c.saldo, 0),
+    [clientesFiltrados]
   )
   const clientesConDeuda = useMemo(
-    () => clientesConMovimientos.filter(c => c.saldo > 0).length,
-    [clientesConMovimientos]
+    () => clientesFiltrados.filter(c => c.saldo > 0).length,
+    [clientesFiltrados]
   )
 
   // Proveedores con movimientos
@@ -299,6 +316,16 @@ export function CuentasContent() {
       newSet.has(nombre) ? newSet.delete(nombre) : newSet.add(nombre)
       return newSet
     })
+  }
+
+  const handleToggleActivo = async (clienteId: string, currentActivo: boolean) => {
+    try {
+      await updateRow("clientes", clienteId, { activo: !currentActivo })
+      await mutateClientes()
+      toast({ title: !currentActivo ? "Cliente activado" : "Cliente marcado como inactivo" })
+    } catch {
+      toast({ title: "Error", description: "No se pudo actualizar", variant: "destructive" })
+    }
   }
 
   const handleVerificarSaldo = async (clienteId: string, currentStatus: boolean) => {
@@ -496,6 +523,15 @@ export function CuentasContent() {
         <h2 className="text-xl font-semibold">Cuentas Corrientes</h2>
 
         <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          <Button
+            variant={mostrarInactivos ? "secondary" : "outline"}
+            size="sm"
+            className="gap-1.5 h-8"
+            onClick={() => setMostrarInactivos(v => !v)}
+          >
+            {mostrarInactivos ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            {mostrarInactivos ? "Mostrando inactivos" : "Ocultar inactivos"}
+          </Button>
           <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
             <div className="flex items-center gap-2">
               <Label htmlFor="desde" className="text-sm whitespace-nowrap">Desde:</Label>
@@ -568,7 +604,7 @@ export function CuentasContent() {
               </div>
             </Card>
           )}
-          {clientesConMovimientos.length === 0 ? (
+          {clientesFiltrados.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
               No hay datos de clientes
             </div>
@@ -596,7 +632,7 @@ export function CuentasContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...clientesConMovimientos].sort((a, b) => {
+                  {[...clientesFiltrados].sort((a, b) => {
                     const dir = sortDir === "asc" ? 1 : -1
                     if (sortCol === "nombre") return a.nombre.localeCompare(b.nombre) * dir
                     return (a[sortCol] - b[sortCol]) * dir
@@ -654,14 +690,14 @@ export function CuentasContent() {
                   <tr>
                     <td colSpan={2} className="p-3">Total</td>
                     <td className="p-3 text-right hidden sm:table-cell text-muted-foreground">
-                      {formatCurrency(clientesConMovimientos.reduce((s, c) => s + c.totalVentas, 0))}
+                      {formatCurrency(clientesFiltrados.reduce((s, c) => s + c.totalVentas, 0))}
                     </td>
                     <td className="p-3 text-right hidden sm:table-cell text-green-600">
-                      {formatCurrency(clientesConMovimientos.reduce((s, c) => s + c.totalCobros, 0))}
+                      {formatCurrency(clientesFiltrados.reduce((s, c) => s + c.totalCobros, 0))}
                     </td>
                     <td className="p-3 text-right">
                       <Badge variant="destructive">
-                        {formatCurrency(clientesConMovimientos.filter(c => c.saldo > 0).reduce((s, c) => s + c.saldo, 0))}
+                        {formatCurrency(clientesFiltrados.filter(c => c.saldo > 0).reduce((s, c) => s + c.saldo, 0))}
                       </Badge>
                     </td>
                     <td />
@@ -670,7 +706,7 @@ export function CuentasContent() {
               </table>
             </div>
           ) : (
-            clientesConMovimientos.map((cliente) => (
+            clientesFiltrados.map((cliente) => (
               <Collapsible key={cliente.nombre} open={expandedClients.has(cliente.nombre)}>
                 <div className="rounded-lg border bg-card">
                   <div className="flex items-center justify-between p-4">
@@ -714,6 +750,15 @@ export function CuentasContent() {
                       <Button variant="outline" size="sm" title="Exportar Excel" onClick={(e) => { e.stopPropagation(); exportClienteCSV(cliente) }}>
                         <FileSpreadsheet className="h-4 w-4 text-green-600" />
                       </Button>
+                      {cliente.id && (
+                        <Button
+                          variant="ghost" size="sm"
+                          title={cliente.activo ? "Marcar como inactivo" : "Reactivar cliente"}
+                          onClick={(e) => { e.stopPropagation(); handleToggleActivo(cliente.id, cliente.activo) }}
+                        >
+                          <UserX className={`h-4 w-4 ${cliente.activo ? "text-muted-foreground" : "text-destructive"}`} />
+                        </Button>
+                      )}
                     </div>
                   </div>
                   
