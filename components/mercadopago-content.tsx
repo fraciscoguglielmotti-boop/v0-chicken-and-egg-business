@@ -118,7 +118,7 @@ export function MercadoPagoContent() {
       toast({
         title: "Sincronización exitosa",
         description: data.synced > 0
-          ? `Se importaron ${data.synced} movimientos.`
+          ? `${data.synced} movimientos — ${data.ingresos ?? 0} ingresos, ${data.egresos ?? 0} egresos`
           : "No hay movimientos nuevos.",
       })
     } catch (err: any) {
