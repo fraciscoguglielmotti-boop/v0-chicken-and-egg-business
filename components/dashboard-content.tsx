@@ -79,8 +79,20 @@ export function DashboardContent() {
     const mesAnterior = mesActual === 0 ? 11 : mesActual - 1
     const añoMesAnterior = mesActual === 0 ? añoActual - 1 : añoActual
 
-    const semanaActual = Math.floor((now.getTime() - new Date(añoActual, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
-    const semanaAnterior = semanaActual - 1
+    // Semana calendario: lunes a domingo
+    const diaSemana = now.getDay() === 0 ? 6 : now.getDay() - 1 // 0=lun, 6=dom
+    const inicioSemanaActual = new Date(now)
+    inicioSemanaActual.setHours(0, 0, 0, 0)
+    inicioSemanaActual.setDate(now.getDate() - diaSemana)
+    const finSemanaActual = new Date(inicioSemanaActual)
+    finSemanaActual.setDate(inicioSemanaActual.getDate() + 6)
+    finSemanaActual.setHours(23, 59, 59, 999)
+
+    const inicioSemanaAnterior = new Date(inicioSemanaActual)
+    inicioSemanaAnterior.setDate(inicioSemanaActual.getDate() - 7)
+    const finSemanaAnterior = new Date(inicioSemanaActual)
+    finSemanaAnterior.setDate(inicioSemanaActual.getDate() - 1)
+    finSemanaAnterior.setHours(23, 59, 59, 999)
 
     const ventasMesActual = ventas.filter(v => {
       const fecha = new Date(v.fecha)
@@ -93,13 +105,11 @@ export function DashboardContent() {
 
     const ventasSemanaActual = ventas.filter(v => {
       const fecha = new Date(v.fecha)
-      const semana = Math.floor((fecha.getTime() - new Date(fecha.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
-      return semana === semanaActual
+      return fecha >= inicioSemanaActual && fecha <= finSemanaActual
     })
     const ventasSemanaAnterior = ventas.filter(v => {
       const fecha = new Date(v.fecha)
-      const semana = Math.floor((fecha.getTime() - new Date(fecha.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
-      return semana === semanaAnterior
+      return fecha >= inicioSemanaAnterior && fecha <= finSemanaAnterior
     })
 
     const esPollo = (v: Venta) => !!v.producto_nombre && v.producto_nombre.toLowerCase().includes("pollo")
