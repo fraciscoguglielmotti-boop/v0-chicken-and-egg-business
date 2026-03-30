@@ -15,7 +15,7 @@ import {
 } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { GripVertical, Truck, AlertTriangle, CheckCircle2, FileDown, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { GripVertical, Truck, AlertTriangle, CheckCircle2, FileDown, ArrowUpDown, ArrowUp, ArrowDown, RotateCcw } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -437,12 +437,34 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
             </div>
           )}
         </div>
-        {totalAsignados > 0 && (
+        <div className="flex gap-2">
+          <Button
+            variant="ghost" size="sm" className="gap-1.5 text-muted-foreground"
+            title="Reinicia el tablero con los pedidos actuales (útil si agregaste pedidos nuevos)"
+            onClick={() => {
+              initializedRef.current = false
+              setAsignaciones(() => {
+                const init: Record<string, string[]> = { [SIN_ASIGNAR]: pedidos.map(p => p.id) }
+                vehiculos.forEach(v => { init[v.id] = [] })
+                return init
+              })
+              setCapacidades(() => {
+                const init: Record<string, number> = {}
+                vehiculos.forEach(v => { init[v.id] = 0 })
+                return init
+              })
+            }}
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Resetear
+          </Button>
+          {totalAsignados > 0 && (
           <Button variant="outline" size="sm" className="gap-2" onClick={handleGenerarPDF}>
             <FileDown className="h-4 w-4" />
             PDF de repartos
           </Button>
-        )}
+          )}
+        </div>
       </div>
 
       {vehiculos.length === 0 && (
