@@ -11,12 +11,17 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Wallet,
+  Pencil,
+  Check,
+  Search,
+  X,
 } from "lucide-react"
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useSupabase } from "@/hooks/use-supabase"
+import { useSupabase, updateRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 
@@ -26,6 +31,7 @@ interface MovimientoMP {
   tipo: "ingreso" | "egreso"
   monto: number
   descripcion?: string
+  concepto?: string
   referencia?: string
   pagador_nombre?: string
   pagador_email?: string
@@ -105,6 +111,27 @@ export function MercadoPagoContent() {
     setExpandedRows(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   const [tipoFiltro, setTipoFiltro] = useState("todos")
   const [estadoFiltro, setEstadoFiltro] = useState("todos")
+  const [busqueda, setBusqueda] = useState("")
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingValue, setEditingValue] = useState("")
+
+  const startEdit = (m: MovimientoMP, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditingId(m.id)
+    setEditingValue(m.concepto ?? m.descripcion ?? "")
+  }
+
+  const saveConcepto = async (id: string) => {
+    try {
+      await updateRow("movimientos_mp", id, { concepto: editingValue.trim() || null })
+      await mutateMovimientos()
+    } catch {
+      toast({ title: "Error al guardar", variant: "destructive" })
+    } finally {
+      setEditingId(null)
+    }
+  }
+
   const [verifying, setVerifying] = useState(false)
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
   const [saldo, setSaldo] = useState<number | null>(null)
@@ -189,7 +216,10 @@ export function MercadoPagoContent() {
   const filteredMovimientos = movimientos.filter((m) => {
     const matchTipo = tipoFiltro === "todos" || m.tipo === tipoFiltro
     const matchEstado = estadoFiltro === "todos" || m.estado === estadoFiltro
-    return matchTipo && matchEstado
+    const q = busqueda.toLowerCase()
+    const matchBusqueda = !q || [m.concepto, m.descripcion, m.pagador_nombre, m.pagador_email]
+      .some(v => v?.toLowerCase().includes(q))
+    return matchTipo && matchEstado && matchBusqueda
   })
 
   const totalIngresos = movimientos
@@ -245,7 +275,21 @@ export function MercadoPagoContent() {
         {/* ── TAB: MOVIMIENTOS ── */}
         <TabsContent value="movimientos" className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar concepto, titular..."
+                  value={busqueda}
+                  onChange={e => setBusqueda(e.target.value)}
+                  className="pl-8 h-9 w-[220px]"
+                />
+                {busqueda && (
+                  <button onClick={() => setBusqueda("")} className="absolute right-2 top-2.5 text-muted-foreground hover:text-foreground">
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
               <Select value={tipoFiltro} onValueChange={setTipoFiltro}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue />
@@ -309,8 +353,8 @@ export function MercadoPagoContent() {
                     <th className="w-8 p-3" />
                     <th className="text-left p-3 font-semibold">Fecha</th>
                     <th className="text-left p-3 font-semibold">Tipo</th>
-                    <th className="text-left p-3 font-semibold">De / Para</th>
-                    <th className="text-left p-3 font-semibold">Descripción</th>
+                    <th className="text-left p-3 font-semibold">Titular</th>
+                    <th className="text-left p-3 font-semibold">Concepto <span className="text-muted-foreground font-normal text-xs">(editable)</span></th>
                     <th className="text-right p-3 font-semibold">Monto</th>
                     <th className="text-left p-3 font-semibold">Estado</th>
                   </tr>
@@ -345,17 +389,48 @@ export function MercadoPagoContent() {
                               </span>
                             )}
                           </td>
-                          <td className="p-3">
-                            {m.pagador_nombre
-                              ? <p className="font-medium">{m.pagador_nombre}</p>
-                              : <span className="text-muted-foreground">-</span>
-                            }
+                          {/* Titular */}
+                          <td className="p-3 max-w-[160px]">
+                            {m.pagador_nombre ? (
+                              <p className="font-medium truncate">{m.pagador_nombre}</p>
+                            ) : m.pagador_email ? (
+                              <p className="text-xs text-muted-foreground truncate">{m.pagador_email}</p>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">Sin datos</span>
+                            )}
                           </td>
-                          <td className="p-3 max-w-[220px] truncate">
-                            {m.descripcion
-                              ? <span>{m.descripcion}</span>
-                              : <span className="text-muted-foreground">-</span>
-                            }
+                          {/* Concepto editable */}
+                          <td className="p-3 max-w-[240px]" onClick={e => e.stopPropagation()}>
+                            {editingId === m.id ? (
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  autoFocus
+                                  value={editingValue}
+                                  onChange={e => setEditingValue(e.target.value)}
+                                  onKeyDown={e => { if (e.key === "Enter") saveConcepto(m.id); if (e.key === "Escape") setEditingId(null) }}
+                                  className="h-7 text-xs"
+                                  placeholder="Ej: Peaje, Proveedor..."
+                                />
+                                <button onClick={() => saveConcepto(m.id)} className="text-green-600 hover:text-green-700"><Check className="h-4 w-4" /></button>
+                                <button onClick={() => setEditingId(null)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1 group">
+                                {m.concepto ? (
+                                  <span className="font-medium">{m.concepto}</span>
+                                ) : m.descripcion ? (
+                                  <span className="text-muted-foreground italic text-xs truncate">{m.descripcion}</span>
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">Sin concepto</span>
+                                )}
+                                <button
+                                  onClick={e => startEdit(m, e)}
+                                  className="opacity-0 group-hover:opacity-100 ml-1 text-muted-foreground hover:text-foreground transition-opacity"
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                              </div>
+                            )}
                           </td>
                           <td className={`p-3 text-right font-semibold ${m.tipo === "ingreso" ? "text-green-600" : "text-destructive"}`}>
                             {m.tipo === "ingreso" ? "+" : "-"}{formatCurrency(m.monto)}
