@@ -46,6 +46,7 @@ export function RentabilidadContent() {
 
   const rentabilidadPorProducto = useMemo(() => {
     const productos = new Map<string, {
+      nombre: string
       cantidadVendida: number
       ingresoTotal: number
       cantidadComprada: number
@@ -57,9 +58,10 @@ export function RentabilidadContent() {
     // Procesar ventas
     ventas.filter(v => enPeriodo(v.fecha)).forEach(v => {
       if (!v.producto_nombre) return
-      const key = v.producto_nombre
+      const key = v.producto_nombre.toLowerCase().trim()
       const ingreso = v.cantidad * v.precio_unitario
       const item = productos.get(key) || {
+        nombre: v.producto_nombre,
         cantidadVendida: 0,
         ingresoTotal: 0,
         cantidadComprada: 0,
@@ -72,9 +74,12 @@ export function RentabilidadContent() {
       productos.set(key, item)
     })
 
-    // Procesar compras
+    // Procesar compras — normalizamos igual que ventas para que matcheen
     compras.filter(c => enPeriodo(c.fecha)).forEach(c => {
-      const item = productos.get(c.producto) || {
+      if (!c.producto) return
+      const key = c.producto.toLowerCase().trim()
+      const item = productos.get(key) || {
+        nombre: c.producto,
         cantidadVendida: 0,
         ingresoTotal: 0,
         cantidadComprada: 0,
@@ -83,8 +88,8 @@ export function RentabilidadContent() {
         porcentajeMargen: 0
       }
       item.cantidadComprada += c.cantidad
-      item.costoTotal += c.total
-      productos.set(c.producto, item)
+      item.costoTotal += c.total > 0 ? c.total : c.cantidad * c.precio_unitario
+      productos.set(key, item)
     })
 
     // Calcular margenes
@@ -96,8 +101,7 @@ export function RentabilidadContent() {
       productos.set(key, item)
     })
 
-    return Array.from(productos.entries())
-      .map(([producto, datos]) => ({ producto, ...datos }))
+    return Array.from(productos.values())
       .sort((a, b) => b.margen - a.margen)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ventas, compras, desde, hasta])
@@ -207,9 +211,9 @@ export function RentabilidadContent() {
         <h3 className="font-semibold mb-4">Rentabilidad por Producto</h3>
         <div className="space-y-4">
           {rentabilidadPorProducto.map((item) => (
-            <div key={item.producto} className="border rounded-lg p-4">
+            <div key={item.nombre} className="border rounded-lg p-4">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium">{item.producto}</h4>
+                <h4 className="font-medium">{item.nombre}</h4>
                 <Badge variant={item.margen > 0 ? "default" : "destructive"}>
                   {item.porcentajeMargen.toFixed(1)}% margen
                 </Badge>

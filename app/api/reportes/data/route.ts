@@ -13,8 +13,10 @@ function addDays(d: Date, n: number) {
   return r
 }
 
-function getDateRanges() {
-  const now = new Date()
+function getDateRanges(refDate?: Date) {
+  const now = refDate ?? new Date()
+  const actualNow = new Date()
+  const actualToday = toDateStr(actualNow)
   const today = toDateStr(now)
   const yesterday = toDateStr(addDays(now, -1))
 
@@ -22,7 +24,8 @@ function getDateRanges() {
   const dow = now.getUTCDay() // 0=Dom
   const daysToMon = dow === 0 ? 6 : dow - 1
   const weekStart = toDateStr(addDays(now, -daysToMon))
-  const weekEnd = today
+  const weekSunday = toDateStr(addDays(now, -daysToMon + 6))
+  const weekEnd = weekSunday <= actualToday ? weekSunday : actualToday
 
   // Semana anterior
   const lastWeekEnd = toDateStr(addDays(now, -daysToMon - 1))
@@ -32,7 +35,8 @@ function getDateRanges() {
   const y = now.getUTCFullYear()
   const m = now.getUTCMonth() + 1
   const monthStart = `${y}-${String(m).padStart(2, "0")}-01`
-  const monthEnd = today
+  const monthLastDay = toDateStr(new Date(Date.UTC(y, now.getUTCMonth() + 1, 0)))
+  const monthEnd = monthLastDay <= actualToday ? monthLastDay : actualToday
 
   // Mes anterior
   const lastMonthDate = new Date(Date.UTC(y, now.getUTCMonth() - 1, 1))
@@ -47,6 +51,7 @@ function getDateRanges() {
   const sixMonthsAgo = toDateStr(new Date(Date.UTC(y, now.getUTCMonth() - 5, 1)))
 
   return {
+    now,
     today,
     yesterday,
     weekStart,
@@ -124,8 +129,21 @@ function topProductos(ventas: any[], limit: number) {
 export async function GET(req: NextRequest) {
   try {
     const tipo = req.nextUrl.searchParams.get("tipo") ?? "diario"
+    const fechaParam = req.nextUrl.searchParams.get("fecha")
+    const semanaParam = req.nextUrl.searchParams.get("semana")
+    const mesParam = req.nextUrl.searchParams.get("mes")
+
+    let refDate: Date | undefined
+    if (tipo === "diario" && fechaParam) {
+      refDate = new Date(fechaParam + "T12:00:00Z")
+    } else if (tipo === "semanal" && semanaParam) {
+      refDate = new Date(semanaParam + "T12:00:00Z")
+    } else if (tipo === "mensual" && mesParam) {
+      refDate = new Date(mesParam + "-15T12:00:00Z")
+    }
+
     const supabase = await createClient()
-    const d = getDateRanges()
+    const d = getDateRanges(refDate)
 
     // ── Diario ────────────────────────────────────────────────────────────────
     if (tipo === "diario") {
@@ -159,6 +177,28 @@ export async function GET(req: NextRequest) {
       const pendienteDia = Math.round(totalVHoy - totalCHoy)
       const ticketPromedioDia = (vHoy?.length ?? 0) > 0 ? Math.round(totalVHoy / (vHoy?.length ?? 1)) : 0
 
+      const { data: ventasRecientes } = await supabase
+        .from("ventas")
+        .select("cliente_nombre,fecha")
+        .gte("fecha", toDateStr(addDays(d.now, -60)))
+        .lte("fecha", d.today)
+
+      const lastPurchase: Record<string, string> = {}
+      for (const v of ventasRecientes ?? []) {
+        if (!lastPurchase[v.cliente_nombre] || v.fecha > lastPurchase[v.cliente_nombre]) {
+          lastPurchase[v.cliente_nombre] = v.fecha
+        }
+      }
+      const sevenDaysAgo = toDateStr(addDays(d.now, -7))
+      const clientesSinComprar = Object.entries(lastPurchase)
+        .filter(([, fecha]) => fecha <= sevenDaysAgo)
+        .sort((a, b) => a[1].localeCompare(b[1]))
+        .slice(0, 10)
+        .map(([nombre, ultima]) => ({
+          nombre,
+          diasSinComprar: Math.floor((d.now.getTime() - new Date(ultima + "T12:00:00Z").getTime()) / 86400000),
+        }))
+
       return NextResponse.json({
         fecha: fechaFmt.charAt(0).toUpperCase() + fechaFmt.slice(1),
         ventas: { hoy: Math.round(totalVHoy), ayer: Math.round(totalVAyer), delta: round1(pct(totalVHoy, totalVAyer)) },
@@ -174,6 +214,7 @@ export async function GET(req: NextRequest) {
         topClientes: topClientes(vHoy ?? [], 3),
         desglose: topProductos(vHoy ?? [], 10),
         gastos: Math.round(sumMonto(gHoy ?? [])),
+        clientesSinComprar,
       })
     }
 
@@ -346,8 +387,7 @@ export async function GET(req: NextRequest) {
         .sort((a, b) => b.ingresos - a.ingresos)
         .slice(0, 6)
 
-      const now = new Date()
-      const mesLabel = now.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
+      const mesLabel = d.now.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
 
       return NextResponse.json({
         mes: mesLabel.charAt(0).toUpperCase() + mesLabel.slice(1),

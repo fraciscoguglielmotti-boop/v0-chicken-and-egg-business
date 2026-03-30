@@ -5,6 +5,7 @@ import { Plus, Search, Phone, MapPin, CreditCard, User, MessageCircle } from "lu
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
@@ -21,6 +22,12 @@ interface Cliente {
   saldo_inicial: number
   fecha_alta: string
   created_at: string
+  vendedor_nombre?: string
+}
+
+interface Vendedor {
+  id: string
+  nombre: string
 }
 
 interface Venta {
@@ -40,6 +47,7 @@ export function ClientesContent() {
   const { data: clientes = [], mutate, isLoading } = useSupabase<Cliente>("clientes")
   const { data: ventas = [] } = useSupabase<Venta>("ventas")
   const { data: cobros = [] } = useSupabase<Cobro>("cobros")
+  const { data: vendedores = [] } = useSupabase<Vendedor>("vendedores")
   const { toast } = useToast()
 
   const [searchTerm, setSearchTerm] = useState("")
@@ -51,6 +59,7 @@ export function ClientesContent() {
     telefono: "",
     direccion: "",
     saldo_inicial: "0",
+    vendedor_nombre: "",
   })
 
   // WhatsApp phone dialog state
@@ -74,6 +83,7 @@ export function ClientesContent() {
           telefono: form.telefono || null,
           direccion: form.direccion || null,
           saldo_inicial: Number(form.saldo_inicial),
+          vendedor_nombre: form.vendedor_nombre || null,
         })
       } else {
         await insertRow("clientes", {
@@ -83,6 +93,7 @@ export function ClientesContent() {
           direccion: form.direccion || null,
           saldo_inicial: Number(form.saldo_inicial),
           fecha_alta: new Date().toISOString().split('T')[0],
+          vendedor_nombre: form.vendedor_nombre || null,
         })
       }
       await mutate()
@@ -103,6 +114,7 @@ export function ClientesContent() {
       telefono: cliente.telefono || "",
       direccion: cliente.direccion || "",
       saldo_inicial: String(cliente.saldo_inicial || 0),
+      vendedor_nombre: cliente.vendedor_nombre || "",
     })
     setDialogOpen(true)
   }
@@ -119,7 +131,7 @@ export function ClientesContent() {
   }
 
   const resetForm = () => {
-    setForm({ nombre: "", cuit: "", telefono: "", direccion: "", saldo_inicial: "0" })
+    setForm({ nombre: "", cuit: "", telefono: "", direccion: "", saldo_inicial: "0", vendedor_nombre: "" })
     setEditingCliente(null)
   }
 
@@ -176,6 +188,7 @@ export function ClientesContent() {
     { key: "cuit", header: "CUIT", render: (c: Cliente) => c.cuit || "-", mobileHidden: true },
     { key: "telefono", header: "Telefono", render: (c: Cliente) => c.telefono || "-" },
     { key: "direccion", header: "Direccion", render: (c: Cliente) => c.direccion || "-", mobileHidden: true },
+    { key: "vendedor_nombre", header: "Vendedor", render: (c: Cliente) => c.vendedor_nombre || "-", mobileHidden: true },
     { key: "saldo_inicial", header: "Saldo Inicial", render: (c: Cliente) => <Badge variant={c.saldo_inicial > 0 ? "destructive" : "outline"}>{formatCurrency(c.saldo_inicial)}</Badge> },
     { key: "fecha_alta", header: "Fecha Alta", render: (c: Cliente) => formatDate(new Date(c.fecha_alta)), mobileHidden: true },
     {
@@ -284,6 +297,20 @@ export function ClientesContent() {
                     className="pl-9"
                   />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Vendedor asignado</Label>
+                <Select value={form.vendedor_nombre} onValueChange={(v) => setForm({ ...form, vendedor_nombre: v === "__none__" ? "" : v })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sin asignar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sin asignar</SelectItem>
+                    {vendedores.map(v => (
+                      <SelectItem key={v.id} value={v.nombre}>{v.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { ChevronDown, ChevronRight, Download, Calendar, Check, Receipt, LayoutList, AlignJustify } from "lucide-react"
+import { ChevronDown, ChevronRight, Download, Calendar, Check, Receipt, LayoutList, AlignJustify, FileSpreadsheet } from "lucide-react"
 import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -389,27 +389,34 @@ export function CuentasContent() {
     doc.text(formatCurrency(cliente.saldo), 105, yPos + 14, { align: "center" })
     
     yPos += 28
-    doc.setFontSize(10)
-    doc.text("FECHA", 22, yPos)
-    doc.text("DETALLE", 55, yPos)
-    doc.text("DEBE", 145, yPos, { align: "right" })
-    doc.text("HABER", 180, yPos, { align: "right" })
-    
-    yPos += 2
     doc.setLineWidth(0.5)
     doc.line(20, yPos, 190, yPos)
     yPos += 6
-    
+
+    doc.setFontSize(10)
+    doc.setTextColor(0, 0, 0)
+    doc.text("FECHA", 22, yPos)
+    doc.text("DETALLE", 55, yPos)
+    doc.text("DEBE", 133, yPos, { align: "right" })
+    doc.text("HABER", 162, yPos, { align: "right" })
+    doc.text("SALDO", 190, yPos, { align: "right" })
+    yPos += 2
+    doc.line(20, yPos, 190, yPos)
+    yPos += 5
+
     doc.setFontSize(9)
+    let saldoPDF = cliente.saldoAnterior
     cliente.movimientos.forEach((mov) => {
       if (yPos > 270) {
         doc.addPage()
         yPos = 20
       }
+      saldoPDF += mov.debe - mov.haber
       doc.text(formatDate(new Date(mov.fecha)), 22, yPos)
-      doc.text(mov.descripcion.substring(0, 47), 55, yPos)
-      doc.text(mov.debe > 0 ? formatCurrency(mov.debe) : "", 145, yPos, { align: "right" })
-      doc.text(mov.haber > 0 ? formatCurrency(mov.haber) : "", 180, yPos, { align: "right" })
+      doc.text(mov.descripcion.substring(0, 38), 55, yPos)
+      doc.text(mov.debe > 0 ? formatCurrency(mov.debe) : "", 133, yPos, { align: "right" })
+      doc.text(mov.haber > 0 ? formatCurrency(mov.haber) : "", 162, yPos, { align: "right" })
+      doc.text(formatCurrency(saldoPDF), 190, yPos, { align: "right" })
       yPos += 6
     })
     
@@ -419,6 +426,45 @@ export function CuentasContent() {
     doc.text(`Generado el ${formatDate(new Date())} por AviGest`, 105, yPos, { align: "center" })
     
     doc.save(`estado-cuenta-${cliente.nombre.replace(/\s+/g, '-')}.pdf`)
+  }
+
+  const exportClienteCSV = (cliente: typeof clientesConMovimientos[0]) => {
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+    const rows: string[] = []
+
+    rows.push(`"Estado de cuenta — ${cliente.nombre}"`)
+    rows.push(`"Saldo anterior",${esc(cliente.saldoAnterior)}`)
+    rows.push(`"Total ventas",${esc(cliente.totalVentas)}`)
+    rows.push(`"Total cobros",${esc(cliente.totalCobros)}`)
+    rows.push(`"Saldo actual",${esc(cliente.saldo)}`)
+    rows.push("")
+    rows.push([esc("Fecha"), esc("Tipo"), esc("Descripción"), esc("Debe"), esc("Haber"), esc("Saldo")].join(","))
+
+    let saldoAcum = cliente.saldoAnterior
+    if (cliente.saldoAnterior !== 0) {
+      rows.push([esc(""), esc(""), esc("Saldo inicial"), esc(""), esc(""), esc(cliente.saldoAnterior)].join(","))
+    }
+    cliente.movimientos.forEach(mov => {
+      saldoAcum += mov.debe - mov.haber
+      rows.push([
+        esc(formatDate(new Date(mov.fecha + "T12:00:00"))),
+        esc(mov.tipo === "venta" ? "Venta" : "Cobro"),
+        esc(mov.descripcion),
+        esc(mov.debe > 0 ? mov.debe : ""),
+        esc(mov.haber > 0 ? mov.haber : ""),
+        esc(saldoAcum),
+      ].join(","))
+    })
+
+    // BOM para que Excel abra UTF-8 correctamente
+    const bom = "\uFEFF"
+    const blob = new Blob([bom + rows.join("\n")], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `cuenta-corriente-${cliente.nombre.replace(/\s+/g, '-')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -570,8 +616,11 @@ export function CuentasContent() {
                               Cobrar
                             </Button>
                           )}
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => exportClientePDF(cliente)}>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Exportar PDF" onClick={() => exportClientePDF(cliente)}>
                             <Download className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" title="Exportar Excel" onClick={() => exportClienteCSV(cliente)}>
+                            <FileSpreadsheet className="h-3.5 w-3.5 text-green-600" />
                           </Button>
                         </div>
                       </td>
@@ -636,8 +685,11 @@ export function CuentasContent() {
                           Cobrar
                         </Button>
                       )}
-                      <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); exportClientePDF(cliente) }}>
+                      <Button variant="outline" size="sm" title="Exportar PDF" onClick={(e) => { e.stopPropagation(); exportClientePDF(cliente) }}>
                         <Download className="h-4 w-4" />
+                      </Button>
+                      <Button variant="outline" size="sm" title="Exportar Excel" onClick={(e) => { e.stopPropagation(); exportClienteCSV(cliente) }}>
+                        <FileSpreadsheet className="h-4 w-4 text-green-600" />
                       </Button>
                     </div>
                   </div>
@@ -651,17 +703,36 @@ export function CuentasContent() {
                             <th className="text-left p-2 font-medium">Descripcion</th>
                             <th className="text-right p-2 font-medium">Debe</th>
                             <th className="text-right p-2 font-medium">Haber</th>
+                            <th className="text-right p-2 font-medium">Saldo</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {cliente.movimientos.map((mov, idx) => (
-                            <tr key={idx} className="border-t text-sm">
-                              <td className="p-2 text-muted-foreground">{formatDate(new Date(mov.fecha))}</td>
-                              <td className="p-2">{mov.descripcion}</td>
-                              <td className="p-2 text-right text-destructive">{mov.debe > 0 ? formatCurrency(mov.debe) : '-'}</td>
-                              <td className="p-2 text-right text-green-600">{mov.haber > 0 ? formatCurrency(mov.haber) : '-'}</td>
+                          {cliente.saldoAnterior !== 0 && (
+                            <tr className="border-t text-sm bg-muted/20">
+                              <td className="p-2 text-muted-foreground">—</td>
+                              <td className="p-2 text-muted-foreground italic">Saldo inicial</td>
+                              <td className="p-2 text-right">-</td>
+                              <td className="p-2 text-right">-</td>
+                              <td className="p-2 text-right font-medium">{formatCurrency(cliente.saldoAnterior)}</td>
                             </tr>
-                          ))}
+                          )}
+                          {(() => {
+                            let saldoAcum = cliente.saldoAnterior
+                            return cliente.movimientos.map((mov, idx) => {
+                              saldoAcum += mov.debe - mov.haber
+                              return (
+                                <tr key={idx} className="border-t text-sm">
+                                  <td className="p-2 text-muted-foreground">{formatDate(new Date(mov.fecha))}</td>
+                                  <td className="p-2">{mov.descripcion}</td>
+                                  <td className="p-2 text-right text-destructive">{mov.debe > 0 ? formatCurrency(mov.debe) : '-'}</td>
+                                  <td className="p-2 text-right text-green-600">{mov.haber > 0 ? formatCurrency(mov.haber) : '-'}</td>
+                                  <td className={`p-2 text-right font-medium ${saldoAcum > 0 ? "text-destructive" : saldoAcum < 0 ? "text-green-600" : "text-muted-foreground"}`}>
+                                    {formatCurrency(saldoAcum)}
+                                  </td>
+                                </tr>
+                              )
+                            })
+                          })()}
                         </tbody>
                       </table>
                     </div>

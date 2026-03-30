@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useMemo } from "react"
-import { ShoppingCart, Receipt, TrendingUp, TrendingDown, ArrowRight } from "lucide-react"
+import { ShoppingCart, Receipt, TrendingUp, TrendingDown, ArrowRight, Package } from "lucide-react"
 import Link from "next/link"
 import { StatCard } from "./stat-card"
 import { DataTable } from "./data-table"
@@ -17,6 +17,7 @@ interface Venta {
   cliente_nombre: string
   cantidad: number
   precio_unitario: number
+  producto_nombre?: string
 }
 
 interface Cobro {
@@ -78,8 +79,20 @@ export function DashboardContent() {
     const mesAnterior = mesActual === 0 ? 11 : mesActual - 1
     const añoMesAnterior = mesActual === 0 ? añoActual - 1 : añoActual
 
-    const semanaActual = Math.floor((now.getTime() - new Date(añoActual, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
-    const semanaAnterior = semanaActual - 1
+    // Semana calendario: lunes a domingo
+    const diaSemana = now.getDay() === 0 ? 6 : now.getDay() - 1 // 0=lun, 6=dom
+    const inicioSemanaActual = new Date(now)
+    inicioSemanaActual.setHours(0, 0, 0, 0)
+    inicioSemanaActual.setDate(now.getDate() - diaSemana)
+    const finSemanaActual = new Date(inicioSemanaActual)
+    finSemanaActual.setDate(inicioSemanaActual.getDate() + 6)
+    finSemanaActual.setHours(23, 59, 59, 999)
+
+    const inicioSemanaAnterior = new Date(inicioSemanaActual)
+    inicioSemanaAnterior.setDate(inicioSemanaActual.getDate() - 7)
+    const finSemanaAnterior = new Date(inicioSemanaActual)
+    finSemanaAnterior.setDate(inicioSemanaActual.getDate() - 1)
+    finSemanaAnterior.setHours(23, 59, 59, 999)
 
     const ventasMesActual = ventas.filter(v => {
       const fecha = new Date(v.fecha)
@@ -92,36 +105,47 @@ export function DashboardContent() {
 
     const ventasSemanaActual = ventas.filter(v => {
       const fecha = new Date(v.fecha)
-      const semana = Math.floor((fecha.getTime() - new Date(fecha.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
-      return semana === semanaActual
+      return fecha >= inicioSemanaActual && fecha <= finSemanaActual
     })
     const ventasSemanaAnterior = ventas.filter(v => {
       const fecha = new Date(v.fecha)
-      const semana = Math.floor((fecha.getTime() - new Date(fecha.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
-      return semana === semanaAnterior
+      return fecha >= inicioSemanaAnterior && fecha <= finSemanaAnterior
     })
+
+    const esPollo = (v: Venta) => !!v.producto_nombre && v.producto_nombre.toLowerCase().includes("pollo")
+
+    const cajonesMesActual = ventasMesActual.filter(esPollo).reduce((s, v) => s + v.cantidad, 0)
+    const cajonesMesAnterior = ventasMesAnterior.filter(esPollo).reduce((s, v) => s + v.cantidad, 0)
+    const cajonesSemanaActual = ventasSemanaActual.filter(esPollo).reduce((s, v) => s + v.cantidad, 0)
+    const cajonesSemanaAnterior = ventasSemanaAnterior.filter(esPollo).reduce((s, v) => s + v.cantidad, 0)
+
+    const variacionCajonesMes = cajonesMesAnterior > 0 ? ((cajonesMesActual - cajonesMesAnterior) / cajonesMesAnterior) * 100 : 0
+    const variacionCajonesSemana = cajonesSemanaAnterior > 0 ? ((cajonesSemanaActual - cajonesSemanaAnterior) / cajonesSemanaAnterior) * 100 : 0
 
     const totalVentasMesActual = ventasMesActual.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
     const totalVentasMesAnterior = ventasMesAnterior.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
     const totalVentasSemanaActual = ventasSemanaActual.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
     const totalVentasSemanaAnterior = ventasSemanaAnterior.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
 
-    const variacionMes = totalVentasMesAnterior > 0 ? ((totalVentasMesActual - totalVentasMesAnterior) / totalVentasMesAnterior) * 100 : 0
-    const variacionSemana = totalVentasSemanaAnterior > 0 ? ((totalVentasSemanaActual - totalVentasSemanaAnterior) / totalVentasSemanaAnterior) * 100 : 0
-
-    const totalVentas = ventas.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
     const totalCobros = cobros.reduce((acc, c) => acc + Number(c.monto), 0)
+    const totalCobrosMes = cobros
+      .filter(c => { const f = new Date(c.fecha); return f.getMonth() === mesActual && f.getFullYear() === añoActual })
+      .reduce((acc, c) => acc + Number(c.monto), 0)
     const cuentasPorCobrar = clientBalances.reduce((acc, c) => acc + c.saldo, 0)
 
     return {
-      ventasMes: totalVentas,
+      cajonesMesActual,
+      cajonesMesAnterior,
+      cajonesSemanaActual,
+      cajonesSemanaAnterior,
+      variacionCajonesMes,
+      variacionCajonesSemana,
       ventasMesActual: totalVentasMesActual,
       ventasMesAnterior: totalVentasMesAnterior,
       ventasSemanaActual: totalVentasSemanaActual,
       ventasSemanaAnterior: totalVentasSemanaAnterior,
-      variacionMes,
-      variacionSemana,
-      cobrosMes: totalCobros,
+      cobrosMes: totalCobrosMes,
+      cobrosTotales: totalCobros,
       cuentasPorCobrar,
     }
   }, [ventas, cobros, clientBalances])
@@ -150,66 +174,84 @@ export function DashboardContent() {
 
   return (
     <div className="space-y-8">
-      {/* Stats Grid */}
+      {/* Stats Grid — cajones de pollo como métrica principal */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Ventas" value={<CurrencyDisplay amount={stats.ventasMes} />} subtitle="Registradas" icon={ShoppingCart} variant="success" />
-        <StatCard title="Total Cobros" value={<CurrencyDisplay amount={stats.cobrosMes} />} subtitle="Recaudado" icon={TrendingUp} variant="default" />
-        <StatCard title="Cobros" value={<CurrencyDisplay amount={stats.cobrosMes} />} subtitle="Total cobrado" icon={Receipt} variant="success" />
+        <StatCard
+          title="Cajones pollo esta semana"
+          value={<span className="text-2xl font-bold">{stats.cajonesSemanaActual} caj.</span>}
+          subtitle={stats.cajonesSemanaAnterior > 0 ? `Semana ant.: ${stats.cajonesSemanaAnterior} caj.` : "Sin datos semana anterior"}
+          icon={Package}
+          variant="success"
+        />
+        <StatCard
+          title="Cajones pollo este mes"
+          value={<span className="text-2xl font-bold">{stats.cajonesMesActual} caj.</span>}
+          subtitle={stats.cajonesMesAnterior > 0 ? `Mes ant.: ${stats.cajonesMesAnterior} caj.` : "Sin datos mes anterior"}
+          icon={Package}
+          variant="default"
+        />
+        <StatCard title="Cobros del mes" value={<CurrencyDisplay amount={stats.cobrosMes} />} subtitle="Recaudado este mes" icon={Receipt} variant="success" />
         <StatCard title="Por Cobrar" value={<CurrencyDisplay amount={stats.cuentasPorCobrar} />} subtitle="Saldo pendiente" icon={TrendingDown} variant="warning" />
       </div>
 
-      {/* Comparativas */}
+      {/* Comparativas cajones pollo */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="rounded-xl border bg-card p-6">
-          <h3 className="text-lg font-semibold mb-4">Comparativa Mes vs Mes</h3>
+          <div className="flex items-center gap-2 mb-4">
+            <Package className="h-5 w-5 text-muted-foreground" />
+            <h3 className="text-lg font-semibold">Cajones pollo — Semana vs Semana</h3>
+          </div>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Mes Actual</span>
-              <CurrencyDisplay amount={stats.ventasMesActual} className="font-semibold" />
+              <span className="text-sm text-muted-foreground">Esta semana</span>
+              <span className="font-bold text-xl">{stats.cajonesSemanaActual} caj.</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Mes Anterior</span>
-              <CurrencyDisplay amount={stats.ventasMesAnterior} className="font-semibold" />
+              <span className="text-sm text-muted-foreground">Semana anterior</span>
+              <span className="font-semibold">{stats.cajonesSemanaAnterior} caj.</span>
             </div>
             <div className="border-t pt-3 flex items-center justify-between">
               <span className="font-medium">Variación</span>
               <div className="flex items-center gap-2">
-                {stats.variacionMes >= 0 ? (
-                  <TrendingUp className="h-4 w-4 text-green-600" />
-                ) : (
-                  <TrendingDown className="h-4 w-4 text-red-600" />
-                )}
-                <span className={`font-bold ${stats.variacionMes >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {stats.variacionMes >= 0 ? '+' : ''}{stats.variacionMes.toFixed(1)}%
+                {stats.variacionCajonesSemana >= 0 ? <TrendingUp className="h-4 w-4 text-green-600" /> : <TrendingDown className="h-4 w-4 text-red-600" />}
+                <span className={`font-bold ${stats.variacionCajonesSemana >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {stats.variacionCajonesSemana >= 0 ? '+' : ''}{stats.variacionCajonesSemana.toFixed(1)}%
                 </span>
               </div>
+            </div>
+            <div className="border-t pt-3 text-xs text-muted-foreground flex justify-between">
+              <span>Facturación esta semana</span>
+              <CurrencyDisplay amount={stats.ventasSemanaActual} className="font-medium" />
             </div>
           </div>
         </div>
 
         <div className="rounded-xl border bg-card p-6">
-          <h3 className="text-lg font-semibold mb-4">Comparativa Semana vs Semana</h3>
+          <div className="flex items-center gap-2 mb-4">
+            <Package className="h-5 w-5 text-muted-foreground" />
+            <h3 className="text-lg font-semibold">Cajones pollo — Mes vs Mes</h3>
+          </div>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Semana Actual</span>
-              <CurrencyDisplay amount={stats.ventasSemanaActual} className="font-semibold" />
+              <span className="text-sm text-muted-foreground">Este mes</span>
+              <span className="font-bold text-xl">{stats.cajonesMesActual} caj.</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Semana Anterior</span>
-              <CurrencyDisplay amount={stats.ventasSemanaAnterior} className="font-semibold" />
+              <span className="text-sm text-muted-foreground">Mes anterior</span>
+              <span className="font-semibold">{stats.cajonesMesAnterior} caj.</span>
             </div>
             <div className="border-t pt-3 flex items-center justify-between">
               <span className="font-medium">Variación</span>
               <div className="flex items-center gap-2">
-                {stats.variacionSemana >= 0 ? (
-                  <TrendingUp className="h-4 w-4 text-green-600" />
-                ) : (
-                  <TrendingDown className="h-4 w-4 text-red-600" />
-                )}
-                <span className={`font-bold ${stats.variacionSemana >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {stats.variacionSemana >= 0 ? '+' : ''}{stats.variacionSemana.toFixed(1)}%
+                {stats.variacionCajonesMes >= 0 ? <TrendingUp className="h-4 w-4 text-green-600" /> : <TrendingDown className="h-4 w-4 text-red-600" />}
+                <span className={`font-bold ${stats.variacionCajonesMes >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {stats.variacionCajonesMes >= 0 ? '+' : ''}{stats.variacionCajonesMes.toFixed(1)}%
                 </span>
               </div>
+            </div>
+            <div className="border-t pt-3 text-xs text-muted-foreground flex justify-between">
+              <span>Facturación este mes</span>
+              <CurrencyDisplay amount={stats.ventasMesActual} className="font-medium" />
             </div>
           </div>
         </div>
@@ -221,8 +263,8 @@ export function DashboardContent() {
           <h3 className="text-lg font-semibold text-foreground">Resumen</h3>
           <div className="mt-4 space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Total Ventas</span>
-              <CurrencyDisplay amount={stats.ventasMes} className="font-semibold text-primary" />
+              <span className="text-muted-foreground">Ventas este mes</span>
+              <CurrencyDisplay amount={stats.ventasMesActual} className="font-semibold text-primary" />
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Total Cobros</span>
