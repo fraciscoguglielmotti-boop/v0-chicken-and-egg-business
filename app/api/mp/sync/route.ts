@@ -10,6 +10,27 @@ function getSupabase() {
 
 const MP_HEADERS = (token: string) => ({ Authorization: `Bearer ${token}` })
 
+const OPERACION_ES: Record<string, string> = {
+  regular_payment: "Pago",
+  money_transfer: "Transferencia",
+  recurring_payment: "Pago recurrente",
+  account_fund: "Carga de saldo",
+  pos_payment: "Pago QR/POS",
+  cellphone_recharge: "Recarga celular",
+  payment_addition: "Pago adicional",
+  investment_transfer: "Inversión",
+}
+
+const METODO_ES: Record<string, string> = {
+  account_money: "Saldo MP",
+  debit_card: "Tarjeta débito",
+  credit_card: "Tarjeta crédito",
+  bank_transfer: "Transferencia bancaria",
+  ticket: "Efectivo/cupón",
+  atm: "Cajero automático",
+  prepaid_card: "Tarjeta prepaga",
+}
+
 // Intenta obtener movimientos de cuenta completos (ingresos + egresos)
 async function fetchMovimientosCuenta(
   accessToken: string,
@@ -109,21 +130,30 @@ export async function POST(request: Request) {
         const soyColector = String(p.collector_id) === myUserId
         const tipo: "ingreso" | "egreso" = soyColector ? "ingreso" : "egreso"
 
-        // Descripción enriquecida: item específico > descripción > statement descriptor > operación
+        // Descripción enriquecida con múltiples fallbacks
         const itemTitle = p.additional_info?.items?.[0]?.title
-        const descripcion =
+        const storeInfo = p.additional_info?.shipments?.receiver_address?.city_name
+        const descripcionRaw =
           itemTitle ??
-          (p.description && p.description !== "Varios" ? p.description : null) ??
+          storeInfo ??
+          (p.description && !["Varios", "null", "undefined"].includes(p.description)
+            ? p.description : null) ??
           p.statement_descriptor ??
-          p.operation_type ??
           null
+        const tipoOp = OPERACION_ES[p.operation_type] ?? p.operation_type ?? null
+        const descripcion = descripcionRaw ?? tipoOp
 
+        // Nombre de contraparte: quién pagó (ingreso) o quién cobró (egreso)
         const nombreContraparte = soyColector
-          ? [p.payer?.first_name, p.payer?.last_name].filter(Boolean).join(" ") ||
-            p.payer?.identification?.number ||
-            null
-          : p.collector?.nickname ?? p.collector?.email ?? null
-        const emailContraparte = soyColector ? (p.payer?.email ?? null) : null
+          ? ([p.payer?.first_name, p.payer?.last_name].filter(Boolean).join(" ").trim() ||
+            p.additional_info?.payer?.first_name ||
+            null)
+          : (p.collector?.nickname ||
+            [p.collector?.first_name, p.collector?.last_name].filter(Boolean).join(" ").trim() ||
+            null)
+        const emailContraparte = soyColector
+          ? (p.payer?.email ?? null)
+          : (p.collector?.email ?? null)
 
         return {
           id: String(p.id),
@@ -132,10 +162,10 @@ export async function POST(request: Request) {
           monto: Math.abs(p.transaction_amount),
           descripcion,
           referencia: String(p.id),
-          pagador_nombre: nombreContraparte,
+          pagador_nombre: nombreContraparte || null,
           pagador_email: emailContraparte,
-          tipo_operacion: p.operation_type ?? null,
-          metodo_pago: p.payment_method_id ?? null,
+          tipo_operacion: OPERACION_ES[p.operation_type] ?? p.operation_type ?? null,
+          metodo_pago: METODO_ES[p.payment_method_id] ?? p.payment_method_id ?? null,
         }
       })
     }

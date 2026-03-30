@@ -1,5 +1,20 @@
 import { NextResponse } from "next/server"
 
+const MP_HEADERS = (token: string) => ({
+  Authorization: `Bearer ${token}`,
+  "Cache-Control": "no-store",
+})
+
+async function tryFetch(url: string, token: string) {
+  try {
+    const res = await fetch(url, { headers: MP_HEADERS(token), cache: "no-store" })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
 export async function GET() {
   try {
     const accessToken = process.env.MP_ACCESS_TOKEN
@@ -7,48 +22,40 @@ export async function GET() {
       return NextResponse.json({ error: "MP_ACCESS_TOKEN no configurado" }, { status: 500 })
     }
 
-    // Obtener user ID
-    const meRes = await fetch("https://api.mercadopago.com/users/me", {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      cache: "no-store",
-    })
-    if (!meRes.ok) throw new Error(`Error al obtener usuario: ${meRes.status}`)
-    const meData = await meRes.json()
+    // Obtener user ID y ver si viene el saldo en /users/me
+    const meData = await tryFetch("https://api.mercadopago.com/users/me", accessToken)
+    if (!meData?.id) throw new Error("No se pudo obtener el usuario de MP")
     const userId = meData.id
 
-    // Obtener saldo disponible
-    const balRes = await fetch(
+    // Intentar múltiples endpoints de saldo en orden
+    const endpoints = [
       `https://api.mercadopago.com/v1/users/${userId}/mercadopago_account/balance`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        cache: "no-store",
-      }
-    )
+      `https://api.mercadopago.com/v1/account/balance`,
+      `https://api.mercadopago.com/users/${userId}/mercadopago_account/balance`,
+    ]
 
-    if (!balRes.ok) {
-      // Fallback: algunos endpoints alternativos
-      const balRes2 = await fetch(
-        `https://api.mercadopago.com/v1/account/balance`,
-        {
-          headers: { Authorization: `Bearer ${accessToken}` },
-          cache: "no-store",
-        }
-      )
-      if (!balRes2.ok) throw new Error(`Saldo no disponible: ${balRes.status}`)
-      const bal2 = await balRes2.json()
-      return NextResponse.json({ available_balance: bal2.available_balance ?? bal2.total ?? 0 })
+    for (const url of endpoints) {
+      const data = await tryFetch(url, accessToken)
+      if (!data) continue
+
+      // Intentar todos los campos conocidos donde puede venir el saldo
+      const saldo =
+        data.available_balance ??
+        data.total_amount ??
+        data.available ??
+        data.balance ??
+        data.total ??
+        data.amount ??
+        data.wallet?.available_balance ??
+        null
+
+      if (saldo !== null) {
+        return NextResponse.json({ available_balance: saldo })
+      }
     }
 
-    const bal = await balRes.json()
-    // La respuesta puede tener distintos campos según la versión
-    const disponible =
-      bal.available_balance ??
-      bal.total_amount ??
-      bal.available ??
-      bal.balance ??
-      0
-
-    return NextResponse.json({ available_balance: disponible, raw: bal })
+    // Último recurso: calcular saldo desde movimientos recientes
+    return NextResponse.json({ available_balance: null, message: "Saldo no expuesto por la API de MP para esta cuenta" })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido"
     return NextResponse.json({ error: msg }, { status: 500 })
