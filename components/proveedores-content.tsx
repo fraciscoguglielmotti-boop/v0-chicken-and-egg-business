@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { DataTable } from "./data-table"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { formatDate } from "@/lib/utils"
+import { useToast } from "@/hooks/use-toast"
 
 interface Proveedor {
   id: string
@@ -18,6 +19,7 @@ interface Proveedor {
 
 export function ProveedoresContent() {
   const { data: proveedores = [], mutate, isLoading } = useSupabase<Proveedor>("proveedores")
+  const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingProveedor, setEditingProveedor] = useState<Proveedor | null>(null)
@@ -39,8 +41,9 @@ export function ProveedoresContent() {
       setDialogOpen(false)
       setForm({ nombre: "" })
       setEditingProveedor(null)
-    } catch (error) {
-      console.error("Error guardando proveedor:", error)
+      toast({ title: editingProveedor ? "Proveedor actualizado" : "Proveedor creado" })
+    } catch (error: any) {
+      toast({ title: "Error al guardar", description: error?.message ?? "No se pudo guardar el proveedor", variant: "destructive" })
     }
   }
 
@@ -55,8 +58,9 @@ export function ProveedoresContent() {
     try {
       await deleteRow("proveedores", id)
       await mutate()
-    } catch (error) {
-      console.error("Error eliminando proveedor:", error)
+      toast({ title: "Proveedor eliminado" })
+    } catch (error: any) {
+      toast({ title: "Error al eliminar", description: error?.message ?? "No se pudo eliminar el proveedor", variant: "destructive" })
     }
   }
 

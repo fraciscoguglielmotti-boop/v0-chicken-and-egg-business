@@ -117,8 +117,9 @@ export function VendedoresContent() {
       setDialogOpen(false)
       setForm({ nombre: "", comision: "0" })
       setEditingVendedor(null)
-    } catch (error) {
-      console.error("Error guardando vendedor:", error)
+      toast({ title: editingVendedor ? "Vendedor actualizado" : "Vendedor creado" })
+    } catch (error: any) {
+      toast({ title: "Error al guardar", description: error?.message ?? "No se pudo guardar el vendedor", variant: "destructive" })
     }
   }
 
@@ -133,8 +134,9 @@ export function VendedoresContent() {
     try {
       await deleteRow("vendedores", id)
       await mutate()
-    } catch (error) {
-      console.error("Error eliminando vendedor:", error)
+      toast({ title: "Vendedor eliminado" })
+    } catch (error: any) {
+      toast({ title: "Error al eliminar", description: error?.message ?? "No se pudo eliminar el vendedor", variant: "destructive" })
     }
   }
 

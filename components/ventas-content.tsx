@@ -136,7 +136,7 @@ export function VentasContent() {
   const handleDelete = async (id: string) => {
     try {
       await deleteRow("ventas", id)
-      mutate()
+      await mutate()
       toast({ title: "Venta eliminada" })
     } catch (err: any) {
       toast({ title: "Error al eliminar", description: err.message, variant: "destructive" })

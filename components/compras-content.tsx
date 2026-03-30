@@ -73,21 +73,26 @@ export function ComprasContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const cantidad = parseFloat(formData.cantidad)
-    const precio = parseFloat(formData.precio_unitario)
-    await insertRow("compras", {
-      fecha: formData.fecha,
-      proveedor_nombre: formData.proveedor_nombre,
-      producto: formData.producto,
-      cantidad,
-      precio_unitario: precio,
-      total: cantidad * precio,
-      estado: formData.estado,
-      verificado: formData.verificado
-    })
-    mutate()
-    setIsDialogOpen(false)
-    setFormData({ fecha: new Date().toISOString().split('T')[0], proveedor_nombre: "", producto: "", cantidad: "", precio_unitario: "", estado: "pendiente", verificado: false })
+    try {
+      const cantidad = parseFloat(formData.cantidad)
+      const precio = parseFloat(formData.precio_unitario)
+      await insertRow("compras", {
+        fecha: formData.fecha,
+        proveedor_nombre: formData.proveedor_nombre,
+        producto: formData.producto,
+        cantidad,
+        precio_unitario: precio,
+        total: cantidad * precio,
+        estado: formData.estado,
+        verificado: formData.verificado
+      })
+      await mutate()
+      setIsDialogOpen(false)
+      setFormData({ fecha: new Date().toISOString().split('T')[0], proveedor_nombre: "", producto: "", cantidad: "", precio_unitario: "", estado: "pendiente", verificado: false })
+      toast({ title: "Compra registrada", description: `${formData.proveedor_nombre} — ${formData.producto}` })
+    } catch (err: any) {
+      toast({ title: "Error al guardar", description: err?.message ?? "No se pudo registrar la compra", variant: "destructive" })
+    }
   }
 
   const handleEdit = (compra: Compra) => {
@@ -107,7 +112,7 @@ export function ComprasContent() {
   const handleDelete = async (id: string) => {
     try {
       await deleteRow("compras", id)
-      mutate()
+      await mutate()
       toast({ title: "Compra eliminada" })
     } catch (err: any) {
       toast({ title: "Error al eliminar", description: err.message, variant: "destructive" })
@@ -164,7 +169,7 @@ export function ComprasContent() {
           e.stopPropagation()
           try {
             await updateRow("compras", c.id, { verificado: !c.verificado })
-            mutate()
+            await mutate()
           } catch (err: any) {
             toast({ title: "Error", description: err?.message ?? "No se pudo actualizar", variant: "destructive" })
           }

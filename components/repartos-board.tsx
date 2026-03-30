@@ -8,15 +8,17 @@ import {
   TouchSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
 } from "@dnd-kit/core"
 import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { GripVertical, Truck, AlertTriangle, CheckCircle2 } from "lucide-react"
+import { GripVertical, Truck, AlertTriangle, CheckCircle2, FileDown, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { formatCurrency } from "@/lib/utils"
@@ -88,6 +90,8 @@ function VehiculoColumna({
   allPedidos,
   capacidad,
   onCapacidadChange,
+  sortField,
+  sortDir,
 }: {
   vehiculoId: string
   label: string
@@ -95,10 +99,22 @@ function VehiculoColumna({
   allPedidos: Pedido[]
   capacidad: number
   onCapacidadChange: (val: number) => void
+  sortField: "cliente" | "cantidad" | null
+  sortDir: "asc" | "desc"
 }) {
-  const pedidosColumna = pedidosIds
-    .map(id => allPedidos.find(p => p.id === id))
-    .filter(Boolean) as Pedido[]
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: vehiculoId })
+
+  const pedidosColumna = useMemo(() => {
+    const base = pedidosIds
+      .map(id => allPedidos.find(p => p.id === id))
+      .filter(Boolean) as Pedido[]
+    if (!sortField) return base
+    return [...base].sort((a, b) =>
+      sortField === "cliente"
+        ? sortDir === "asc" ? a.cliente.localeCompare(b.cliente, "es") : b.cliente.localeCompare(a.cliente, "es")
+        : sortDir === "asc" ? a.cantidad - b.cantidad : b.cantidad - a.cantidad
+    )
+  }, [pedidosIds, allPedidos, sortField, sortDir])
 
   const totalUnidades = pedidosColumna.reduce((sum, p) => sum + p.cantidad, 0)
   const totalMonto = pedidosColumna.reduce((sum, p) => sum + p.cantidad * p.precio_unitario, 0)
@@ -156,9 +172,11 @@ function VehiculoColumna({
       {/* Zona drop */}
       <SortableContext items={pedidosIds} strategy={verticalListSortingStrategy}>
         <div
+          ref={setDropRef}
           className={cn(
             "flex-1 rounded-b-lg border border-t-0 p-2 space-y-2 min-h-[120px] transition-colors",
-            excede ? "border-red-200 dark:border-red-800" : "border-border"
+            excede ? "border-red-200 dark:border-red-800" : "border-border",
+            isOver && !excede && "bg-muted/40 border-primary/50"
           )}
         >
           {pedidosColumna.map(p => (
@@ -213,6 +231,17 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
   }, [pedidos, vehiculos])
 
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [sortField, setSortField] = useState<"cliente" | "cantidad" | null>(null)
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  const toggleSort = (field: "cliente" | "cantidad") => {
+    if (sortField === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDir("asc")
+    }
+  }
   const activePedido = activeId ? pedidos.find(p => p.id === activeId) : null
 
   const sensors = useSensors(
@@ -292,13 +321,128 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
     .reduce((sum, [, ids]) => sum + ids.length, 0)
   const totalSinAsignar = (asignaciones[SIN_ASIGNAR] ?? []).length
 
+  const handleGenerarPDF = async () => {
+    const vehiculosConPedidos = vehiculos.filter(v => (asignaciones[v.id] ?? []).length > 0)
+    if (vehiculosConPedidos.length === 0) return
+
+    const jsPDF = (await import("jspdf")).jsPDF
+    const autoTable = (await import("jspdf-autotable")).default
+    const doc = new jsPDF()
+
+    const fecha = new Date().toLocaleDateString("es-AR", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    })
+    doc.setFontSize(16)
+    doc.setFont("helvetica", "bold")
+    doc.text("AviGest — Repartos del día", 14, 18)
+    doc.setFontSize(10)
+    doc.setFont("helvetica", "normal")
+    doc.setTextColor(100)
+    doc.text(fecha.charAt(0).toUpperCase() + fecha.slice(1), 14, 25)
+    doc.setTextColor(0)
+
+    let y = 32
+
+    vehiculosConPedidos.forEach((v, idx) => {
+      const pedidosVehiculo = (asignaciones[v.id] ?? [])
+        .map(id => pedidos.find(p => p.id === id))
+        .filter(Boolean) as Pedido[]
+
+      const label = `${v.patente} · ${v.marca} ${v.modelo}`
+
+      // Agrupar por calibre (última palabra del producto: A, B, N1, etc.)
+      const grupos = new Map<string, Pedido[]>()
+      pedidosVehiculo.forEach(p => {
+        const parts = p.producto.trim().split(/\s+/)
+        const calibre = parts[parts.length - 1]
+        if (!grupos.has(calibre)) grupos.set(calibre, [])
+        grupos.get(calibre)!.push(p)
+      })
+
+      const body: any[] = []
+      grupos.forEach((peds, calibre) => {
+        // Encabezado de grupo
+        body.push([{
+          content: `Pollo ${calibre}`,
+          colSpan: 4,
+          styles: { fillColor: [55, 55, 55], textColor: 255, fontStyle: "bold", fontSize: 8 },
+        }])
+
+        let acumulado = 0
+        peds.forEach(p => {
+          acumulado += p.cantidad
+          body.push([p.cliente, p.cantidad, calibre, acumulado])
+        })
+
+        // Fila de total por grupo
+        const totalGrupo = peds.reduce((s, p) => s + p.cantidad, 0)
+        body.push([
+          { content: `Total Pollo ${calibre}`, colSpan: 3, styles: { fontStyle: "bold", fillColor: [230, 230, 230] } },
+          { content: totalGrupo, styles: { fontStyle: "bold", halign: "right", fillColor: [230, 230, 230] } },
+        ])
+        // Fila vacía separadora entre grupos
+        body.push([{ content: "", colSpan: 4, styles: { cellPadding: 1 } }])
+      })
+
+      // Total general del vehículo (A + B + ...)
+      const totalVehiculo = pedidosVehiculo.reduce((s, p) => s + p.cantidad, 0)
+      const etiquetas = Array.from(grupos.keys()).join(" + ")
+      body.push([
+        { content: `TOTAL ${etiquetas}`, colSpan: 3, styles: { fontStyle: "bold", fillColor: [20, 20, 20], textColor: 255, fontSize: 9 } },
+        { content: totalVehiculo, styles: { fontStyle: "bold", halign: "right", fillColor: [20, 20, 20], textColor: 255, fontSize: 9 } },
+      ])
+
+      autoTable(doc, {
+        startY: y,
+        head: [[label, "Cantidad", "Calibre", "Sumatoria"]],
+        body,
+        styles: { fontSize: 9, cellPadding: 2.5 },
+        headStyles: { fillColor: [20, 20, 20], textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: {},
+        columnStyles: {
+          0: { cellWidth: 80 },
+          1: { halign: "center", cellWidth: 25 },
+          2: { halign: "center", cellWidth: 25 },
+          3: { halign: "right", cellWidth: 30, fontStyle: "bold" },
+        },
+      })
+
+      y = (doc as any).lastAutoTable.finalY + (idx < vehiculosConPedidos.length - 1 ? 12 : 0)
+    })
+
+    doc.save(`repartos-${new Date().toISOString().split("T")[0]}.pdf`)
+  }
+
   return (
     <div className="space-y-4">
       {/* Resumen */}
-      <div className="flex flex-wrap gap-3 text-sm">
-        <Badge variant="outline">{pedidos.length} pedidos totales</Badge>
-        <Badge variant="default">{totalAsignados} asignados</Badge>
-        {totalSinAsignar > 0 && <Badge variant="secondary">{totalSinAsignar} sin asignar</Badge>}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <Badge variant="outline">{pedidos.length} pedidos totales</Badge>
+          <Badge variant="default">{totalAsignados} asignados</Badge>
+          {totalSinAsignar > 0 && <Badge variant="secondary">{totalSinAsignar} sin asignar</Badge>}
+          {pedidos.length > 1 && (
+            <div className="flex items-center gap-1 ml-1">
+              <Button variant={sortField === "cliente" ? "secondary" : "ghost"} size="sm" className="h-7 gap-1 text-xs px-2" onClick={() => toggleSort("cliente")}>
+                {sortField === "cliente" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
+                Nombre
+              </Button>
+              <Button variant={sortField === "cantidad" ? "secondary" : "ghost"} size="sm" className="h-7 gap-1 text-xs px-2" onClick={() => toggleSort("cantidad")}>
+                {sortField === "cantidad" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
+                Cantidad
+              </Button>
+              {sortField && (
+                <Button variant="ghost" size="sm" className="h-7 text-xs px-2 text-muted-foreground" onClick={() => setSortField(null)}>✕</Button>
+              )}
+            </div>
+          )}
+        </div>
+        {totalAsignados > 0 && (
+          <Button variant="outline" size="sm" className="gap-2" onClick={handleGenerarPDF}>
+            <FileDown className="h-4 w-4" />
+            PDF de repartos
+          </Button>
+        )}
       </div>
 
       {vehiculos.length === 0 && (
@@ -327,6 +471,8 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
                 onCapacidadChange={val =>
                   setCapacidades(prev => ({ ...prev, [col.id]: val }))
                 }
+                sortField={sortField}
+                sortDir={sortDir}
               />
             ))}
           </div>

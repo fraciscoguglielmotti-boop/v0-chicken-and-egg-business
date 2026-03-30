@@ -52,16 +52,21 @@ export function PagosContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await insertRow("pagos", {
-      fecha: formData.fecha,
-      proveedor_nombre: formData.proveedor_nombre,
-      monto: parseMonto(formData.monto),
-      metodo_pago: formData.metodo_pago || null,
-      observaciones: formData.observaciones || null
-    })
-    mutate()
-    setIsDialogOpen(false)
-    setFormData({ fecha: new Date().toISOString().split('T')[0], proveedor_nombre: "", monto: "", metodo_pago: "", observaciones: "" })
+    try {
+      await insertRow("pagos", {
+        fecha: formData.fecha,
+        proveedor_nombre: formData.proveedor_nombre,
+        monto: parseMonto(formData.monto),
+        metodo_pago: formData.metodo_pago || null,
+        observaciones: formData.observaciones || null
+      })
+      await mutate()
+      setIsDialogOpen(false)
+      setFormData({ fecha: new Date().toISOString().split('T')[0], proveedor_nombre: "", monto: "", metodo_pago: "", observaciones: "" })
+      toast({ title: "Pago registrado", description: `${formData.proveedor_nombre} — ${formData.monto}` })
+    } catch (err: any) {
+      toast({ title: "Error al guardar", description: err?.message ?? "No se pudo registrar el pago", variant: "destructive" })
+    }
   }
 
   const handleEdit = (pago: Pago) => {
@@ -99,7 +104,7 @@ export function PagosContent() {
   const handleDelete = async (id: string) => {
     try {
       await deleteRow("pagos", id)
-      mutate()
+      await mutate()
       toast({ title: "Pago eliminado" })
     } catch (err: any) {
       toast({ title: "Error al eliminar", description: err.message, variant: "destructive" })

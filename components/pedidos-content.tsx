@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Plus, Trash2, FileDown, ClipboardList, RotateCcw, ShoppingCart, Pencil } from "lucide-react"
+import { Plus, Trash2, FileDown, ClipboardList, RotateCcw, ShoppingCart, Pencil, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -82,7 +82,31 @@ export function PedidosContent() {
     return found ? String(found.precio) : ""
   }
   const productos = productosAll.filter((p) => p.activo)
-  const pedidos = [...pedidosDesc].reverse() // mostrar en orden de carga (más nuevo al final)
+  const pedidos = [...pedidosDesc].reverse()
+  const [sortField, setSortField] = useState<"cliente" | "cantidad" | null>(null)
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  const toggleSort = (field: "cliente" | "cantidad") => {
+    if (sortField === field) {
+      setSortDir(d => d === "asc" ? "desc" : "asc")
+    } else {
+      setSortField(field)
+      setSortDir("asc")
+    }
+  }
+
+  const sortedPedidos = useMemo(() => {
+    if (!sortField) return pedidos
+    return [...pedidos].sort((a, b) => {
+      if (sortField === "cliente") {
+        return sortDir === "asc"
+          ? a.cliente.localeCompare(b.cliente, "es")
+          : b.cliente.localeCompare(a.cliente, "es")
+      }
+      return sortDir === "asc" ? a.cantidad - b.cantidad : b.cantidad - a.cantidad
+    })
+  }, [pedidos, sortField, sortDir])
+
   const [form, setForm] = useState(emptyForm)
   const [editingPedido, setEditingPedido] = useState<Pedido | null>(null)
   const [editForm, setEditForm] = useState(emptyForm)
@@ -432,13 +456,28 @@ export function PedidosContent() {
       </div>
 
       {/* Actions bar */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
           <span className="text-sm text-muted-foreground">
             {pedidos.length} pedido{pedidos.length !== 1 ? "s" : ""} cargado{pedidos.length !== 1 ? "s" : ""}
           </span>
           {totalPedidos > 0 && (
             <Badge variant="secondary">Total estimado: {formatCurrency(totalPedidos)}</Badge>
+          )}
+          {pedidos.length > 1 && (
+            <div className="flex items-center gap-1">
+              <Button variant={sortField === "cliente" ? "secondary" : "ghost"} size="sm" className="h-7 gap-1 text-xs px-2" onClick={() => toggleSort("cliente")}>
+                {sortField === "cliente" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
+                Nombre
+              </Button>
+              <Button variant={sortField === "cantidad" ? "secondary" : "ghost"} size="sm" className="h-7 gap-1 text-xs px-2" onClick={() => toggleSort("cantidad")}>
+                {sortField === "cantidad" ? (sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3" />}
+                Cantidad
+              </Button>
+              {sortField && (
+                <Button variant="ghost" size="sm" className="h-7 text-xs px-2 text-muted-foreground" onClick={() => setSortField(null)}>✕</Button>
+              )}
+            </div>
           )}
         </div>
         <div className="flex gap-2">
@@ -482,7 +521,7 @@ export function PedidosContent() {
               </tr>
             </thead>
             <tbody>
-              {pedidos.map((p, i) => (
+              {sortedPedidos.map((p, i) => (
                 <tr key={p.id} className="border-t hover:bg-muted/20">
                   <td className="p-3 text-muted-foreground">{i + 1}</td>
                   <td className="p-3 font-medium">{p.cliente}</td>
