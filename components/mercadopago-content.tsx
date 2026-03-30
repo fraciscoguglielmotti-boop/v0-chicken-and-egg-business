@@ -29,6 +29,8 @@ interface MovimientoMP {
   referencia?: string
   pagador_nombre?: string
   pagador_email?: string
+  tipo_operacion?: string
+  metodo_pago?: string
   estado: "sin_verificar" | "verificado" | "sospechoso"
 }
 
@@ -98,6 +100,9 @@ export function MercadoPagoContent() {
 
   const [syncing, setSyncing] = useState(false)
   const [daysBack, setDaysBack] = useState("30")
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  const toggleRow = (id: string) =>
+    setExpandedRows(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   const [tipoFiltro, setTipoFiltro] = useState("todos")
   const [estadoFiltro, setEstadoFiltro] = useState("todos")
   const [verifying, setVerifying] = useState(false)
@@ -203,13 +208,15 @@ export function MercadoPagoContent() {
           <div className="flex items-center gap-2 mb-1">
             <Wallet className="h-4 w-4 text-primary" />
             <p className="text-sm text-muted-foreground">Saldo disponible MP</p>
-            <button onClick={fetchSaldo} className="ml-auto text-muted-foreground hover:text-foreground">
+            <button onClick={fetchSaldo} className="ml-auto text-muted-foreground hover:text-foreground" title="Actualizar saldo">
               <RefreshCw className={`h-3 w-3 ${loadingSaldo ? "animate-spin" : ""}`} />
             </button>
           </div>
-          {saldo === null
-            ? <p className="text-xl font-bold text-muted-foreground mt-1">{loadingSaldo ? "…" : "No disponible"}</p>
-            : <p className="text-2xl font-bold text-primary mt-1">{formatCurrency(saldo)}</p>
+          {loadingSaldo
+            ? <p className="text-xl font-bold text-muted-foreground mt-1">…</p>
+            : saldo !== null
+              ? <p className="text-2xl font-bold text-primary mt-1">{formatCurrency(saldo)}</p>
+              : <p className="text-sm text-muted-foreground mt-2">No disponible para este tipo de cuenta MP</p>
           }
         </div>
         <div className="rounded-lg border bg-card p-4">
@@ -299,6 +306,7 @@ export function MercadoPagoContent() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/50">
                   <tr>
+                    <th className="w-8 p-3" />
                     <th className="text-left p-3 font-semibold">Fecha</th>
                     <th className="text-left p-3 font-semibold">Tipo</th>
                     <th className="text-left p-3 font-semibold">De / Para</th>
@@ -308,48 +316,91 @@ export function MercadoPagoContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredMovimientos.map((m) => (
-                    <tr key={m.id} className="border-t hover:bg-muted/20">
-                      <td className="p-3 whitespace-nowrap text-muted-foreground">
-                        {formatDate(new Date(m.fecha))}
-                      </td>
-                      <td className="p-3">
-                        {m.tipo === "ingreso" ? (
-                          <span className="flex items-center gap-1 text-green-600 font-medium">
-                            <ArrowDownCircle className="h-4 w-4" /> Ingreso
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-1 text-destructive font-medium">
-                            <ArrowUpCircle className="h-4 w-4" /> Egreso
-                          </span>
+                  {filteredMovimientos.map((m) => {
+                    const expanded = expandedRows.has(m.id)
+                    const hasExtra = m.tipo_operacion || m.metodo_pago || m.referencia || m.pagador_email
+                    return (
+                      <>
+                        <tr
+                          key={m.id}
+                          className={`border-t hover:bg-muted/20 ${hasExtra ? "cursor-pointer" : ""}`}
+                          onClick={() => hasExtra && toggleRow(m.id)}
+                        >
+                          <td className="p-3 text-muted-foreground text-center">
+                            {hasExtra && (
+                              <span className="text-xs">{expanded ? "▾" : "▸"}</span>
+                            )}
+                          </td>
+                          <td className="p-3 whitespace-nowrap text-muted-foreground">
+                            {formatDate(new Date(m.fecha))}
+                          </td>
+                          <td className="p-3">
+                            {m.tipo === "ingreso" ? (
+                              <span className="flex items-center gap-1 text-green-600 font-medium">
+                                <ArrowDownCircle className="h-4 w-4" /> Ingreso
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-destructive font-medium">
+                                <ArrowUpCircle className="h-4 w-4" /> Egreso
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            {m.pagador_nombre
+                              ? <p className="font-medium">{m.pagador_nombre}</p>
+                              : <span className="text-muted-foreground">-</span>
+                            }
+                          </td>
+                          <td className="p-3 max-w-[220px] truncate">
+                            {m.descripcion
+                              ? <span>{m.descripcion}</span>
+                              : <span className="text-muted-foreground">-</span>
+                            }
+                          </td>
+                          <td className={`p-3 text-right font-semibold ${m.tipo === "ingreso" ? "text-green-600" : "text-destructive"}`}>
+                            {m.tipo === "ingreso" ? "+" : "-"}{formatCurrency(m.monto)}
+                          </td>
+                          <td className="p-3">
+                            <Badge variant={ESTADO_MOVIMIENTO[m.estado]?.variant ?? "secondary"}>
+                              {ESTADO_MOVIMIENTO[m.estado]?.label ?? m.estado}
+                            </Badge>
+                          </td>
+                        </tr>
+                        {expanded && (
+                          <tr key={`${m.id}-detail`} className="bg-muted/30 border-t">
+                            <td colSpan={7} className="px-10 py-3">
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                {m.tipo_operacion && (
+                                  <div>
+                                    <p className="text-muted-foreground mb-0.5">Tipo operación</p>
+                                    <p className="font-medium">{m.tipo_operacion}</p>
+                                  </div>
+                                )}
+                                {m.metodo_pago && (
+                                  <div>
+                                    <p className="text-muted-foreground mb-0.5">Método de pago</p>
+                                    <p className="font-medium">{m.metodo_pago}</p>
+                                  </div>
+                                )}
+                                {m.pagador_email && (
+                                  <div>
+                                    <p className="text-muted-foreground mb-0.5">Email</p>
+                                    <p className="font-medium">{m.pagador_email}</p>
+                                  </div>
+                                )}
+                                {m.referencia && (
+                                  <div>
+                                    <p className="text-muted-foreground mb-0.5">ID MP</p>
+                                    <p className="font-medium font-mono">{m.referencia}</p>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="p-3">
-                        <div>
-                          {m.pagador_nombre && (
-                            <p className="font-medium">{m.pagador_nombre}</p>
-                          )}
-                          {m.pagador_email && (
-                            <p className="text-xs text-muted-foreground">{m.pagador_email}</p>
-                          )}
-                          {!m.pagador_nombre && !m.pagador_email && (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3 text-muted-foreground max-w-[200px] truncate">
-                        {m.descripcion || "-"}
-                      </td>
-                      <td className={`p-3 text-right font-semibold ${m.tipo === "ingreso" ? "text-green-600" : "text-destructive"}`}>
-                        {m.tipo === "ingreso" ? "+" : "-"}{formatCurrency(m.monto)}
-                      </td>
-                      <td className="p-3">
-                        <Badge variant={ESTADO_MOVIMIENTO[m.estado]?.variant ?? "secondary"}>
-                          {ESTADO_MOVIMIENTO[m.estado]?.label ?? m.estado}
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
+                      </>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

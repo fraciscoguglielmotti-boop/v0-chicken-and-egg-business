@@ -92,10 +92,12 @@ export async function POST(request: Request) {
           fecha: m.date ?? m.date_created,
           tipo,
           monto: Math.abs(monto),
-          descripcion: m.description ?? m.type ?? null,
+          descripcion: m.description ?? m.action ?? m.type ?? null,
           referencia: String(m.id),
-          pagador_nombre: m.counterpart_name ?? m.description ?? null,
+          pagador_nombre: m.counterpart_name ?? null,
           pagador_email: m.counterpart_email ?? null,
+          tipo_operacion: m.type ?? m.action ?? null,
+          metodo_pago: m.payment_method ?? null,
         }
       })
     } else {
@@ -107,22 +109,33 @@ export async function POST(request: Request) {
         const soyColector = String(p.collector_id) === myUserId
         const tipo: "ingreso" | "egreso" = soyColector ? "ingreso" : "egreso"
 
+        // Descripción enriquecida: item específico > descripción > statement descriptor > operación
+        const itemTitle = p.additional_info?.items?.[0]?.title
+        const descripcion =
+          itemTitle ??
+          (p.description && p.description !== "Varios" ? p.description : null) ??
+          p.statement_descriptor ??
+          p.operation_type ??
+          null
+
         const nombreContraparte = soyColector
-          ? [p.payer?.first_name, p.payer?.last_name].filter(Boolean).join(" ") || null
-          : [p.collector?.nickname].filter(Boolean).join(" ") || null
-        const emailContraparte = soyColector
-          ? (p.payer?.email ?? null)
-          : null
+          ? [p.payer?.first_name, p.payer?.last_name].filter(Boolean).join(" ") ||
+            p.payer?.identification?.number ||
+            null
+          : p.collector?.nickname ?? p.collector?.email ?? null
+        const emailContraparte = soyColector ? (p.payer?.email ?? null) : null
 
         return {
           id: String(p.id),
           fecha: p.date_approved ?? p.date_created,
           tipo,
           monto: Math.abs(p.transaction_amount),
-          descripcion: p.description ?? p.statement_descriptor ?? null,
+          descripcion,
           referencia: String(p.id),
           pagador_nombre: nombreContraparte,
           pagador_email: emailContraparte,
+          tipo_operacion: p.operation_type ?? null,
+          metodo_pago: p.payment_method_id ?? null,
         }
       })
     }
