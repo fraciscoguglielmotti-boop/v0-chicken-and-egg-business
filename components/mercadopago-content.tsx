@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import {
   RefreshCw,
   Upload,
@@ -10,6 +10,7 @@ import {
   XCircle,
   ArrowDownCircle,
   ArrowUpCircle,
+  Wallet,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -96,11 +97,35 @@ export function MercadoPagoContent() {
   } = useSupabase<ComprobanteMP>("comprobantes_mp")
 
   const [syncing, setSyncing] = useState(false)
+  const [daysBack, setDaysBack] = useState("30")
   const [tipoFiltro, setTipoFiltro] = useState("todos")
   const [estadoFiltro, setEstadoFiltro] = useState("todos")
   const [verifying, setVerifying] = useState(false)
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
+  const [saldo, setSaldo] = useState<number | null>(null)
+  const [loadingSaldo, setLoadingSaldo] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // ── Saldo en tiempo real ────────────────────────────────────────────────────
+
+  const fetchSaldo = useCallback(async () => {
+    setLoadingSaldo(true)
+    try {
+      const res = await fetch("/api/mp/balance")
+      const data = await res.json()
+      if (res.ok) setSaldo(data.available_balance ?? null)
+    } catch {
+      // silencioso — no interrumpir la UI si falla
+    } finally {
+      setLoadingSaldo(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchSaldo()
+    const interval = setInterval(fetchSaldo, 60_000) // refresca cada 1 minuto
+    return () => clearInterval(interval)
+  }, [fetchSaldo])
 
   // ── Sync ────────────────────────────────────────────────────────────────────
 
@@ -110,11 +135,12 @@ export function MercadoPagoContent() {
       const res = await fetch("/api/mp/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ daysBack: 30 }),
+        body: JSON.stringify({ daysBack: parseInt(daysBack) }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
       await mutateMovimientos()
+      await fetchSaldo()
       toast({
         title: "Sincronización exitosa",
         description: data.synced > 0
@@ -171,13 +197,27 @@ export function MercadoPagoContent() {
   return (
     <div className="space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        {/* Saldo real en tiempo real */}
+        <div className="rounded-lg border bg-card p-4 border-primary/30">
+          <div className="flex items-center gap-2 mb-1">
+            <Wallet className="h-4 w-4 text-primary" />
+            <p className="text-sm text-muted-foreground">Saldo disponible MP</p>
+            <button onClick={fetchSaldo} className="ml-auto text-muted-foreground hover:text-foreground">
+              <RefreshCw className={`h-3 w-3 ${loadingSaldo ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+          {saldo === null
+            ? <p className="text-xl font-bold text-muted-foreground mt-1">{loadingSaldo ? "…" : "No disponible"}</p>
+            : <p className="text-2xl font-bold text-primary mt-1">{formatCurrency(saldo)}</p>
+          }
+        </div>
         <div className="rounded-lg border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Ingresos (últimos 30 días)</p>
+          <p className="text-sm text-muted-foreground">Ingresos sincronizados</p>
           <p className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(totalIngresos)}</p>
         </div>
         <div className="rounded-lg border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Egresos (últimos 30 días)</p>
+          <p className="text-sm text-muted-foreground">Egresos sincronizados</p>
           <p className="text-2xl font-bold text-destructive mt-1">{formatCurrency(totalEgresos)}</p>
         </div>
         <div className="rounded-lg border bg-card p-4">
@@ -221,14 +261,27 @@ export function MercadoPagoContent() {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleSync} disabled={syncing}>
-              {syncing ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-2 h-4 w-4" />
-              )}
-              Sincronizar MP
-            </Button>
+            <div className="flex items-center gap-2">
+              <Select value={daysBack} onValueChange={setDaysBack}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">Últimos 7 días</SelectItem>
+                  <SelectItem value="30">Últimos 30 días</SelectItem>
+                  <SelectItem value="60">Últimos 60 días</SelectItem>
+                  <SelectItem value="90">Últimos 90 días</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={handleSync} disabled={syncing}>
+                {syncing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Sincronizar
+              </Button>
+            </div>
           </div>
 
           {loadingMovimientos ? (
