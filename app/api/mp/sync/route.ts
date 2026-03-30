@@ -70,7 +70,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ synced: movimientos.length })
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Error desconocido"
+    const msg = err instanceof Error ? err.message : JSON.stringify(err) ?? "Error desconocido"
     return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
