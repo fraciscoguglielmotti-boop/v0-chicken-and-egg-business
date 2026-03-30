@@ -97,6 +97,11 @@ export function CuentasContent() {
   const [dateRange, setDateRange] = useState({ desde: "", hasta: "" })
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
   const { toast } = useToast()
+  const [exportRanges, setExportRanges] = useState<Record<string, { desde: string; hasta: string }>>({})
+  const getExportRange = (nombre: string) => exportRanges[nombre] ?? { desde: "", hasta: "" }
+  const setExportRange = (nombre: string, val: { desde: string; hasta: string }) =>
+    setExportRanges(prev => ({ ...prev, [nombre]: val }))
+
   const [cobrarCliente, setCobrarCliente] = useState<string | null>(null)
   const [cobrarForm, setCobrarForm] = useState({ monto: "", metodo_pago: "efectivo", cuenta_destino: "", fecha: new Date().toISOString().split('T')[0] })
   const [vistaLista, setVistaLista] = useState(false)
@@ -337,7 +342,17 @@ export function CuentasContent() {
     }
   }
 
-  const exportClientePDF = (cliente: typeof clientesConMovimientos[0]) => {
+  const filtrarMovsPorRango = (movs: MovimientoCliente[], rango: { desde: string; hasta: string }) => {
+    if (!rango.desde && !rango.hasta) return movs
+    const desde = rango.desde ? new Date(rango.desde + "T00:00:00") : new Date(0)
+    const hasta = rango.hasta ? new Date(rango.hasta + "T23:59:59") : new Date()
+    return movs.filter(m => { const f = new Date(m.fecha); return f >= desde && f <= hasta })
+  }
+
+  const exportClientePDF = (cliente: typeof clientesConMovimientos[0], rango?: { desde: string; hasta: string }) => {
+    const movsFiltrados = rango ? filtrarMovsPorRango(cliente.movimientos, rango) : cliente.movimientos
+    const totalVentasPDF = movsFiltrados.filter(m => m.tipo === "venta").reduce((s, m) => s + m.debe, 0)
+    const totalCobrosPDF = movsFiltrados.filter(m => m.tipo === "cobro").reduce((s, m) => s + m.haber, 0)
     const doc = new jsPDF()
     
     doc.setFontSize(24)
@@ -348,38 +363,38 @@ export function CuentasContent() {
     doc.setFontSize(16)
     doc.text(cliente.nombre, 20, 45)
     doc.setFontSize(10)
-    const periodoText = dateRange.desde && dateRange.hasta 
-      ? `Periodo: ${formatDate(new Date(dateRange.desde))} al ${formatDate(new Date(dateRange.hasta))}`
-      : `Periodo: Todo el historial`
+    const r = rango ?? { desde: "", hasta: "" }
+    const periodoText = r.desde || r.hasta
+      ? `Periodo: ${r.desde ? formatDate(new Date(r.desde + "T12:00:00")) : "inicio"} al ${r.hasta ? formatDate(new Date(r.hasta + "T12:00:00")) : "hoy"}`
+      : "Periodo: Todo el historial"
     doc.text(periodoText, 20, 52)
-    doc.text(`Vendedor: AviGest`, 20, 58)
-    
+    doc.text(`Generado por AviGest`, 20, 58)
+
     const boxY = 70
     const boxHeight = 20
     const colWidth = 56
-    
-    // Cajas sin setFont
+
     doc.setFillColor(245, 245, 245)
     doc.rect(20, boxY, colWidth, boxHeight, 'F')
     doc.setFontSize(9)
     doc.text("SALDO ANTERIOR", 48, boxY + 8, { align: "center" })
     doc.setFontSize(14)
     doc.text(formatCurrency(cliente.saldoAnterior), 48, boxY + 16, { align: "center" })
-    
+
     doc.setFillColor(245, 245, 245)
     doc.rect(20 + colWidth + 2, boxY, colWidth, boxHeight, 'F')
     doc.setFontSize(9)
     doc.text("VENTAS", 48 + colWidth + 2, boxY + 8, { align: "center" })
     doc.setFontSize(14)
-    doc.text(`+${formatCurrency(cliente.totalVentas)}`, 48 + colWidth + 2, boxY + 16, { align: "center" })
-    
+    doc.text(`+${formatCurrency(totalVentasPDF)}`, 48 + colWidth + 2, boxY + 16, { align: "center" })
+
     doc.setFillColor(245, 245, 245)
     doc.rect(20 + (colWidth + 2) * 2, boxY, colWidth, boxHeight, 'F')
     doc.setFontSize(9)
     doc.text("COBROS", 48 + (colWidth + 2) * 2, boxY + 8, { align: "center" })
     doc.setFontSize(14)
-    doc.text(`-${formatCurrency(cliente.totalCobros)}`, 48 + (colWidth + 2) * 2, boxY + 16, { align: "center" })
-    
+    doc.text(`-${formatCurrency(totalCobrosPDF)}`, 48 + (colWidth + 2) * 2, boxY + 16, { align: "center" })
+
     let yPos = boxY + boxHeight + 10
     doc.setFillColor(230, 230, 230)
     doc.rect(20, yPos, 170, 18, 'F')
@@ -387,7 +402,7 @@ export function CuentasContent() {
     doc.text("SALDO ACTUAL", 105, yPos + 7, { align: "center" })
     doc.setFontSize(20)
     doc.text(formatCurrency(cliente.saldo), 105, yPos + 14, { align: "center" })
-    
+
     yPos += 28
     doc.setLineWidth(0.5)
     doc.line(20, yPos, 190, yPos)
@@ -406,7 +421,7 @@ export function CuentasContent() {
 
     doc.setFontSize(9)
     let saldoPDF = cliente.saldoAnterior
-    cliente.movimientos.forEach((mov) => {
+    movsFiltrados.forEach((mov) => {
       if (yPos > 270) {
         doc.addPage()
         yPos = 20
@@ -428,14 +443,22 @@ export function CuentasContent() {
     doc.save(`estado-cuenta-${cliente.nombre.replace(/\s+/g, '-')}.pdf`)
   }
 
-  const exportClienteCSV = (cliente: typeof clientesConMovimientos[0]) => {
+  const exportClienteCSV = (cliente: typeof clientesConMovimientos[0], rango?: { desde: string; hasta: string }) => {
+    const movsFiltrados = rango ? filtrarMovsPorRango(cliente.movimientos, rango) : cliente.movimientos
+    const totalVentasCSV = movsFiltrados.filter(m => m.tipo === "venta").reduce((s, m) => s + m.debe, 0)
+    const totalCobrosCSV = movsFiltrados.filter(m => m.tipo === "cobro").reduce((s, m) => s + m.haber, 0)
+    const r = rango ?? { desde: "", hasta: "" }
     const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
     const rows: string[] = []
 
+    const periodoLabel = r.desde || r.hasta
+      ? `${r.desde || "inicio"} al ${r.hasta || "hoy"}`
+      : "Todo el historial"
     rows.push(`"Estado de cuenta — ${cliente.nombre}"`)
+    rows.push(`"Período",${esc(periodoLabel)}`)
     rows.push(`"Saldo anterior",${esc(cliente.saldoAnterior)}`)
-    rows.push(`"Total ventas",${esc(cliente.totalVentas)}`)
-    rows.push(`"Total cobros",${esc(cliente.totalCobros)}`)
+    rows.push(`"Total ventas",${esc(totalVentasCSV)}`)
+    rows.push(`"Total cobros",${esc(totalCobrosCSV)}`)
     rows.push(`"Saldo actual",${esc(cliente.saldo)}`)
     rows.push("")
     rows.push([esc("Fecha"), esc("Tipo"), esc("Descripción"), esc("Debe"), esc("Haber"), esc("Saldo")].join(","))
@@ -444,7 +467,7 @@ export function CuentasContent() {
     if (cliente.saldoAnterior !== 0) {
       rows.push([esc(""), esc(""), esc("Saldo inicial"), esc(""), esc(""), esc(cliente.saldoAnterior)].join(","))
     }
-    cliente.movimientos.forEach(mov => {
+    movsFiltrados.forEach(mov => {
       saldoAcum += mov.debe - mov.haber
       rows.push([
         esc(formatDate(new Date(mov.fecha + "T12:00:00"))),
@@ -695,7 +718,35 @@ export function CuentasContent() {
                   </div>
                   
                   <CollapsibleContent>
-                    <div className="border-t overflow-x-auto">
+                    {/* Exportar por período */}
+                    <div className="border-t px-4 py-3 bg-muted/20 flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">Exportar período:</span>
+                      <Input type="date" className="h-7 w-auto text-xs"
+                        value={getExportRange(cliente.nombre).desde}
+                        onChange={e => setExportRange(cliente.nombre, { ...getExportRange(cliente.nombre), desde: e.target.value })}
+                      />
+                      <span className="text-xs text-muted-foreground">→</span>
+                      <Input type="date" className="h-7 w-auto text-xs"
+                        value={getExportRange(cliente.nombre).hasta}
+                        onChange={e => setExportRange(cliente.nombre, { ...getExportRange(cliente.nombre), hasta: e.target.value })}
+                      />
+                      {(getExportRange(cliente.nombre).desde || getExportRange(cliente.nombre).hasta) && (
+                        <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => setExportRange(cliente.nombre, { desde: "", hasta: "" })}>
+                          Limpiar
+                        </Button>
+                      )}
+                      <div className="flex gap-1 ml-auto">
+                        <Button variant="outline" size="sm" className="h-7 gap-1 text-xs"
+                          onClick={() => exportClientePDF(cliente, getExportRange(cliente.nombre).desde || getExportRange(cliente.nombre).hasta ? getExportRange(cliente.nombre) : undefined)}>
+                          <Download className="h-3 w-3" /> PDF
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-7 gap-1 text-xs"
+                          onClick={() => exportClienteCSV(cliente, getExportRange(cliente.nombre).desde || getExportRange(cliente.nombre).hasta ? getExportRange(cliente.nombre) : undefined)}>
+                          <FileSpreadsheet className="h-3 w-3 text-green-600" /> Excel
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
                       <table className="w-full min-w-[400px]">
                         <thead className="bg-muted/50">
                           <tr className="text-xs">
@@ -742,6 +793,7 @@ export function CuentasContent() {
             ))
           )}
         </TabsContent>
+
 
         <TabsContent value="proveedores" className="space-y-2 mt-4">
           {proveedoresConMovimientos.length === 0 ? (
