@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -26,12 +27,30 @@ import {
   CalendarDays,
   BookOpen,
   MessagesSquare,
+  ChevronDown,
+  GripVertical,
 } from "lucide-react"
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
-const navSections = [
+const ALL_SECTIONS = [
   {
+    id: "principal",
     label: "Principal",
     items: [
       { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -45,7 +64,8 @@ const navSections = [
     ],
   },
   {
-    label: "Gestion",
+    id: "gestion",
+    label: "Gestión",
     items: [
       { name: "Clientes", href: "/clientes", icon: Users },
       { name: "Proveedores", href: "/proveedores", icon: Truck },
@@ -58,6 +78,7 @@ const navSections = [
     ],
   },
   {
+    id: "finanzas",
     label: "Finanzas",
     items: [
       { name: "Gastos", href: "/gastos", icon: Receipt },
@@ -71,8 +92,90 @@ const navSections = [
       { name: "Reportes Ejecutivos", href: "/reportes-ejecutivos", icon: BookOpen },
     ],
   },
-
 ]
+
+const STORAGE_KEY_ORDER = "sidebar_section_order"
+const STORAGE_KEY_COLLAPSED = "sidebar_collapsed_sections"
+
+function SortableSection({
+  section,
+  collapsed,
+  onToggle,
+  pathname,
+  onClose,
+}: {
+  section: (typeof ALL_SECTIONS)[number]
+  collapsed: boolean
+  onToggle: () => void
+  pathname: string
+  onClose: () => void
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: section.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="mb-1">
+      {/* Section header */}
+      <div className="flex items-center gap-1 px-1 mb-0.5 group">
+        <button
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 text-muted-foreground/30 hover:text-muted-foreground/70 transition-colors rounded"
+          tabIndex={-1}
+          aria-label="Arrastrar sección"
+        >
+          <GripVertical className="h-3 w-3" />
+        </button>
+        <button
+          onClick={onToggle}
+          className="flex flex-1 items-center justify-between px-2 py-1 rounded hover:bg-muted/50 transition-colors"
+        >
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+            {section.label}
+          </span>
+          <ChevronDown
+            className={cn(
+              "h-3 w-3 text-muted-foreground/40 transition-transform duration-200",
+              collapsed && "-rotate-90"
+            )}
+          />
+        </button>
+      </div>
+
+      {/* Items */}
+      {!collapsed && (
+        <ul className="space-y-0.5" role="list">
+          {section.items.map((item) => {
+            const isActive = pathname === item.href
+            return (
+              <li key={item.name}>
+                <Link
+                  href={item.href}
+                  onClick={onClose}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  {item.name}
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
 
 interface AppSidebarProps {
   open: boolean
@@ -82,6 +185,63 @@ interface AppSidebarProps {
 export function AppSidebar({ open, onClose }: AppSidebarProps) {
   const pathname = usePathname()
 
+  const [sectionOrder, setSectionOrder] = useState<string[]>(
+    ALL_SECTIONS.map((s) => s.id)
+  )
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
+
+  // Load persisted state from localStorage
+  useEffect(() => {
+    try {
+      const savedOrder = localStorage.getItem(STORAGE_KEY_ORDER)
+      if (savedOrder) {
+        const parsed: string[] = JSON.parse(savedOrder)
+        // Only use saved order if it contains the same section IDs
+        const allIds = ALL_SECTIONS.map((s) => s.id)
+        const valid = parsed.length === allIds.length && allIds.every((id) => parsed.includes(id))
+        if (valid) setSectionOrder(parsed)
+      }
+    } catch {}
+    try {
+      const savedCollapsed = localStorage.getItem(STORAGE_KEY_COLLAPSED)
+      if (savedCollapsed) {
+        setCollapsedSections(new Set(JSON.parse(savedCollapsed)))
+      }
+    } catch {}
+  }, [])
+
+  const toggleCollapse = (id: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      try {
+        localStorage.setItem(STORAGE_KEY_COLLAPSED, JSON.stringify([...next]))
+      } catch {}
+      return next
+    })
+  }
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (over && active.id !== over.id) {
+      setSectionOrder((prev) => {
+        const oldIndex = prev.indexOf(String(active.id))
+        const newIndex = prev.indexOf(String(over.id))
+        const next = arrayMove(prev, oldIndex, newIndex)
+        try {
+          localStorage.setItem(STORAGE_KEY_ORDER, JSON.stringify(next))
+        } catch {}
+        return next
+      })
+    }
+  }
+
+  const orderedSections = sectionOrder
+    .map((id) => ALL_SECTIONS.find((s) => s.id === id))
+    .filter(Boolean) as typeof ALL_SECTIONS
+
   return (
     <>
       {/* Mobile overlay */}
@@ -89,9 +249,7 @@ export function AppSidebar({ open, onClose }: AppSidebarProps) {
         <div
           className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm lg:hidden"
           onClick={onClose}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") onClose()
-          }}
+          onKeyDown={(e) => { if (e.key === "Escape") onClose() }}
           role="button"
           tabIndex={0}
           aria-label="Cerrar menu"
@@ -115,12 +273,7 @@ export function AppSidebar({ open, onClose }: AppSidebarProps) {
               <p className="text-[11px] text-muted-foreground leading-none">Distribuidora</p>
             </div>
           </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 lg:hidden"
-            onClick={onClose}
-          >
+          <Button variant="ghost" size="icon" className="h-8 w-8 lg:hidden" onClick={onClose}>
             <X className="h-4 w-4" />
             <span className="sr-only">Cerrar menu</span>
           </Button>
@@ -128,35 +281,20 @@ export function AppSidebar({ open, onClose }: AppSidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-3">
-          {navSections.map((section) => (
-            <div key={section.label} className="mb-4">
-              <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/60">
-                {section.label}
-              </p>
-              <ul className="space-y-0.5" role="list">
-                {section.items.map((item) => {
-                  const isActive = pathname === item.href
-                  return (
-                    <li key={item.name}>
-                      <Link
-                        href={item.href}
-                        onClick={onClose}
-                        className={cn(
-                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                          isActive
-                            ? "bg-primary text-primary-foreground"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                        )}
-                      >
-                        <item.icon className="h-4 w-4 shrink-0" />
-                        {item.name}
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          ))}
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
+              {orderedSections.map((section) => (
+                <SortableSection
+                  key={section.id}
+                  section={section}
+                  collapsed={collapsedSections.has(section.id)}
+                  onToggle={() => toggleCollapse(section.id)}
+                  pathname={pathname}
+                  onClose={onClose}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
         </nav>
 
         {/* Footer */}
