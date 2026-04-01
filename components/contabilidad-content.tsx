@@ -13,7 +13,13 @@ const CATEGORIAS_RETIROS = ["Gastos Personales Francisco", "Retiro de socio", "R
 
 interface Venta { fecha: string; cantidad: number; precio_unitario: number }
 interface Compra { fecha: string; total: number; cantidad: number; precio_unitario: number }
-interface Gasto { fecha: string; monto: number; categoria: string }
+interface Gasto { fecha: string; monto: number; categoria: string; medio_pago?: string; fecha_pago?: string }
+
+// Para tarjeta de crédito con fecha_pago, el gasto impacta en el mes del pago (no del consumo)
+function mesContable(g: Gasto): string {
+  if (g.medio_pago === "Tarjeta Credito" && g.fecha_pago) return g.fecha_pago.slice(0, 7)
+  return g.fecha.slice(0, 7)
+}
 
 function EERRRow({ label, value, indent = false }: { label: string; value: number; indent?: boolean }) {
   return (
@@ -53,7 +59,7 @@ function Delta({ actual, prev }: { actual: number; prev: number }) {
 function calcEERR(ventas: Venta[], compras: Compra[], gastos: Gasto[], month: string) {
   const ventasFiltradas  = ventas.filter(v => v.fecha.startsWith(month))
   const comprasFiltradas = compras.filter(c => c.fecha.startsWith(month))
-  const gastosFiltrados  = gastos.filter(g => g.fecha.startsWith(month))
+  const gastosFiltrados  = gastos.filter(g => mesContable(g) === month)
 
   const totalVentas = ventasFiltradas.reduce((s, v) => s + v.cantidad * v.precio_unitario, 0)
   const totalCMV    = comprasFiltradas.reduce((s, c) => s + (c.total > 0 ? c.total : c.cantidad * c.precio_unitario), 0)
