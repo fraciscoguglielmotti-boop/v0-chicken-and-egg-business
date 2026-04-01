@@ -3,6 +3,36 @@ import Anthropic from "@anthropic-ai/sdk"
 
 const client = new Anthropic()
 
+function extractJson(text: string): unknown {
+  // Eliminar bloques de código markdown si el modelo los incluyó (```json ... ```)
+  const clean = text.replace(/```(?:json)?\s*([\s\S]*?)\s*```/g, '$1').trim()
+
+  // Intentar parsear directamente
+  try {
+    return JSON.parse(clean)
+  } catch { /* continuar al fallback */ }
+
+  // Fallback: buscar el primer objeto JSON completo con conteo de llaves
+  let depth = 0
+  let start = -1
+  for (let i = 0; i < clean.length; i++) {
+    if (clean[i] === '{') {
+      if (depth === 0) start = i
+      depth++
+    } else if (clean[i] === '}') {
+      depth--
+      if (depth === 0 && start !== -1) {
+        try {
+          return JSON.parse(clean.slice(start, i + 1))
+        } catch { /* seguir buscando */ }
+        start = -1
+      }
+    }
+  }
+
+  throw new Error("No se encontró JSON válido en la respuesta del modelo")
+}
+
 export async function POST(request: Request) {
   try {
     const formData = await request.formData()
@@ -67,13 +97,7 @@ Instrucciones:
       throw new Error("Respuesta inesperada del modelo")
     }
 
-    // Extract JSON — handle potential stray text around the object
-    const jsonMatch = content.text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      throw new Error("No se encontró JSON en la respuesta del modelo")
-    }
-
-    const result = JSON.parse(jsonMatch[0])
+    const result = extractJson(content.text) as Record<string, unknown>
 
     if (!result.gastos || !Array.isArray(result.gastos)) {
       throw new Error("Formato de respuesta inválido")

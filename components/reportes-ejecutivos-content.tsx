@@ -252,11 +252,14 @@ function ReportHeader({ titulo, subtitulo, tipo, datos, pdfRef, printRef }: {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tipo, datos }),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error ?? "Error desconocido")
+      }
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? "Error desconocido")
       toast({ title: "Email enviado", description: "El reporte fue enviado a tu casilla." })
-    } catch (err: any) {
-      toast({ title: "Error al enviar", description: err.message, variant: "destructive" })
+    } catch (err) {
+      toast({ title: "Error al enviar", description: err instanceof Error ? err.message : "Error desconocido", variant: "destructive" })
     } finally {
       setEnviandoEmail(false)
     }

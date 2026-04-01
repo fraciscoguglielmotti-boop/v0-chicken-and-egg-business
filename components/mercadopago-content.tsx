@@ -21,9 +21,22 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useSupabase, updateRow } from "@/hooks/use-supabase"
+import { useSupabase, updateRow, insertRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+
+const CATEGORIAS_MP = [
+  "Combustible",
+  "Comisión",
+  "Sueldo",
+  "Servicio",
+  "Impuesto",
+  "Proveedor",
+  "Mantenimiento",
+  "Alquiler",
+  "Retiro",
+  "Otro",
+]
 
 interface MovimientoMP {
   id: string
@@ -38,6 +51,7 @@ interface MovimientoMP {
   tipo_operacion?: string
   metodo_pago?: string
   estado: "sin_verificar" | "verificado" | "sospechoso"
+  categoria?: string
 }
 
 interface ComprobanteMP {
@@ -111,6 +125,7 @@ export function MercadoPagoContent() {
     setExpandedRows(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
   const [tipoFiltro, setTipoFiltro] = useState("todos")
   const [estadoFiltro, setEstadoFiltro] = useState("todos")
+  const [categoriaFiltro, setCategoriaFiltro] = useState("todos")
   const [busqueda, setBusqueda] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState("")
@@ -132,6 +147,38 @@ export function MercadoPagoContent() {
     }
   }
 
+  const saveCategoria = async (m: MovimientoMP, categoria: string) => {
+    try {
+      await updateRow("movimientos_mp", m.id, { categoria: categoria || null })
+
+      // Guardar regla para auto-clasificar en el futuro
+      // Usar pagador_nombre si existe (más específico), si no la descripción
+      const textoRegla = (m.pagador_nombre?.trim() || m.descripcion?.trim()) ?? null
+      const GENERICOS = ["Transferencia", "Pago", "Saldo MP", "Pago QR/POS", "Pago recurrente"]
+      const esGenerico = !textoRegla || textoRegla.length < 4 || GENERICOS.includes(textoRegla)
+
+      if (!esGenerico && categoria) {
+        await insertRow("reglas_categorias", {
+          texto_original: textoRegla,
+          categoria,
+          proveedor: m.pagador_nombre?.trim() || null,
+        }).catch(() => {
+          // Si ya existe la regla, no es crítico
+        })
+      }
+
+      await mutateMovimientos()
+      toast({
+        title: "Categoría guardada",
+        description: textoRegla && !esGenerico
+          ? `La regla "${textoRegla}" → ${categoria} se aplicará en futuros sincronizaciones.`
+          : `Categoría actualizada.`,
+      })
+    } catch {
+      toast({ title: "Error al guardar categoría", variant: "destructive" })
+    }
+  }
+
   const [verifying, setVerifying] = useState(false)
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
   const [saldo, setSaldo] = useState<number | null>(null)
@@ -144,8 +191,10 @@ export function MercadoPagoContent() {
     setLoadingSaldo(true)
     try {
       const res = await fetch("/api/mp/balance")
-      const data = await res.json()
-      if (res.ok) setSaldo(data.available_balance ?? null)
+      if (res.ok) {
+        const data = await res.json()
+        setSaldo(data.available_balance ?? null)
+      }
     } catch {
       // silencioso — no interrumpir la UI si falla
     } finally {
@@ -169,18 +218,21 @@ export function MercadoPagoContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ daysBack: parseInt(daysBack) }),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error ?? `Error del servidor (${res.status})`)
+      }
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
       await mutateMovimientos()
       await fetchSaldo()
       toast({
         title: "Sincronización exitosa",
         description: data.synced > 0
-          ? `${data.synced} movimientos — ${data.ingresos ?? 0} ingresos, ${data.egresos ?? 0} egresos`
+          ? `${data.synced} movimientos — ${data.ingresos ?? 0} ingresos, ${data.egresos ?? 0} egresos${data.clasificados > 0 ? `, ${data.clasificados} auto-clasificados` : ""}`
           : "No hay movimientos nuevos.",
       })
-    } catch (err: any) {
-      toast({ title: "Error al sincronizar", description: err.message, variant: "destructive" })
+    } catch (err) {
+      toast({ title: "Error al sincronizar", description: err instanceof Error ? err.message : "Error desconocido", variant: "destructive" })
     } finally {
       setSyncing(false)
     }
@@ -199,12 +251,15 @@ export function MercadoPagoContent() {
       const form = new FormData()
       form.append("file", file)
       const res = await fetch("/api/mp/verify-comprobante", { method: "POST", body: form })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error ?? `Error del servidor (${res.status})`)
+      }
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
       setVerifyResult(data)
       await mutateComprobantes()
-    } catch (err: any) {
-      toast({ title: "Error al verificar", description: err.message, variant: "destructive" })
+    } catch (err) {
+      toast({ title: "Error al verificar", description: err instanceof Error ? err.message : "Error desconocido", variant: "destructive" })
     } finally {
       setVerifying(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -216,10 +271,13 @@ export function MercadoPagoContent() {
   const filteredMovimientos = movimientos.filter((m) => {
     const matchTipo = tipoFiltro === "todos" || m.tipo === tipoFiltro
     const matchEstado = estadoFiltro === "todos" || m.estado === estadoFiltro
+    const matchCategoria =
+      categoriaFiltro === "todos" ||
+      (categoriaFiltro === "sin_categoria" ? !m.categoria : m.categoria === categoriaFiltro)
     const q = busqueda.toLowerCase()
     const matchBusqueda = !q || [m.concepto, m.descripcion, m.pagador_nombre, m.pagador_email]
       .some(v => v?.toLowerCase().includes(q))
-    return matchTipo && matchEstado && matchBusqueda
+    return matchTipo && matchEstado && matchCategoria && matchBusqueda
   })
 
   const totalIngresos = movimientos
@@ -311,6 +369,18 @@ export function MercadoPagoContent() {
                   <SelectItem value="sospechoso">Sospechosos</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={categoriaFiltro} onValueChange={setCategoriaFiltro}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todas las categorías</SelectItem>
+                  <SelectItem value="sin_categoria">Sin categoría</SelectItem>
+                  {CATEGORIAS_MP.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-center gap-2">
               <Select value={daysBack} onValueChange={setDaysBack}>
@@ -355,6 +425,7 @@ export function MercadoPagoContent() {
                     <th className="text-left p-3 font-semibold">Tipo</th>
                     <th className="text-left p-3 font-semibold">Titular</th>
                     <th className="text-left p-3 font-semibold">Concepto <span className="text-muted-foreground font-normal text-xs">(editable)</span></th>
+                    <th className="text-left p-3 font-semibold">Categoría</th>
                     <th className="text-right p-3 font-semibold">Monto</th>
                     <th className="text-left p-3 font-semibold">Estado</th>
                   </tr>
@@ -432,6 +503,26 @@ export function MercadoPagoContent() {
                               </div>
                             )}
                           </td>
+                          {/* Categoría — solo editable para egresos */}
+                          <td className="p-3 min-w-[150px]" onClick={e => e.stopPropagation()}>
+                            {m.tipo === "egreso" ? (
+                              <Select
+                                value={m.categoria ?? ""}
+                                onValueChange={(val) => saveCategoria(m, val)}
+                              >
+                                <SelectTrigger className="h-7 text-xs">
+                                  <SelectValue placeholder="Sin categoría" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {CATEGORIAS_MP.map((cat) => (
+                                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
                           <td className={`p-3 text-right font-semibold ${m.tipo === "ingreso" ? "text-green-600" : "text-destructive"}`}>
                             {m.tipo === "ingreso" ? "+" : "-"}{formatCurrency(m.monto)}
                           </td>
@@ -443,7 +534,7 @@ export function MercadoPagoContent() {
                         </tr>
                         {expanded && (
                           <tr key={`${m.id}-detail`} className="bg-muted/30 border-t">
-                            <td colSpan={7} className="px-10 py-3">
+                            <td colSpan={8} className="px-10 py-3">
                               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                                 {m.tipo_operacion && (
                                   <div>
