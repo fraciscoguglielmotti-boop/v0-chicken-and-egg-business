@@ -144,8 +144,10 @@ export function MercadoPagoContent() {
     setLoadingSaldo(true)
     try {
       const res = await fetch("/api/mp/balance")
-      const data = await res.json()
-      if (res.ok) setSaldo(data.available_balance ?? null)
+      if (res.ok) {
+        const data = await res.json()
+        setSaldo(data.available_balance ?? null)
+      }
     } catch {
       // silencioso — no interrumpir la UI si falla
     } finally {
@@ -169,8 +171,11 @@ export function MercadoPagoContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ daysBack: parseInt(daysBack) }),
       })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error ?? `Error del servidor (${res.status})`)
+      }
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
       await mutateMovimientos()
       await fetchSaldo()
       toast({
@@ -179,8 +184,8 @@ export function MercadoPagoContent() {
           ? `${data.synced} movimientos — ${data.ingresos ?? 0} ingresos, ${data.egresos ?? 0} egresos`
           : "No hay movimientos nuevos.",
       })
-    } catch (err: any) {
-      toast({ title: "Error al sincronizar", description: err.message, variant: "destructive" })
+    } catch (err) {
+      toast({ title: "Error al sincronizar", description: err instanceof Error ? err.message : "Error desconocido", variant: "destructive" })
     } finally {
       setSyncing(false)
     }
@@ -199,12 +204,15 @@ export function MercadoPagoContent() {
       const form = new FormData()
       form.append("file", file)
       const res = await fetch("/api/mp/verify-comprobante", { method: "POST", body: form })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error ?? `Error del servidor (${res.status})`)
+      }
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
       setVerifyResult(data)
       await mutateComprobantes()
-    } catch (err: any) {
-      toast({ title: "Error al verificar", description: err.message, variant: "destructive" })
+    } catch (err) {
+      toast({ title: "Error al verificar", description: err instanceof Error ? err.message : "Error desconocido", variant: "destructive" })
     } finally {
       setVerifying(false)
       if (fileInputRef.current) fileInputRef.current.value = ""

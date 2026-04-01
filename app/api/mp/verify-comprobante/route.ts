@@ -4,6 +4,36 @@ import { createClient } from "@supabase/supabase-js"
 
 const anthropic = new Anthropic()
 
+function extractJson(text: string): unknown {
+  // Eliminar bloques de código markdown si el modelo los incluyó (```json ... ```)
+  const clean = text.replace(/```(?:json)?\s*([\s\S]*?)\s*```/g, '$1').trim()
+
+  // Intentar parsear directamente
+  try {
+    return JSON.parse(clean)
+  } catch { /* continuar al fallback */ }
+
+  // Fallback: buscar el primer objeto JSON completo con conteo de llaves
+  let depth = 0
+  let start = -1
+  for (let i = 0; i < clean.length; i++) {
+    if (clean[i] === '{') {
+      if (depth === 0) start = i
+      depth++
+    } else if (clean[i] === '}') {
+      depth--
+      if (depth === 0 && start !== -1) {
+        try {
+          return JSON.parse(clean.slice(start, i + 1))
+        } catch { /* seguir buscando */ }
+        start = -1
+      }
+    }
+  }
+
+  throw new Error("No se encontró JSON válido en la respuesta del modelo")
+}
+
 function getSupabase() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,37 +64,39 @@ async function extractComprobanteData(file: File) {
     throw new Error("Formato no soportado. Subí una imagen (JPG/PNG) o PDF.")
   }
 
-  const content: any[] = isImage
-    ? [
-        {
-          type: "image",
-          source: {
-            type: "base64",
-            media_type: file.type as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
-            data: base64,
-          },
-        },
-        { type: "text", text: PROMPT },
-      ]
-    : [
-        {
-          type: "document",
-          source: { type: "base64", media_type: "application/pdf", data: base64 },
-        },
-        { type: "text", text: PROMPT },
-      ]
-
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 512,
-    messages: [{ role: "user", content }],
+    messages: [
+      {
+        role: "user",
+        content: isImage
+          ? [
+              {
+                type: "image" as const,
+                source: {
+                  type: "base64" as const,
+                  media_type: file.type as "image/jpeg" | "image/png" | "image/webp" | "image/gif",
+                  data: base64,
+                },
+              },
+              { type: "text" as const, text: PROMPT },
+            ]
+          : [
+              {
+                type: "document" as const,
+                source: { type: "base64" as const, media_type: "application/pdf" as const, data: base64 },
+              },
+              { type: "text" as const, text: PROMPT },
+            ],
+      },
+    ],
   })
 
-  const text = message.content[0].type === "text" ? message.content[0].text : ""
-  const jsonMatch = text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) throw new Error("No se pudo extraer información del comprobante")
+  const responseText = message.content[0].type === "text" ? message.content[0].text : ""
+  if (!responseText) throw new Error("No se pudo extraer información del comprobante")
 
-  return JSON.parse(jsonMatch[0]) as {
+  return extractJson(responseText) as {
     monto: number | null
     fecha: string | null
     referencia: string | null
