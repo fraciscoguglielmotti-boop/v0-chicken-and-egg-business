@@ -97,7 +97,7 @@ Instrucciones:
       throw new Error("Respuesta inesperada del modelo")
     }
 
-    const result = extractJson(content.text)
+    const result = extractJson(content.text) as Record<string, unknown>
 
     if (!result.gastos || !Array.isArray(result.gastos)) {
       throw new Error("Formato de respuesta inválido")
