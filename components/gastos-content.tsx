@@ -32,6 +32,7 @@ interface Gasto {
   banco?: string
   cuota_actual?: number
   cuotas_total?: number
+  fecha_pago?: string
 }
 
 const MEDIOS_PAGO = ["Efectivo", "Cuenta Francisco", "Cuenta Diego", "MercadoPago", "Tarjeta Credito"]
@@ -46,6 +47,8 @@ export function GastosContent() {
   const [catNombre, setCatNombre] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
   const [categoriaFiltro, setCategoriaFiltro] = useState("todas")
+  const [medioPagoFiltro, setMedioPagoFiltro] = useState("todos")
+  const [tarjetaFiltro, setTarjetaFiltro] = useState("todas")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
@@ -161,13 +164,18 @@ export function GastosContent() {
     })
   }
 
-  const filteredGastos = gastos.filter((g) => {
-    const matchSearch =
-      g.categoria.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (g.descripcion || "").toLowerCase().includes(searchTerm.toLowerCase())
-    const matchCategoria = categoriaFiltro === "todas" || g.categoria === categoriaFiltro
-    return matchSearch && matchCategoria
-  })
+  const filteredGastos = gastos
+    .filter((g) => {
+      const matchSearch =
+        g.categoria.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (g.descripcion || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (g.tarjeta || "").toLowerCase().includes(searchTerm.toLowerCase())
+      const matchCategoria = categoriaFiltro === "todas" || g.categoria === categoriaFiltro
+      const matchMedio = medioPagoFiltro === "todos" || g.medio_pago === medioPagoFiltro
+      const matchTarjeta = tarjetaFiltro === "todas" || g.tarjeta === tarjetaFiltro
+      return matchSearch && matchCategoria && matchMedio && matchTarjeta
+    })
+    .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
 
   const categoriaNombres = categorias.map(c => c.nombre)
 
@@ -187,14 +195,28 @@ export function GastosContent() {
 
   const columns = [
     { key: "fecha", header: "Fecha", render: (g: Gasto) => formatDate(new Date(g.fecha)) },
-    { key: "categoria", header: "Categoria", render: (g: Gasto) => <Badge variant="outline">{g.categoria}</Badge> },
-    { key: "descripcion", header: "Descripcion", render: (g: Gasto) => g.descripcion || "-" },
+    { key: "categoria", header: "Categoría", render: (g: Gasto) => <Badge variant="outline">{g.categoria}</Badge> },
+    { key: "descripcion", header: "Descripción", render: (g: Gasto) => g.descripcion || "-" },
     { key: "monto", header: "Monto", render: (g: Gasto) => <span className="font-semibold text-destructive">{formatCurrency(g.monto)}</span> },
-    { key: "medio_pago", header: "Medio Pago", render: (g: Gasto) => g.medio_pago || "-" },
-    { 
-      key: "cuotas", 
-      header: "Cuotas", 
-      render: (g: Gasto) => g.cuotas_total && g.cuotas_total > 1 ? `${g.cuota_actual}/${g.cuotas_total}` : "-" 
+    {
+      key: "medio_pago",
+      header: "Medio de Pago",
+      render: (g: Gasto) => (
+        <div className="space-y-0.5">
+          <p className="text-sm">{g.medio_pago || "-"}</p>
+          {g.tarjeta && <p className="text-xs text-muted-foreground">{g.tarjeta}</p>}
+          {g.fecha_pago && (
+            <p className="text-xs text-muted-foreground">
+              Vence: {formatDate(new Date(g.fecha_pago + "T12:00:00"))}
+            </p>
+          )}
+        </div>
+      )
+    },
+    {
+      key: "cuotas",
+      header: "Cuotas",
+      render: (g: Gasto) => g.cuotas_total && g.cuotas_total > 1 ? `${g.cuota_actual}/${g.cuotas_total}` : "-"
     },
     {
       key: "actions",
@@ -229,19 +251,19 @@ export function GastosContent() {
             />
           ) : (
           <>
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex flex-1 items-center gap-3 max-w-xl">
-              <div className="relative flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Buscar gastos..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
+                  className="pl-9 w-[200px]"
                 />
               </div>
               <Select value={categoriaFiltro} onValueChange={setCategoriaFiltro}>
-                <SelectTrigger className="w-[170px]">
+                <SelectTrigger className="w-[160px]">
                   <SelectValue placeholder="Categoría" />
                 </SelectTrigger>
                 <SelectContent>
@@ -251,6 +273,30 @@ export function GastosContent() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select value={medioPagoFiltro} onValueChange={(v) => { setMedioPagoFiltro(v); setTarjetaFiltro("todas") }}>
+                <SelectTrigger className="w-[170px]">
+                  <SelectValue placeholder="Medio de pago" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos los medios</SelectItem>
+                  {MEDIOS_PAGO.map((mp) => (
+                    <SelectItem key={mp} value={mp}>{mp}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {medioPagoFiltro === "Tarjeta Credito" && (
+                <Select value={tarjetaFiltro} onValueChange={setTarjetaFiltro}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Tarjeta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas las tarjetas</SelectItem>
+                    {TARJETAS.map((t) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="flex gap-2">
             <Button variant="outline" onClick={() => setShowImport(true)}>

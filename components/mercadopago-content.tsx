@@ -1,8 +1,7 @@
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef } from "react"
 import {
-  RefreshCw,
   Upload,
   Loader2,
   CheckCircle2,
@@ -10,7 +9,6 @@ import {
   XCircle,
   ArrowDownCircle,
   ArrowUpCircle,
-  Wallet,
   Pencil,
   Check,
   Search,
@@ -119,10 +117,8 @@ export function MercadoPagoContent() {
     mutate: mutateComprobantes,
   } = useSupabase<ComprobanteMP>("comprobantes_mp")
 
-  const [syncing, setSyncing] = useState(false)
   const [importingPDF, setImportingPDF] = useState(false)
   const pdfInputRef = useRef<HTMLInputElement>(null)
-  const [daysBack, setDaysBack] = useState("30")
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const toggleRow = (id: string) =>
     setExpandedRows(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
@@ -184,62 +180,7 @@ export function MercadoPagoContent() {
 
   const [verifying, setVerifying] = useState(false)
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
-  const [saldo, setSaldo] = useState<number | null>(null)
-  const [loadingSaldo, setLoadingSaldo] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // ── Saldo en tiempo real ────────────────────────────────────────────────────
-
-  const fetchSaldo = useCallback(async () => {
-    setLoadingSaldo(true)
-    try {
-      const res = await fetch("/api/mp/balance")
-      if (res.ok) {
-        const data = await res.json()
-        setSaldo(data.available_balance ?? null)
-      }
-    } catch {
-      // silencioso — no interrumpir la UI si falla
-    } finally {
-      setLoadingSaldo(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchSaldo()
-    const interval = setInterval(fetchSaldo, 60_000) // refresca cada 1 minuto
-    return () => clearInterval(interval)
-  }, [fetchSaldo])
-
-  // ── Sync ────────────────────────────────────────────────────────────────────
-
-  const handleSync = async () => {
-    setSyncing(true)
-    try {
-      const res = await fetch("/api/mp/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ daysBack: parseInt(daysBack) }),
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => null)
-        throw new Error(err?.error ?? `Error del servidor (${res.status})`)
-      }
-      const data = await res.json()
-      await mutateMovimientos()
-      await fetchSaldo()
-      toast({
-        title: "Sincronización exitosa",
-        description: data.synced > 0
-          ? `${data.synced} movimientos — ${data.ingresos ?? 0} ingresos, ${data.egresos ?? 0} egresos${data.clasificados > 0 ? `, ${data.clasificados} auto-clasificados` : ""}`
-          : "No hay movimientos nuevos.",
-      })
-    } catch (err) {
-      toast({ title: "Error al sincronizar", description: err instanceof Error ? err.message : "Error desconocido", variant: "destructive" })
-    } finally {
-      setSyncing(false)
-    }
-  }
 
   // ── Importar resumen PDF ─────────────────────────────────────────────────────
 
@@ -322,29 +263,13 @@ export function MercadoPagoContent() {
   return (
     <div className="space-y-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-        {/* Saldo real en tiempo real */}
-        <div className="rounded-lg border bg-card p-4 border-primary/30">
-          <div className="flex items-center gap-2 mb-1">
-            <Wallet className="h-4 w-4 text-primary" />
-            <p className="text-sm text-muted-foreground">Saldo disponible MP</p>
-            <button onClick={fetchSaldo} className="ml-auto text-muted-foreground hover:text-foreground" title="Actualizar saldo">
-              <RefreshCw className={`h-3 w-3 ${loadingSaldo ? "animate-spin" : ""}`} />
-            </button>
-          </div>
-          {loadingSaldo
-            ? <p className="text-xl font-bold text-muted-foreground mt-1">…</p>
-            : saldo !== null
-              ? <p className="text-2xl font-bold text-primary mt-1">{formatCurrency(saldo)}</p>
-              : <p className="text-sm text-muted-foreground mt-2">No disponible para este tipo de cuenta MP</p>
-          }
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="rounded-lg border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Ingresos sincronizados</p>
+          <p className="text-sm text-muted-foreground">Ingresos del período</p>
           <p className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(totalIngresos)}</p>
         </div>
         <div className="rounded-lg border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Egresos sincronizados</p>
+          <p className="text-sm text-muted-foreground">Egresos del período</p>
           <p className="text-2xl font-bold text-destructive mt-1">{formatCurrency(totalEgresos)}</p>
         </div>
         <div className="rounded-lg border bg-card p-4">
@@ -415,26 +340,7 @@ export function MercadoPagoContent() {
               </Select>
             </div>
             <div className="flex items-center gap-2">
-              <Select value={daysBack} onValueChange={setDaysBack}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="7">Últimos 7 días</SelectItem>
-                  <SelectItem value="30">Últimos 30 días</SelectItem>
-                  <SelectItem value="60">Últimos 60 días</SelectItem>
-                  <SelectItem value="90">Últimos 90 días</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button onClick={handleSync} disabled={syncing || importingPDF} variant="outline">
-                {syncing ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                )}
-                Sincronizar API
-              </Button>
-              <Button onClick={() => pdfInputRef.current?.click()} disabled={syncing || importingPDF}>
+              <Button onClick={() => pdfInputRef.current?.click()} disabled={importingPDF}>
                 {importingPDF ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
