@@ -2,10 +2,10 @@ import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
 function getSupabase() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !key) throw new Error("Faltan variables de entorno de Supabase")
+  return createClient(url, key)
 }
 
 const MP_HEADERS = (token: string) => ({ Authorization: `Bearer ${token}` })
@@ -185,7 +185,53 @@ export async function POST(request: Request) {
     const egresos = movimientos.filter((m) => m.tipo === "egreso").length
     const fuente = movCuenta ? "movimientos_cuenta" : "payments_search"
 
-    return NextResponse.json({ synced: movimientos.length, ingresos, egresos, fuente })
+    // ── Auto-clasificar egresos sin categoria usando reglas_categorias ──
+    let clasificados = 0
+    const egresosIds = movimientos
+      .filter((m) => m.tipo === "egreso")
+      .map((m) => m.id)
+
+    if (egresosIds.length > 0) {
+      const [{ data: reglas }, { data: sinCategoria }] = await Promise.all([
+        supabase.from("reglas_categorias").select("texto_original, categoria"),
+        supabase
+          .from("movimientos_mp")
+          .select("id, descripcion, pagador_nombre")
+          .in("id", egresosIds)
+          .is("categoria", null),
+      ])
+
+      if (reglas && reglas.length > 0 && sinCategoria && sinCategoria.length > 0) {
+        const updates: Array<{ id: string; categoria: string }> = []
+
+        for (const mov of sinCategoria) {
+          // Buscar en descripcion Y en pagador_nombre
+          const textosBusqueda = [mov.descripcion, mov.pagador_nombre]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+
+          const match = reglas.find((r) =>
+            textosBusqueda.includes(r.texto_original.toLowerCase())
+          )
+          if (match) updates.push({ id: mov.id, categoria: match.categoria })
+        }
+
+        if (updates.length > 0) {
+          await Promise.all(
+            updates.map((u) =>
+              supabase
+                .from("movimientos_mp")
+                .update({ categoria: u.categoria })
+                .eq("id", u.id)
+            )
+          )
+          clasificados = updates.length
+        }
+      }
+    }
+
+    return NextResponse.json({ synced: movimientos.length, ingresos, egresos, clasificados, fuente })
   } catch (err) {
     const msg = err instanceof Error ? err.message : JSON.stringify(err) ?? "Error desconocido"
     return NextResponse.json({ error: msg }, { status: 500 })
