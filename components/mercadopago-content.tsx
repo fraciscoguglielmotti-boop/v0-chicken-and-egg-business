@@ -15,6 +15,7 @@ import {
   Check,
   Search,
   X,
+  FileUp,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -119,6 +120,8 @@ export function MercadoPagoContent() {
   } = useSupabase<ComprobanteMP>("comprobantes_mp")
 
   const [syncing, setSyncing] = useState(false)
+  const [importingPDF, setImportingPDF] = useState(false)
+  const pdfInputRef = useRef<HTMLInputElement>(null)
   const [daysBack, setDaysBack] = useState("30")
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const toggleRow = (id: string) =>
@@ -235,6 +238,35 @@ export function MercadoPagoContent() {
       toast({ title: "Error al sincronizar", description: err instanceof Error ? err.message : "Error desconocido", variant: "destructive" })
     } finally {
       setSyncing(false)
+    }
+  }
+
+  // ── Importar resumen PDF ─────────────────────────────────────────────────────
+
+  const handleImportPDF = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (pdfInputRef.current) pdfInputRef.current.value = ""
+
+    setImportingPDF(true)
+    try {
+      const form = new FormData()
+      form.append("file", file)
+      const res = await fetch("/api/mp/importar-resumen", { method: "POST", body: form })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error ?? `Error del servidor (${res.status})`)
+      }
+      const data = await res.json()
+      await mutateMovimientos()
+      toast({
+        title: "Resumen importado",
+        description: `${data.importados} movimientos — ${data.ingresos} ingresos, ${data.egresos} egresos${data.clasificados > 0 ? `, ${data.clasificados} auto-clasificados` : ""}`,
+      })
+    } catch (err) {
+      toast({ title: "Error al importar", description: err instanceof Error ? err.message : "Error desconocido", variant: "destructive" })
+    } finally {
+      setImportingPDF(false)
     }
   }
 
@@ -394,14 +426,29 @@ export function MercadoPagoContent() {
                   <SelectItem value="90">Últimos 90 días</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={handleSync} disabled={syncing}>
+              <Button onClick={handleSync} disabled={syncing || importingPDF} variant="outline">
                 {syncing ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <RefreshCw className="mr-2 h-4 w-4" />
                 )}
-                Sincronizar
+                Sincronizar API
               </Button>
+              <Button onClick={() => pdfInputRef.current?.click()} disabled={syncing || importingPDF}>
+                {importingPDF ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <FileUp className="mr-2 h-4 w-4" />
+                )}
+                {importingPDF ? "Procesando PDF…" : "Importar Resumen PDF"}
+              </Button>
+              <input
+                ref={pdfInputRef}
+                type="file"
+                accept=".pdf"
+                className="hidden"
+                onChange={handleImportPDF}
+              />
             </div>
           </div>
 
