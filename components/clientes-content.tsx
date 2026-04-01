@@ -161,13 +161,15 @@ export function ClientesContent() {
           totalCobrado: balance.totalCobrado,
         }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || "Error al enviar")
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error ?? "Error al enviar")
+      }
       toast({ title: "WhatsApp enviado", description: `Estado de cuenta enviado a ${cliente.nombre}` })
       setWaDialogOpen(false)
       setWaTempPhone("")
-    } catch (err: any) {
-      toast({ title: "Error al enviar WhatsApp", description: err.message, variant: "destructive" })
+    } catch (err) {
+      toast({ title: "Error al enviar WhatsApp", description: err instanceof Error ? err.message : "Error desconocido", variant: "destructive" })
     } finally {
       setWaSending(false)
     }

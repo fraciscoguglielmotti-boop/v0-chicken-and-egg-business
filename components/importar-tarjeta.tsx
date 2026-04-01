@@ -84,9 +84,11 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
       const form = new FormData()
       form.append("file", file)
       const response = await fetch("/api/parse-credit-card", { method: "POST", body: form })
+      if (!response.ok) {
+        const err = await response.json().catch(() => null)
+        throw new Error(err?.error ?? "Error al procesar el PDF")
+      }
       const data = await response.json()
-
-      if (!response.ok) throw new Error(data.error || "Error al procesar el PDF")
       if (!Array.isArray(data.gastos)) throw new Error("El servidor no devolvió gastos válidos. Verificá que el PDF sea un resumen de tarjeta.")
 
       const gastosExtraidos: GastoExtraido[] = data.gastos
@@ -111,8 +113,8 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
 
       setGastosReview(revisados)
       setStep("review")
-    } catch (err: any) {
-      setError(err.message || "Error desconocido")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido")
       setStep("upload")
       // Reset file input so the same file can be retried
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -169,8 +171,8 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
       })
       onImportComplete()
       setStep("done")
-    } catch (err: any) {
-      toast({ title: "Error al importar", description: err.message, variant: "destructive" })
+    } catch (err) {
+      toast({ title: "Error al importar", description: err instanceof Error ? err.message : "Error desconocido", variant: "destructive" })
       setStep("review")
     }
   }
