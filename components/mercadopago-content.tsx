@@ -14,6 +14,7 @@ import {
   Search,
   X,
   FileUp,
+  BarChart2,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -119,6 +120,46 @@ export function MercadoPagoContent() {
 
   const [importingPDF, setImportingPDF] = useState(false)
   const pdfInputRef = useRef<HTMLInputElement>(null)
+
+  // ── Generar reporte MP via API ───────────────────────────────────────────────
+  const today = new Date().toISOString().slice(0, 10)
+  const firstOfMonth = today.slice(0, 8) + "01"
+  const [reporteDesde, setReporteDesde] = useState(firstOfMonth)
+  const [reporteHasta, setReporteHasta] = useState(today)
+  const [generatingReport, setGeneratingReport] = useState(false)
+
+  const handleGenerarReporte = async () => {
+    if (!reporteDesde || !reporteHasta) {
+      toast({ title: "Seleccioná las fechas", variant: "destructive" })
+      return
+    }
+    setGeneratingReport(true)
+    try {
+      const res = await fetch("/api/mp/generar-reporte", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fechaDesde: reporteDesde, fechaHasta: reporteHasta }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.error ?? `Error del servidor (${res.status})`)
+      }
+      const data = await res.json()
+      await mutateMovimientos()
+      toast({
+        title: "Reporte importado",
+        description: `${data.importados} movimientos — ${data.ingresos} ingresos, ${data.egresos} egresos${data.clasificados > 0 ? `, ${data.clasificados} auto-clasificados` : ""}`,
+      })
+    } catch (err) {
+      toast({
+        title: "Error al generar reporte",
+        description: err instanceof Error ? err.message : "Error desconocido",
+        variant: "destructive",
+      })
+    } finally {
+      setGeneratingReport(false)
+    }
+  }
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const toggleRow = (id: string) =>
     setExpandedRows(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
@@ -339,14 +380,43 @@ export function MercadoPagoContent() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center gap-2">
-              <Button onClick={() => pdfInputRef.current?.click()} disabled={importingPDF}>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Generar reporte por API con selector de fechas */}
+              <div className="flex items-center gap-1">
+                <input
+                  type="date"
+                  value={reporteDesde}
+                  max={reporteHasta}
+                  onChange={(e) => setReporteDesde(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                  disabled={generatingReport}
+                />
+                <span className="text-xs text-muted-foreground">al</span>
+                <input
+                  type="date"
+                  value={reporteHasta}
+                  min={reporteDesde}
+                  onChange={(e) => setReporteHasta(e.target.value)}
+                  className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                  disabled={generatingReport}
+                />
+                <Button onClick={handleGenerarReporte} disabled={generatingReport} variant="default">
+                  {generatingReport ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <BarChart2 className="mr-2 h-4 w-4" />
+                  )}
+                  {generatingReport ? "Generando…" : "Generar Reporte"}
+                </Button>
+              </div>
+              {/* Importar PDF manual */}
+              <Button onClick={() => pdfInputRef.current?.click()} disabled={importingPDF} variant="outline">
                 {importingPDF ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <FileUp className="mr-2 h-4 w-4" />
                 )}
-                {importingPDF ? "Procesando PDF…" : "Importar Resumen PDF"}
+                {importingPDF ? "Procesando PDF…" : "Importar PDF"}
               </Button>
               <input
                 ref={pdfInputRef}
