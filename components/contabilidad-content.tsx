@@ -58,10 +58,22 @@ function calcCMV_FIFO(
     queues.get(prod)!.push({ qty: c.cantidad, costUnit })
   }
 
-  // Costo promedio global (fallback si faltan compras)
-  const totalUnidades = sortedCompras.reduce((s, c) => s + (c.cantidad || 0), 0)
-  const totalCosto    = sortedCompras.reduce((s, c) => s + (c.total > 0 ? c.total : (c.cantidad || 0) * c.precio_unitario), 0)
-  const costoPromGlobal = totalUnidades > 0 ? totalCosto / totalUnidades : 0
+  // Último costo unitario por producto (fallback si el stock FIFO se agota)
+  const ultimoCostoUnit = new Map<string, number>()
+  for (const c of sortedCompras) {
+    if (!c.cantidad || c.cantidad <= 0) continue
+    const total = c.total > 0 ? c.total : c.cantidad * c.precio_unitario
+    const prod = norm(c.producto) || "__sin_producto__"
+    ultimoCostoUnit.set(prod, total / c.cantidad)
+  }
+  // Último costo global como último recurso
+  const ultimoCostoGlobal = sortedCompras.length > 0
+    ? (() => {
+        const last = sortedCompras[sortedCompras.length - 1]
+        const t = last.total > 0 ? last.total : last.cantidad * last.precio_unitario
+        return last.cantidad > 0 ? t / last.cantidad : 0
+      })()
+    : 0
 
   // ── 2. Consumir stock según ventas, en orden cronológico ──────────────────
   // Procesamos todas las ventas hasta el último día del mes objetivo
@@ -100,9 +112,16 @@ function calcCMV_FIFO(
       }
     }
 
-    // Si quedaron unidades sin cubrir (stock insuficiente), usar costo promedio
+    // Si quedaron unidades sin cubrir (stock insuficiente), usar el último
+    // precio conocido del producto; si no hay, el último precio global
     if (remaining > 0.0001) {
-      ventaCost += remaining * costoPromGlobal
+      const fallback = ultimoCostoUnit.get(prodVenta)
+        ?? Array.from(ultimoCostoUnit.entries()).find(
+             ([k]) => k !== "__sin_producto__" && (k.includes(prodVenta) || prodVenta.includes(k))
+           )?.[1]
+        ?? ultimoCostoUnit.get("__sin_producto__")
+        ?? ultimoCostoGlobal
+      ventaCost += remaining * fallback
     }
 
     // Solo acumular si la venta es del mes objetivo
