@@ -125,12 +125,14 @@ export function KpisContent() {
     const totalClientesActivos = clientesSaldos.size
     const tasaMorosidad = totalClientesActivos > 0 ? (clientesConDeuda / totalClientesActivos) * 100 : 0
 
-    // Crecimiento Mensual
+    // Crecimiento Mensual — comparación por prefijo "YYYY-MM" para evitar bug UTC
+    const prefixActual   = `${añoActual}-${String(mesActual + 1).padStart(2, "0")}`
+    const prefixAnterior = `${añoMesAnterior}-${String(mesAnterior + 1).padStart(2, "0")}`
     const ventasMesActual = ventas
-      .filter(v => { const f = new Date(v.fecha); return f.getMonth() === mesActual && f.getFullYear() === añoActual })
+      .filter(v => v.fecha.startsWith(prefixActual))
       .reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
     const ventasMesAnterior = ventas
-      .filter(v => { const f = new Date(v.fecha); return f.getMonth() === mesAnterior && f.getFullYear() === añoMesAnterior })
+      .filter(v => v.fecha.startsWith(prefixAnterior))
       .reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
     const crecimientoMensual = ventasMesAnterior > 0 ? ((ventasMesActual - ventasMesAnterior) / ventasMesAnterior) * 100 : 0
 
@@ -155,12 +157,11 @@ export function KpisContent() {
     const now = new Date()
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const mes = d.getMonth()
-      const año = d.getFullYear()
       const label = d.toLocaleString("es-AR", { month: "short" })
-      const totalV = ventas.filter(v => { const f = new Date(v.fecha); return f.getMonth() === mes && f.getFullYear() === año })
+      const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      const totalV = ventas.filter(v => v.fecha.startsWith(prefix))
         .reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
-      const totalC = cobros.filter(c => { const f = new Date(c.fecha); return f.getMonth() === mes && f.getFullYear() === año })
+      const totalC = cobros.filter(c => c.fecha.startsWith(prefix))
         .reduce((acc, c) => acc + Number(c.monto), 0)
       months.push({ label, ventas: Math.round(totalV), cobros: Math.round(totalC) })
     }
@@ -195,10 +196,9 @@ export function KpisContent() {
     const now = new Date()
     return Array.from({ length: 6 }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
-      const mes = d.getMonth()
-      const año = d.getFullYear()
       const label = d.toLocaleString("es-AR", { month: "short" })
-      const ventasMes = ventas.filter(v => { const f = new Date(v.fecha); return f.getMonth() === mes && f.getFullYear() === año })
+      const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      const ventasMes = ventas.filter(v => v.fecha.startsWith(prefix))
       const total = ventasMes.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
       const ticket = ventasMes.length > 0 ? Math.round(total / ventasMes.length) : 0
       return { label, ticket }
@@ -242,11 +242,10 @@ export function KpisContent() {
     const now = new Date()
     return Array.from({ length: 6 }, (_, i) => {
       const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
-      const mes = d.getMonth()
-      const año = d.getFullYear()
       const label = d.toLocaleString("es-AR", { month: "short" })
+      const prefix = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
       const total = ventas
-        .filter(v => { const f = new Date(v.fecha); return f.getMonth() === mes && f.getFullYear() === año })
+        .filter(v => v.fecha.startsWith(prefix))
         .reduce((acc, v) => acc + v.cantidad, 0)
       return { label, cajones: Math.round(total) }
     })

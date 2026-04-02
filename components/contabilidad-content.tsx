@@ -101,7 +101,13 @@ export function ContabilidadContent() {
   const { data: compras = [] } = useSupabase<Compra>("compras")
   const { data: gastos = [] }  = useSupabase<Gasto>("gastos")
 
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
+  // Abrir en el mes anterior: el mes en curso está incompleto, no tiene sentido
+  // analizarlo hasta que termine
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date()
+    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+  })
   const [gastosExpanded, setGastosExpanded] = useState(false)
 
   const { eerr, prev } = useMemo(() => ({
