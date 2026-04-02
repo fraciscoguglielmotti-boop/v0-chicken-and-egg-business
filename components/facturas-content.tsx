@@ -49,13 +49,10 @@ export function FacturasContent() {
 
   // Calcular monto por cliente: transferencias con destino Agroaves en el mes seleccionado
   const montosPorCliente = useMemo(() => {
-    const [anio, mes] = mesSel.split("-").map(Number)
     const map: Record<string, number> = {}
     for (const c of cobros) {
-      const fecha = new Date(c.fecha)
       if (
-        fecha.getFullYear() === anio &&
-        fecha.getMonth() + 1 === mes &&
+        c.fecha.startsWith(mesSel) &&
         c.metodo_pago?.toLowerCase() === "transferencia" &&
         c.cuenta_destino?.toLowerCase() === "agroaves"
       ) {

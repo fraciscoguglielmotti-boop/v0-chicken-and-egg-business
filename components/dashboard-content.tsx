@@ -92,6 +92,18 @@ export function DashboardContent() {
     const inicioSemanaAnterior = new Date(inicioSemanaActual.getFullYear(), inicioSemanaActual.getMonth(), inicioSemanaActual.getDate() - 7)
     const finSemanaAnterior = new Date(inicioSemanaActual.getFullYear(), inicioSemanaActual.getMonth(), inicioSemanaActual.getDate() - 1, 23, 59, 59, 999)
 
+    // "A esta altura": mismo día de semana en la semana anterior
+    // Ej: si hoy es miércoles, comparar lun-mié de esta semana vs lun-mié de la semana pasada
+    const finPaceActual  = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
+    const finPaceAnterior = new Date(
+      inicioSemanaAnterior.getFullYear(),
+      inicioSemanaAnterior.getMonth(),
+      inicioSemanaAnterior.getDate() + diaSemana,
+      23, 59, 59, 999
+    )
+    const DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+    const diaLabel = DIAS_ES[diaSemana]
+
     // Parsear fecha como local (año, mes, día) para no tener offset UTC
     const fechaLocal = (fechaStr: string) => {
       const [y, m, d] = fechaStr.split("-").map(Number)
@@ -117,6 +129,17 @@ export function DashboardContent() {
     const cajonesSemanaActual = ventasSemanaActual.filter(esPollo).reduce((s, v) => s + v.cantidad, 0)
     const cajonesSemanaAnterior = ventasSemanaAnterior.filter(esPollo).reduce((s, v) => s + v.cantidad, 0)
 
+    // Ritmo: esta semana hasta hoy vs semana anterior hasta el mismo día
+    const cajonesPaceActual = ventas
+      .filter(v => { const f = fechaLocal(v.fecha); return f >= inicioSemanaActual && f <= finPaceActual })
+      .filter(esPollo).reduce((s, v) => s + v.cantidad, 0)
+    const cajonesPaceAnterior = ventas
+      .filter(v => { const f = fechaLocal(v.fecha); return f >= inicioSemanaAnterior && f <= finPaceAnterior })
+      .filter(esPollo).reduce((s, v) => s + v.cantidad, 0)
+    const variacionPace = cajonesPaceAnterior > 0
+      ? ((cajonesPaceActual - cajonesPaceAnterior) / cajonesPaceAnterior) * 100
+      : 0
+
     const variacionCajonesMes = cajonesMesAnterior > 0 ? ((cajonesMesActual - cajonesMesAnterior) / cajonesMesAnterior) * 100 : 0
     const variacionCajonesSemana = cajonesSemanaAnterior > 0 ? ((cajonesSemanaActual - cajonesSemanaAnterior) / cajonesSemanaAnterior) * 100 : 0
 
@@ -136,6 +159,10 @@ export function DashboardContent() {
       cajonesMesAnterior,
       cajonesSemanaActual,
       cajonesSemanaAnterior,
+      cajonesPaceActual,
+      cajonesPaceAnterior,
+      variacionPace,
+      diaLabel,
       variacionCajonesMes,
       variacionCajonesSemana,
       ventasMesActual: totalVentasMesActual,
@@ -176,8 +203,10 @@ export function DashboardContent() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Cajones pollo esta semana"
-          value={<span className="text-2xl font-bold">{stats.cajonesSemanaActual} caj.</span>}
-          subtitle={stats.cajonesSemanaAnterior > 0 ? `Semana ant.: ${stats.cajonesSemanaAnterior} caj.` : "Sin datos semana anterior"}
+          value={<span className="text-2xl font-bold">{stats.cajonesPaceActual} caj.</span>}
+          subtitle={stats.cajonesPaceAnterior > 0
+            ? `Hasta el ${stats.diaLabel} sem. ant.: ${stats.cajonesPaceAnterior} caj.`
+            : "Sin datos semana anterior"}
           icon={Package}
           variant="success"
         />
@@ -200,16 +229,42 @@ export function DashboardContent() {
             <h3 className="text-lg font-semibold">Cajones pollo — Semana vs Semana</h3>
           </div>
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Esta semana</span>
-              <span className="font-bold text-xl">{stats.cajonesSemanaActual} caj.</span>
+            {/* Ritmo: hasta hoy vs mismo día semana anterior */}
+            <div className="rounded-lg bg-muted/40 px-3 py-2.5 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Ritmo — hasta el {stats.diaLabel}
+              </p>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Esta semana</span>
+                <span className="font-bold text-lg">{stats.cajonesPaceActual} caj.</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Semana ant. (mismo día)</span>
+                <span className="font-semibold">{stats.cajonesPaceAnterior} caj.</span>
+              </div>
+              <div className="flex items-center justify-between pt-1 border-t border-border/40">
+                <span className="text-sm font-medium">Variación</span>
+                <div className="flex items-center gap-1.5">
+                  {stats.variacionPace >= 0
+                    ? <TrendingUp className="h-4 w-4 text-green-600" />
+                    : <TrendingDown className="h-4 w-4 text-red-600" />}
+                  <span className={`font-bold ${stats.variacionPace >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {stats.variacionPace >= 0 ? '+' : ''}{stats.variacionPace.toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+            {/* Semanas completas */}
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-sm text-muted-foreground">Esta semana (total)</span>
+              <span className="font-semibold">{stats.cajonesSemanaActual} caj.</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Semana anterior</span>
+              <span className="text-sm text-muted-foreground">Semana anterior (total)</span>
               <span className="font-semibold">{stats.cajonesSemanaAnterior} caj.</span>
             </div>
             <div className="border-t pt-3 flex items-center justify-between">
-              <span className="font-medium">Variación</span>
+              <span className="font-medium">Variación semana completa</span>
               <div className="flex items-center gap-2">
                 {stats.variacionCajonesSemana >= 0 ? <TrendingUp className="h-4 w-4 text-green-600" /> : <TrendingDown className="h-4 w-4 text-red-600" />}
                 <span className={`font-bold ${stats.variacionCajonesSemana >= 0 ? 'text-green-600' : 'text-red-600'}`}>

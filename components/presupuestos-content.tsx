@@ -128,10 +128,8 @@ export function PresupuestosContent() {
       p => p.mes === selectedMes && p.anio === selectedAnio
     )
 
-    const gastosDelMes = gastos.filter(g => {
-      const fecha = new Date(g.fecha)
-      return fecha.getMonth() + 1 === selectedMes && fecha.getFullYear() === selectedAnio
-    })
+    const prefixMes = `${selectedAnio}-${String(selectedMes).padStart(2, "0")}`
+    const gastosDelMes = gastos.filter(g => g.fecha.startsWith(prefixMes))
 
     return CATEGORIAS.map(categoria => {
       const presupuesto = presupuestosDelMes.find(p => p.categoria === categoria)
