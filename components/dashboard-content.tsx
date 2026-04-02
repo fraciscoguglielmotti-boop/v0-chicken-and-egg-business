@@ -79,36 +79,34 @@ export function DashboardContent() {
     const mesAnterior = mesActual === 0 ? 11 : mesActual - 1
     const añoMesAnterior = mesActual === 0 ? añoActual - 1 : añoActual
 
-    // Semana calendario: lunes a domingo
+    // Prefijos "YYYY-MM" para comparar fechas como string, evitando el bug de
+    // zona horaria: new Date("2026-04-02") se parsea como UTC y en Argentina
+    // (UTC-3) cae el día anterior, corrompiendo los filtros por mes.
+    const prefixMesActual = `${añoActual}-${String(mesActual + 1).padStart(2, "0")}`
+    const prefixMesAnterior = `${añoMesAnterior}-${String(mesAnterior + 1).padStart(2, "0")}`
+
+    // Semana calendario: lunes a domingo (usando fecha local sin conversión UTC)
     const diaSemana = now.getDay() === 0 ? 6 : now.getDay() - 1 // 0=lun, 6=dom
-    const inicioSemanaActual = new Date(now)
-    inicioSemanaActual.setHours(0, 0, 0, 0)
-    inicioSemanaActual.setDate(now.getDate() - diaSemana)
-    const finSemanaActual = new Date(inicioSemanaActual)
-    finSemanaActual.setDate(inicioSemanaActual.getDate() + 6)
-    finSemanaActual.setHours(23, 59, 59, 999)
+    const inicioSemanaActual = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diaSemana)
+    const finSemanaActual = new Date(now.getFullYear(), now.getMonth(), now.getDate() - diaSemana + 6, 23, 59, 59, 999)
+    const inicioSemanaAnterior = new Date(inicioSemanaActual.getFullYear(), inicioSemanaActual.getMonth(), inicioSemanaActual.getDate() - 7)
+    const finSemanaAnterior = new Date(inicioSemanaActual.getFullYear(), inicioSemanaActual.getMonth(), inicioSemanaActual.getDate() - 1, 23, 59, 59, 999)
 
-    const inicioSemanaAnterior = new Date(inicioSemanaActual)
-    inicioSemanaAnterior.setDate(inicioSemanaActual.getDate() - 7)
-    const finSemanaAnterior = new Date(inicioSemanaActual)
-    finSemanaAnterior.setDate(inicioSemanaActual.getDate() - 1)
-    finSemanaAnterior.setHours(23, 59, 59, 999)
+    // Parsear fecha como local (año, mes, día) para no tener offset UTC
+    const fechaLocal = (fechaStr: string) => {
+      const [y, m, d] = fechaStr.split("-").map(Number)
+      return new Date(y, m - 1, d)
+    }
 
-    const ventasMesActual = ventas.filter(v => {
-      const fecha = new Date(v.fecha)
-      return fecha.getMonth() === mesActual && fecha.getFullYear() === añoActual
-    })
-    const ventasMesAnterior = ventas.filter(v => {
-      const fecha = new Date(v.fecha)
-      return fecha.getMonth() === mesAnterior && fecha.getFullYear() === añoMesAnterior
-    })
+    const ventasMesActual = ventas.filter(v => v.fecha.startsWith(prefixMesActual))
+    const ventasMesAnterior = ventas.filter(v => v.fecha.startsWith(prefixMesAnterior))
 
     const ventasSemanaActual = ventas.filter(v => {
-      const fecha = new Date(v.fecha)
+      const fecha = fechaLocal(v.fecha)
       return fecha >= inicioSemanaActual && fecha <= finSemanaActual
     })
     const ventasSemanaAnterior = ventas.filter(v => {
-      const fecha = new Date(v.fecha)
+      const fecha = fechaLocal(v.fecha)
       return fecha >= inicioSemanaAnterior && fecha <= finSemanaAnterior
     })
 
@@ -129,7 +127,7 @@ export function DashboardContent() {
 
     const totalCobros = cobros.reduce((acc, c) => acc + Number(c.monto), 0)
     const totalCobrosMes = cobros
-      .filter(c => { const f = new Date(c.fecha); return f.getMonth() === mesActual && f.getFullYear() === añoActual })
+      .filter(c => c.fecha.startsWith(prefixMesActual))
       .reduce((acc, c) => acc + Number(c.monto), 0)
     const cuentasPorCobrar = clientBalances.reduce((acc, c) => acc + c.saldo, 0)
 
