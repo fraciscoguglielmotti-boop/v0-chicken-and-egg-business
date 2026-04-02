@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useMemo } from "react"
 import {
   Upload,
   Loader2,
@@ -15,13 +15,15 @@ import {
   X,
   FileUp,
   BarChart2,
+  Trash2,
+  ShieldCheck,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useSupabase, updateRow, insertRow } from "@/hooks/use-supabase"
+import { useSupabase, updateRow, insertRow, deleteRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 
@@ -52,6 +54,27 @@ interface MovimientoMP {
   metodo_pago?: string
   estado: "sin_verificar" | "verificado" | "sospechoso"
   categoria?: string
+}
+
+interface Cobro {
+  id: string
+  fecha: string
+  cliente_nombre: string
+  monto: number
+  metodo_pago?: string
+  cuenta_destino?: string
+}
+
+// Transferencias a/de la propia cuenta MP de Francisco
+const isSelfTransfer = (nombre?: string) =>
+  (nombre ?? "").toLowerCase().includes("guglielmotti") ||
+  (nombre ?? "").toLowerCase().includes("francisco g")
+
+// Días de diferencia entre dos fechas "YYYY-MM-DD"
+const diffDias = (a: string, b: string) => {
+  const [ay, am, ad] = a.slice(0, 10).split("-").map(Number)
+  const [by, bm, bd] = b.slice(0, 10).split("-").map(Number)
+  return Math.abs(new Date(ay, am - 1, ad).getTime() - new Date(by, bm - 1, bd).getTime()) / 86400000
 }
 
 interface ComprobanteMP {
@@ -117,6 +140,52 @@ export function MercadoPagoContent() {
     data: comprobantes = [],
     mutate: mutateComprobantes,
   } = useSupabase<ComprobanteMP>("comprobantes_mp")
+  const { data: cobros = [] } = useSupabase<Cobro>("cobros")
+
+  // ── Verificador de cobros ────────────────────────────────────────────────────
+  const [mesCobros, setMesCobros] = useState(() => {
+    const now = new Date()
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+  })
+
+  const reconciliacion = useMemo(() => {
+    const ingresos = movimientos.filter(m => m.tipo === "ingreso" && m.fecha.startsWith(mesCobros))
+    const cobrosDelMes = cobros.filter(c => c.fecha.startsWith(mesCobros))
+
+    // Para cada cobro, buscar el ingreso MP que mejor coincide
+    const usedMpIds = new Set<string>()
+
+    const cobrosConMatch = cobrosDelMes.map(c => {
+      // Primero: monto exacto y fecha ±3 días
+      let match = ingresos.find(m =>
+        !usedMpIds.has(m.id) &&
+        !isSelfTransfer(m.pagador_nombre) &&
+        m.monto === c.monto &&
+        diffDias(m.fecha, c.fecha) <= 3
+      )
+      // Segundo: tolerancia 2% en monto
+      if (!match) {
+        match = ingresos.find(m =>
+          !usedMpIds.has(m.id) &&
+          !isSelfTransfer(m.pagador_nombre) &&
+          Math.abs(m.monto - c.monto) / c.monto <= 0.02 &&
+          diffDias(m.fecha, c.fecha) <= 3
+        )
+      }
+      if (match) usedMpIds.add(match.id)
+      return { cobro: c, match: match ?? null }
+    })
+
+    // Ingresos MP del mes sin cobro registrado (excluir auto-transferencias)
+    const sinCobro = ingresos.filter(m =>
+      !usedMpIds.has(m.id) && !isSelfTransfer(m.pagador_nombre)
+    )
+
+    // Transferencias propias del mes
+    const propias = ingresos.filter(m => isSelfTransfer(m.pagador_nombre))
+
+    return { cobrosConMatch, sinCobro, propias }
+  }, [cobros, movimientos, mesCobros])
 
   const [importingPDF, setImportingPDF] = useState(false)
   const pdfInputRef = useRef<HTMLInputElement>(null)
@@ -324,6 +393,10 @@ export function MercadoPagoContent() {
       <Tabs defaultValue="movimientos">
         <TabsList>
           <TabsTrigger value="movimientos">Movimientos ({movimientos.length})</TabsTrigger>
+          <TabsTrigger value="cobros">
+            <ShieldCheck className="h-3.5 w-3.5 mr-1" />
+            Verificar Cobros
+          </TabsTrigger>
           <TabsTrigger value="comprobantes">Verificar Comprobantes</TabsTrigger>
           <TabsTrigger value="historial">Historial ({comprobantes.length})</TabsTrigger>
         </TabsList>
@@ -436,7 +509,7 @@ export function MercadoPagoContent() {
           ) : filteredMovimientos.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 rounded-lg border border-dashed text-muted-foreground">
               <p className="font-medium">Sin movimientos</p>
-              <p className="text-sm mt-1">Sincronizá tu cuenta de MercadoPago para ver los movimientos</p>
+              <p className="text-sm mt-1">Importá el resumen mensual de MercadoPago para ver los movimientos</p>
             </div>
           ) : (
             <div className="rounded-lg border overflow-hidden">
@@ -451,6 +524,7 @@ export function MercadoPagoContent() {
                     <th className="text-left p-3 font-semibold">Categoría</th>
                     <th className="text-right p-3 font-semibold">Monto</th>
                     <th className="text-left p-3 font-semibold">Estado</th>
+                    <th className="w-8 p-3" />
                   </tr>
                 </thead>
                 <tbody>
@@ -461,7 +535,7 @@ export function MercadoPagoContent() {
                       <>
                         <tr
                           key={m.id}
-                          className={`border-t hover:bg-muted/20 ${hasExtra ? "cursor-pointer" : ""}`}
+                          className={`border-t hover:bg-muted/20 group ${hasExtra ? "cursor-pointer" : ""}`}
                           onClick={() => hasExtra && toggleRow(m.id)}
                         >
                           <td className="p-3 text-muted-foreground text-center">
@@ -554,6 +628,22 @@ export function MercadoPagoContent() {
                               {ESTADO_MOVIMIENTO[m.estado]?.label ?? m.estado}
                             </Badge>
                           </td>
+                          <td className="p-3 text-center" onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={async () => {
+                                if (!confirm("¿Eliminar este movimiento?")) return
+                                try {
+                                  await deleteRow("movimientos_mp", m.id)
+                                  await mutateMovimientos()
+                                } catch {
+                                  toast({ title: "Error al eliminar", variant: "destructive" })
+                                }
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
                         </tr>
                         {expanded && (
                           <tr key={`${m.id}-detail`} className="bg-muted/30 border-t">
@@ -592,6 +682,133 @@ export function MercadoPagoContent() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ── TAB: VERIFICAR COBROS ── */}
+        <TabsContent value="cobros" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-semibold">Verificar cobros vs MercadoPago</h3>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Cruza los cobros registrados con los ingresos reales de MP. Cargá primero el resumen mensual.
+              </p>
+            </div>
+            <input
+              type="month"
+              value={mesCobros}
+              onChange={e => setMesCobros(e.target.value)}
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            />
+          </div>
+
+          {/* Cobros del mes vs MP */}
+          {reconciliacion.cobrosConMatch.length > 0 && (
+            <div className="rounded-lg border overflow-hidden">
+              <div className="bg-muted/50 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Cobros registrados del mes
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-muted/30">
+                  <tr>
+                    <th className="text-left p-3 font-medium">Fecha</th>
+                    <th className="text-left p-3 font-medium">Cliente</th>
+                    <th className="text-right p-3 font-medium">Monto</th>
+                    <th className="text-left p-3 font-medium">Método</th>
+                    <th className="text-left p-3 font-medium">Estado MP</th>
+                    <th className="text-left p-3 font-medium">Movimiento encontrado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reconciliacion.cobrosConMatch.map(({ cobro, match }) => (
+                    <tr key={cobro.id} className="border-t hover:bg-muted/20">
+                      <td className="p-3 whitespace-nowrap text-muted-foreground">{cobro.fecha}</td>
+                      <td className="p-3 font-medium">{cobro.cliente_nombre}</td>
+                      <td className="p-3 text-right font-semibold">{formatCurrency(cobro.monto)}</td>
+                      <td className="p-3 text-muted-foreground text-xs">{cobro.metodo_pago ?? "—"}</td>
+                      <td className="p-3">
+                        {match ? (
+                          <span className="inline-flex items-center gap-1 text-green-600 font-medium text-xs">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Verificado
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-muted-foreground text-xs">
+                            <XCircle className="h-3.5 w-3.5" /> No encontrado en MP
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-3 text-xs text-muted-foreground">
+                        {match ? (
+                          <span>
+                            {match.fecha} · {formatCurrency(match.monto)}
+                            {match.pagador_nombre && ` · ${match.pagador_nombre}`}
+                          </span>
+                        ) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Ingresos MP sin cobro registrado */}
+          {reconciliacion.sinCobro.length > 0 && (
+            <div className="rounded-lg border border-yellow-200 overflow-hidden">
+              <div className="bg-yellow-50 dark:bg-yellow-950/20 px-4 py-2 text-xs font-semibold text-yellow-700 dark:text-yellow-400 uppercase tracking-wide flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Ingresos en MP sin cobro registrado ({reconciliacion.sinCobro.length})
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-muted/30">
+                  <tr>
+                    <th className="text-left p-3 font-medium">Fecha MP</th>
+                    <th className="text-left p-3 font-medium">Titular</th>
+                    <th className="text-left p-3 font-medium">Descripción</th>
+                    <th className="text-right p-3 font-medium">Monto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reconciliacion.sinCobro.map(m => (
+                    <tr key={m.id} className="border-t hover:bg-muted/20">
+                      <td className="p-3 whitespace-nowrap text-muted-foreground">{m.fecha}</td>
+                      <td className="p-3 font-medium">{m.pagador_nombre ?? "—"}</td>
+                      <td className="p-3 text-xs text-muted-foreground">{m.descripcion ?? m.concepto ?? "—"}</td>
+                      <td className="p-3 text-right font-semibold text-green-600">+{formatCurrency(m.monto)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Transferencias propias */}
+          {reconciliacion.propias.length > 0 && (
+            <div className="rounded-lg border border-border/50 overflow-hidden">
+              <div className="bg-muted/30 px-4 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Transferencias propias / Retiros ({reconciliacion.propias.length})
+              </div>
+              <table className="w-full text-sm">
+                <tbody>
+                  {reconciliacion.propias.map(m => (
+                    <tr key={m.id} className="border-t hover:bg-muted/20">
+                      <td className="p-3 whitespace-nowrap text-muted-foreground">{m.fecha}</td>
+                      <td className="p-3 text-muted-foreground">{m.pagador_nombre}</td>
+                      <td className="p-3 text-xs text-muted-foreground">{m.descripcion ?? "—"}</td>
+                      <td className="p-3 text-right font-semibold">{formatCurrency(m.monto)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {reconciliacion.cobrosConMatch.length === 0 && reconciliacion.sinCobro.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 rounded-lg border border-dashed text-muted-foreground">
+              <ShieldCheck className="h-8 w-8 mb-2" />
+              <p className="font-medium">Sin datos para el período</p>
+              <p className="text-sm mt-1">Importá el resumen de MP y asegurate de tener cobros cargados en este mes</p>
             </div>
           )}
         </TabsContent>
