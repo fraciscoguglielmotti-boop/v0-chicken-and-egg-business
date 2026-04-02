@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@supabase/supabase-js"
 
+// Vercel: extender timeout a 5 minutos (PDFs de 15+ páginas tardan 30-90s en Claude)
+export const maxDuration = 300
+
 const anthropic = new Anthropic()
 
 function getSupabase() {
@@ -76,13 +79,19 @@ Devolvé ÚNICAMENTE un JSON válido con este formato exacto, sin texto adiciona
   ]
 }
 
-Reglas:
-- El campo "valor" debe ser un número: positivo para ingresos (entradas), negativo para egresos (salidas/pagos)
-- Incluí TODOS los movimientos de TODAS las páginas del documento
-- "descripcion" debe ser el texto exacto del PDF (ej: "Pago AUSOL", "Transferencia recibida Juan Perez", "Rendimientos")
-- "id_operacion" es el número largo de la columna "ID de la operación"
-- Si la fecha tiene formato DD-MM-YYYY convertila a YYYY-MM-DD
-- No omitas ningún movimiento`,
+Reglas IMPORTANTES:
+- "valor" debe ser un número JavaScript limpio (sin $, sin puntos de miles, sin comas decimales)
+  FORMATO ARGENTINO: punto = miles, coma = decimal
+  Ejemplos de conversión:
+    "$ 200.000,00"   →  200000.0   (ingreso, positivo)
+    "$ -43.888,00"   →  -43888.0   (egreso, negativo)
+    "$ -600.000,00"  →  -600000.0  (egreso, negativo)
+    "$ 4.883,52"     →  4883.52    (ingreso, positivo)
+- Positivo = ingreso (entradas de dinero), negativo = egreso (salidas/pagos)
+- Incluí TODOS los movimientos de TODAS las páginas, sin omitir ninguno
+- "descripcion" = texto exacto del PDF (ej: "Pago AUSOL", "Transferencia recibida Juan Perez")
+- "id_operacion" = número largo de la columna "ID de la operación"
+- Fecha: si está en formato DD-MM-YYYY convertila a YYYY-MM-DD`,
             },
           ],
         },
