@@ -11,14 +11,107 @@ import { Label } from "@/components/ui/label"
 const CATEGORIAS_SUELDOS = ["Comisiones", "Sueldos", "Sueldo", "Comisión"]
 const CATEGORIAS_RETIROS = ["Gastos Personales Francisco", "Retiro de socio", "Retiros"]
 
-interface Venta { fecha: string; cantidad: number; precio_unitario: number }
-interface Compra { fecha: string; total: number; cantidad: number; precio_unitario: number }
+interface Venta { fecha: string; cantidad: number; precio_unitario: number; producto_nombre?: string }
+interface Compra { fecha: string; total: number; cantidad: number; precio_unitario: number; producto?: string }
 interface Gasto { fecha: string; monto: number; categoria: string; medio_pago?: string; fecha_pago?: string }
 
 // Para tarjeta de crédito con fecha_pago, el gasto impacta en el mes del pago (no del consumo)
 function mesContable(g: Gasto): string {
   if (g.medio_pago === "Tarjeta Credito" && g.fecha_pago) return g.fecha_pago.slice(0, 7)
   return g.fecha.slice(0, 7)
+}
+
+// ── Motor FIFO ────────────────────────────────────────────────────────────────
+// Calcula el CMV de un mes aplicando el principio de devengamiento:
+// el costo se reconoce en el mes en que SE VENDE la mercadería,
+// no en el mes en que se compró.
+//
+// Algoritmo:
+//   1. Construye colas FIFO por producto con TODAS las compras históricas (orden cronológico)
+//   2. Recorre TODAS las ventas hasta el fin del mes objetivo, consumiendo de las colas
+//   3. Acumula CMV solo de las ventas que caen en el mes objetivo
+//
+// Si una venta consume unidades de dos lotes distintos (ej: 100 caj. a $1.000
+// y luego 50 caj. a $1.100), el costo se proratea correctamente.
+// Si el stock FIFO es insuficiente (compras no registradas), el resto
+// se valúa al costo promedio ponderado de todas las compras.
+
+interface Lote { qty: number; costUnit: number }
+
+function calcCMV_FIFO(
+  todasCompras: Compra[],
+  todasVentas: Venta[],
+  monthPrefix: string   // "YYYY-MM"
+): number {
+  const norm = (s?: string) => (s ?? "").toLowerCase().trim()
+
+  // ── 1. Construir colas FIFO por producto ──────────────────────────────────
+  const queues = new Map<string, Lote[]>()
+
+  const sortedCompras = [...todasCompras].sort((a, b) => a.fecha.localeCompare(b.fecha))
+  for (const c of sortedCompras) {
+    if (!c.cantidad || c.cantidad <= 0) continue
+    const total = c.total > 0 ? c.total : c.cantidad * c.precio_unitario
+    const costUnit = total / c.cantidad
+    const prod = norm(c.producto) || "__sin_producto__"
+    if (!queues.has(prod)) queues.set(prod, [])
+    queues.get(prod)!.push({ qty: c.cantidad, costUnit })
+  }
+
+  // Costo promedio global (fallback si faltan compras)
+  const totalUnidades = sortedCompras.reduce((s, c) => s + (c.cantidad || 0), 0)
+  const totalCosto    = sortedCompras.reduce((s, c) => s + (c.total > 0 ? c.total : (c.cantidad || 0) * c.precio_unitario), 0)
+  const costoPromGlobal = totalUnidades > 0 ? totalCosto / totalUnidades : 0
+
+  // ── 2. Consumir stock según ventas, en orden cronológico ──────────────────
+  // Procesamos todas las ventas hasta el último día del mes objetivo
+  const endOfMonth = monthPrefix + "-31"
+  const sortedVentas = [...todasVentas]
+    .filter(v => v.fecha <= endOfMonth)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha))
+
+  let cmv = 0
+
+  for (const v of sortedVentas) {
+    if (!v.cantidad || v.cantidad <= 0) continue
+
+    const prodVenta = norm(v.producto_nombre)
+
+    // Buscar cola exacta, luego por coincidencia parcial, luego fallback genérico
+    let queue = queues.get(prodVenta)
+    if (!queue) {
+      const entry = Array.from(queues.entries()).find(
+        ([k]) => k !== "__sin_producto__" && (k.includes(prodVenta) || prodVenta.includes(k))
+      )
+      queue = entry?.[1] ?? queues.get("__sin_producto__")
+    }
+
+    let remaining = v.cantidad
+    let ventaCost  = 0
+
+    if (queue) {
+      while (remaining > 0.0001 && queue.length > 0) {
+        const lot = queue[0]
+        const used = Math.min(remaining, lot.qty)
+        ventaCost  += used * lot.costUnit
+        lot.qty    -= used
+        remaining  -= used
+        if (lot.qty <= 0.0001) queue.shift()
+      }
+    }
+
+    // Si quedaron unidades sin cubrir (stock insuficiente), usar costo promedio
+    if (remaining > 0.0001) {
+      ventaCost += remaining * costoPromGlobal
+    }
+
+    // Solo acumular si la venta es del mes objetivo
+    if (v.fecha.startsWith(monthPrefix)) {
+      cmv += ventaCost
+    }
+  }
+
+  return cmv
 }
 
 function EERRRow({ label, value, indent = false }: { label: string; value: number; indent?: boolean }) {
@@ -56,13 +149,14 @@ function Delta({ actual, prev }: { actual: number; prev: number }) {
   )
 }
 
-function calcEERR(ventas: Venta[], compras: Compra[], gastos: Gasto[], month: string) {
-  const ventasFiltradas  = ventas.filter(v => v.fecha.startsWith(month))
-  const comprasFiltradas = compras.filter(c => c.fecha.startsWith(month))
-  const gastosFiltrados  = gastos.filter(g => mesContable(g) === month)
+// todasVentas y todasCompras = datos completos sin filtrar (el FIFO los necesita todos)
+function calcEERR(todasVentas: Venta[], todasCompras: Compra[], gastos: Gasto[], month: string) {
+  const ventasFiltradas = todasVentas.filter(v => v.fecha.startsWith(month))
+  const gastosFiltrados = gastos.filter(g => mesContable(g) === month)
 
   const totalVentas = ventasFiltradas.reduce((s, v) => s + v.cantidad * v.precio_unitario, 0)
-  const totalCMV    = comprasFiltradas.reduce((s, c) => s + (c.total > 0 ? c.total : c.cantidad * c.precio_unitario), 0)
+  // CMV calculado por FIFO: el costo se imputa al mes de la venta, no al de la compra
+  const totalCMV = calcCMV_FIFO(todasCompras, todasVentas, month)
   const margenBruto = totalVentas - totalCMV
   const margenPct   = totalVentas > 0 ? (margenBruto / totalVentas) * 100 : 0
 
@@ -127,7 +221,7 @@ export function ContabilidadContent() {
 
         <div className="space-y-0">
           <EERRRow label="(+) Ventas" value={eerr.totalVentas} />
-          <EERRRow label="(−) Costo de mercadería vendida" value={eerr.totalCMV} />
+          <EERRRow label="(−) Costo de mercadería vendida (FIFO)" value={eerr.totalCMV} />
           <EERRTotal label="= Margen Bruto" value={eerr.margenBruto} pct={eerr.margenPct} />
 
           <button
