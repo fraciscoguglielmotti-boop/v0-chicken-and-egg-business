@@ -110,7 +110,7 @@ Incluí absolutamente todos los movimientos de todas las páginas, sin omitir ni
     }
 
     const movimientos = raw.map((m) => ({
-      id: `pdf_${m.id_operacion}`,
+      id: Number(m.id_operacion),
       fecha: m.fecha,
       tipo: m.valor >= 0 ? "ingreso" : "egreso",
       monto: Math.abs(m.valor),
