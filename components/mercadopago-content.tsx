@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useRef, useMemo } from "react"
-import { FileUp, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Trash2, Pencil, Check, X, ChevronDown, ChevronRight } from "lucide-react"
+import { FileUp, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Trash2, Pencil, Check, X, ChevronDown, ChevronRight, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useSupabase, updateRow, deleteRow } from "@/hooks/use-supabase"
+import { useSupabase, updateRow, deleteRow, insertRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 
@@ -78,6 +78,14 @@ export function MercadoPagoContent() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editCat, setEditCat] = useState<string>("")
 
+  // Sugerencia de clasificación masiva
+  const [sugerencia, setSugerencia] = useState<{
+    descripcion: string
+    categoria: string
+    ids: string[]
+  } | null>(null)
+  const [aplicandoSugerencia, setAplicandoSugerencia] = useState(false)
+
   // ── Importar PDF ────────────────────────────────────────────────────────────
 
   const handleImportPDF = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,6 +138,57 @@ export function MercadoPagoContent() {
     await updateRow("movimientos_mp", id, { categoria })
     setEditingId(null)
     refreshMov()
+
+    // Detectar movimientos similares sin categoría
+    const movActual = movimientos.find((m) => m.id === id)
+    if (!movActual?.descripcion) return
+
+    const desc = movActual.descripcion.trim().toLowerCase()
+    const similares = movimientos.filter(
+      (m) =>
+        m.id !== id &&
+        m.tipo === "egreso" &&
+        !m.categoria &&
+        m.descripcion?.trim().toLowerCase() === desc
+    )
+
+    if (similares.length > 0) {
+      setSugerencia({
+        descripcion: movActual.descripcion,
+        categoria,
+        ids: similares.map((m) => m.id),
+      })
+    }
+  }
+
+  // ── Aplicar sugerencia masiva ───────────────────────────────────────────────
+
+  const aplicarSugerencia = async () => {
+    if (!sugerencia) return
+    setAplicandoSugerencia(true)
+    try {
+      await Promise.all(
+        sugerencia.ids.map((id) =>
+          updateRow("movimientos_mp", id, { categoria: sugerencia.categoria })
+        )
+      )
+      // Guardar regla para futuros imports
+      try {
+        await insertRow("reglas_categorias", {
+          texto_original: sugerencia.descripcion,
+          categoria: sugerencia.categoria,
+        })
+      } catch { /* si ya existe la regla, ignorar */ }
+
+      toast({
+        title: "Categoría aplicada",
+        description: `${sugerencia.ids.length} movimientos "${sugerencia.descripcion}" → ${sugerencia.categoria}`,
+      })
+      refreshMov()
+    } finally {
+      setAplicandoSugerencia(false)
+      setSugerencia(null)
+    }
   }
 
   // ── Eliminar movimiento ────────────────────────────────────────────────────
@@ -226,6 +285,40 @@ export function MercadoPagoContent() {
               {movimientosFiltrados.length} movimientos
             </span>
           </div>
+
+          {/* Banner sugerencia clasificación masiva */}
+          {sugerencia && (
+            <div className="flex items-start gap-3 rounded-lg border border-yellow-400 bg-yellow-50 dark:bg-yellow-950/30 px-4 py-3 text-sm">
+              <Sparkles className="h-4 w-4 mt-0.5 text-yellow-600 shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-yellow-800 dark:text-yellow-200">
+                  Se detectaron {sugerencia.ids.length} movimiento{sugerencia.ids.length !== 1 ? "s" : ""} similares sin categoría
+                </p>
+                <p className="text-yellow-700 dark:text-yellow-300 mt-0.5">
+                  &ldquo;{sugerencia.descripcion}&rdquo; → ¿Asignar <strong>{sugerencia.categoria}</strong> a todos?
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs border-yellow-400"
+                  onClick={() => setSugerencia(null)}
+                  disabled={aplicandoSugerencia}
+                >
+                  No
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs bg-yellow-500 hover:bg-yellow-600 text-white"
+                  onClick={aplicarSugerencia}
+                  disabled={aplicandoSugerencia}
+                >
+                  {aplicandoSugerencia ? <Loader2 className="h-3 w-3 animate-spin" /> : "Sí, aplicar a todos"}
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Tabla */}
           <div className="rounded-md border overflow-auto">
