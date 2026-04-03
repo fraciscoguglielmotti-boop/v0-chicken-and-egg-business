@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useMemo } from "react"
-import { FileUp, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Trash2, Pencil, Check, X } from "lucide-react"
+import { FileUp, Loader2, CheckCircle2, AlertTriangle, HelpCircle, Trash2, Pencil, Check, X, ChevronDown, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -77,6 +77,9 @@ export function MercadoPagoContent() {
   // Filtros tab Movimientos
   const [mesFiltro, setMesFiltro] = useState<string>("todos")
   const [tipoFiltro, setTipoFiltro] = useState<string>("todos")
+
+  // Acordeón verificados
+  const [verificadosAbierto, setVerificadosAbierto] = useState(false)
 
   // Edición de categoría inline
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -321,37 +324,43 @@ export function MercadoPagoContent() {
             Cruza los cobros registrados como <strong>transferencia a Francisco Guglielmotti</strong> contra los ingresos importados del Account Statement de MP.
           </p>
 
-          {/* Cobros con match */}
+          {/* Cobros con match — acordeón colapsado por defecto */}
           {cobrosConMatch.length > 0 && (
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-green-600 font-medium">
+              <button
+                onClick={() => setVerificadosAbierto((v) => !v)}
+                className="flex items-center gap-2 text-green-600 font-medium hover:opacity-80 transition-opacity w-full text-left"
+              >
+                {verificadosAbierto ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 <CheckCircle2 className="h-4 w-4" />
                 <span>Verificados ({cobrosConMatch.length})</span>
-              </div>
-              <div className="rounded-md border overflow-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-muted/50">
-                      <th className="px-3 py-2 text-left font-medium">Fecha cobro</th>
-                      <th className="px-3 py-2 text-left font-medium">Cliente</th>
-                      <th className="px-3 py-2 text-right font-medium">Monto</th>
-                      <th className="px-3 py-2 text-left font-medium">Fecha MP</th>
-                      <th className="px-3 py-2 text-left font-medium">Descripción MP</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cobrosConMatch.map(({ cobro, mov }) => (
-                      <tr key={cobro.id} className="border-b hover:bg-muted/30">
-                        <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{formatDate(cobro.fecha)}</td>
-                        <td className="px-3 py-2">{cobro.cliente_nombre}</td>
-                        <td className="px-3 py-2 text-right font-medium">{formatCurrency(cobro.monto)}</td>
-                        <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{formatDate(mov.fecha)}</td>
-                        <td className="px-3 py-2 text-muted-foreground text-xs">{mov.descripcion}</td>
+              </button>
+              {verificadosAbierto && (
+                <div className="rounded-md border overflow-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="px-3 py-2 text-left font-medium">Fecha cobro</th>
+                        <th className="px-3 py-2 text-left font-medium">Cliente</th>
+                        <th className="px-3 py-2 text-right font-medium">Monto</th>
+                        <th className="px-3 py-2 text-left font-medium">Fecha MP</th>
+                        <th className="px-3 py-2 text-left font-medium">Descripción MP</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {cobrosConMatch.map(({ cobro, mov }) => (
+                        <tr key={cobro.id} className="border-b hover:bg-muted/30">
+                          <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{formatDate(cobro.fecha)}</td>
+                          <td className="px-3 py-2">{cobro.cliente_nombre}</td>
+                          <td className="px-3 py-2 text-right font-medium">{formatCurrency(cobro.monto)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{formatDate(mov.fecha)}</td>
+                          <td className="px-3 py-2 text-muted-foreground text-xs">{mov.descripcion}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
