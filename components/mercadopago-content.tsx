@@ -71,7 +71,7 @@ export function MercadoPagoContent() {
   const [importando, setImportando] = useState(false)
 
   // Datos de Supabase
-  const { data: movimientos = [], refresh: refreshMov } = useSupabase<MovimientoMP>("movimientos_mp", { order: { column: "fecha", ascending: false } })
+  const { data: movimientos = [], mutate: refreshMov } = useSupabase<MovimientoMP>("movimientos_mp")
   const { data: cobros = [] } = useSupabase<Cobro>("cobros")
 
   // Filtros tab Movimientos
