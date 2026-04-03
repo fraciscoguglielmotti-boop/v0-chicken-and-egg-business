@@ -65,7 +65,7 @@ function esCobrosMP(c: Cobro) {
 
 // ── Componente ───────────────────────────────────────────────────────────────
 
-export function MercadopagoContent() {
+export function MercadoPagoContent() {
   const { toast } = useToast()
   const pdfInputRef = useRef<HTMLInputElement>(null)
   const [importando, setImportando] = useState(false)
