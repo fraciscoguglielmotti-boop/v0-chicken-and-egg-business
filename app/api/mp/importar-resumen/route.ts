@@ -50,8 +50,8 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer()
     const base64 = Buffer.from(bytes).toString("base64")
 
-    // ── Extraer movimientos con Claude ──
-    const message = await anthropic.messages.create({
+    // ── Extraer movimientos con Claude (streaming para evitar timeout del SDK) ──
+    const stream = anthropic.messages.stream({
       model: "claude-sonnet-4-20250514",
       max_tokens: 32000,
       messages: [
@@ -97,6 +97,8 @@ Reglas IMPORTANTES:
         },
       ],
     })
+
+    const message = await stream.finalMessage()
 
     const content = message.content[0]
     if (content.type !== "text") {
