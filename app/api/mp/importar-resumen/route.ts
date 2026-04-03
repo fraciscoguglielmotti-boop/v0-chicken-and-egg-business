@@ -52,7 +52,7 @@ export async function POST(request: Request) {
 
     // ── Extraer movimientos con Claude (streaming para evitar timeout del SDK) ──
     const stream = anthropic.messages.stream({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-5",
       max_tokens: 32000,
       messages: [
         {
