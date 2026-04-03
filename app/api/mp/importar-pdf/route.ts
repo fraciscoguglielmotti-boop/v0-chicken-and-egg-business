@@ -161,7 +161,14 @@ Incluí absolutamente todos los movimientos de todas las páginas, sin omitir ni
       clasificados,
     })
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Error desconocido"
+    let msg = "Error desconocido"
+    if (err instanceof Error) {
+      msg = err.message
+    } else if (typeof err === "string") {
+      msg = err
+    } else if (err && typeof err === "object") {
+      msg = JSON.stringify(err)
+    }
     return NextResponse.json({ error: `Error al procesar el PDF: ${msg}` }, { status: 500 })
   }
 }
