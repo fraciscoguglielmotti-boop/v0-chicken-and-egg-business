@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import Anthropic from "@anthropic-ai/sdk"
 import { createClient } from "@supabase/supabase-js"
 
-// Vercel: extender timeout a 5 minutos (PDFs de 15+ páginas tardan 30-90s en Claude)
 export const maxDuration = 300
 
 const anthropic = new Anthropic()
@@ -16,10 +15,7 @@ function getSupabase() {
 
 function extractJson(text: string): unknown {
   const clean = text.replace(/```(?:json)?\s*([\s\S]*?)\s*```/g, "$1").trim()
-  try {
-    return JSON.parse(clean)
-  } catch { /* continuar */ }
-
+  try { return JSON.parse(clean) } catch { /* continuar */ }
   let depth = 0, start = -1
   for (let i = 0; i < clean.length; i++) {
     if (clean[i] === "{") { if (depth === 0) start = i; depth++ }
@@ -37,23 +33,17 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData()
     const file = formData.get("file") as File | null
-
-    if (!file) {
-      return NextResponse.json({ error: "No se recibió ningún archivo" }, { status: 400 })
-    }
+    if (!file) return NextResponse.json({ error: "No se recibió ningún archivo" }, { status: 400 })
 
     const isPDF = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
-    if (!isPDF) {
-      return NextResponse.json({ error: "El archivo debe ser un PDF" }, { status: 400 })
-    }
+    if (!isPDF) return NextResponse.json({ error: "El archivo debe ser un PDF" }, { status: 400 })
 
     const bytes = await file.arrayBuffer()
     const base64 = Buffer.from(bytes).toString("base64")
 
-    // ── Extraer movimientos con Claude (streaming para evitar timeout del SDK) ──
     const stream = anthropic.messages.stream({
-      model: "claude-sonnet-4-5",
-      max_tokens: 32000,
+      model: "claude-sonnet-4-6",
+      max_tokens: 16000,
       messages: [
         {
           role: "user",
@@ -64,34 +54,35 @@ export async function POST(request: Request) {
             },
             {
               type: "text",
-              text: `Este es un resumen de cuenta de MercadoPago Argentina.
-Extraé TODOS los movimientos de TODAS las páginas.
+              text: `Este es un "Resumen de Cuenta" de MercadoPago Argentina. Tiene 15 páginas.
 
-Devolvé ÚNICAMENTE un JSON válido con este formato exacto, sin texto adicional:
+Extraé ÚNICAMENTE las filas de la tabla "DETALLE DE MOVIMIENTOS" de TODAS las páginas.
+Ignorá el encabezado (Saldo Inicial, Entradas, Salidas, Saldo Final).
+
+Devolvé ÚNICAMENTE este JSON, sin texto adicional:
 {
   "movimientos": [
     {
       "fecha": "YYYY-MM-DD",
-      "descripcion": "descripción exacta como aparece en el PDF",
-      "id_operacion": "número de ID de la operación",
+      "descripcion": "texto exacto de la columna Descripción",
+      "id_operacion": "número de la columna ID de la operación",
       "valor": 1234.56
     }
   ]
 }
 
-Reglas IMPORTANTES:
-- "valor" debe ser un número JavaScript limpio (sin $, sin puntos de miles, sin comas decimales)
-  FORMATO ARGENTINO: punto = miles, coma = decimal
-  Ejemplos de conversión:
-    "$ 200.000,00"   →  200000.0   (ingreso, positivo)
-    "$ -43.888,00"   →  -43888.0   (egreso, negativo)
-    "$ -600.000,00"  →  -600000.0  (egreso, negativo)
-    "$ 4.883,52"     →  4883.52    (ingreso, positivo)
-- Positivo = ingreso (entradas de dinero), negativo = egreso (salidas/pagos)
-- Incluí TODOS los movimientos de TODAS las páginas, sin omitir ninguno
-- "descripcion" = texto exacto del PDF (ej: "Pago AUSOL", "Transferencia recibida Juan Perez")
-- "id_operacion" = número largo de la columna "ID de la operación"
-- Fecha: si está en formato DD-MM-YYYY convertila a YYYY-MM-DD`,
+CONVERSIÓN DE NÚMEROS (formato argentino: punto=miles, coma=decimal):
+  "$ 200.000,00"    →  200000.0   (positivo = ingreso)
+  "$ 4.883,52"      →  4883.52    (positivo = ingreso)
+  "$ -43.888,00"    →  -43888.0   (negativo = egreso)
+  "$ -600.000,00"   →  -600000.0  (negativo = egreso)
+  "$ -699,09"       →  -699.09    (negativo = egreso)
+
+CONVERSIÓN DE FECHA: DD-MM-YYYY → YYYY-MM-DD
+  "01-03-2026" → "2026-03-01"
+  "02-03-2026" → "2026-03-02"
+
+Incluí absolutamente todos los movimientos de todas las páginas, sin omitir ninguno.`,
             },
           ],
         },
@@ -99,37 +90,32 @@ Reglas IMPORTANTES:
     })
 
     const message = await stream.finalMessage()
-
     const content = message.content[0]
-    if (content.type !== "text") {
-      throw new Error("Respuesta inesperada del modelo")
-    }
+    if (content.type !== "text") throw new Error("Respuesta inesperada del modelo")
 
     const parsed = extractJson(content.text) as Record<string, unknown>
     if (!parsed.movimientos || !Array.isArray(parsed.movimientos)) {
       throw new Error("El modelo no devolvió movimientos válidos")
     }
 
-    const movimientosRaw = parsed.movimientos as Array<{
+    const raw = parsed.movimientos as Array<{
       fecha: string
       descripcion: string
       id_operacion: string
       valor: number
     }>
 
-    if (movimientosRaw.length === 0) {
+    if (raw.length === 0) {
       return NextResponse.json({ error: "No se encontraron movimientos en el PDF" }, { status: 400 })
     }
 
-    // ── Normalizar y preparar para upsert ──
-    const movimientos = movimientosRaw.map((m) => ({
+    const movimientos = raw.map((m) => ({
       id: `pdf_${m.id_operacion}`,
       fecha: m.fecha,
       tipo: m.valor >= 0 ? "ingreso" : "egreso",
       monto: Math.abs(m.valor),
       descripcion: m.descripcion,
       referencia: String(m.id_operacion),
-      // Los campos de la API que no vienen en el PDF se dejan en null
       pagador_nombre: null,
       pagador_email: null,
       tipo_operacion: null,
@@ -138,40 +124,25 @@ Reglas IMPORTANTES:
     }))
 
     const supabase = getSupabase()
-
-    // Upsert: si el movimiento ya existe (mismo id) se actualiza la descripción
-    // pero NO se pisa la categoría ni el concepto que el usuario haya editado
     const { error: upsertError } = await supabase
       .from("movimientos_mp")
       .upsert(movimientos, { onConflict: "id", ignoreDuplicates: false })
-
     if (upsertError) throw upsertError
 
-    // ── Auto-clasificar egresos sin categoria ──
+    // Auto-clasificar egresos sin categoría usando reglas guardadas
     let clasificados = 0
-    const egresosIds = movimientos
-      .filter((m) => m.tipo === "egreso")
-      .map((m) => m.id)
-
+    const egresosIds = movimientos.filter((m) => m.tipo === "egreso").map((m) => m.id)
     if (egresosIds.length > 0) {
-      const [{ data: reglas }, { data: sinCategoria }] = await Promise.all([
+      const [{ data: reglas }, { data: sinCat }] = await Promise.all([
         supabase.from("reglas_categorias").select("texto_original, categoria"),
-        supabase
-          .from("movimientos_mp")
-          .select("id, descripcion")
-          .in("id", egresosIds)
-          .is("categoria", null),
+        supabase.from("movimientos_mp").select("id, descripcion").in("id", egresosIds).is("categoria", null),
       ])
-
-      if (reglas && reglas.length > 0 && sinCategoria && sinCategoria.length > 0) {
-        const updates: Array<{ id: string; categoria: string }> = []
-        for (const mov of sinCategoria) {
+      if (reglas?.length && sinCat?.length) {
+        const updates = sinCat.flatMap((mov) => {
           const texto = (mov.descripcion ?? "").toLowerCase()
-          const match = reglas.find((r) =>
-            texto.includes(r.texto_original.toLowerCase())
-          )
-          if (match) updates.push({ id: mov.id, categoria: match.categoria })
-        }
+          const match = reglas.find((r) => texto.includes(r.texto_original.toLowerCase()))
+          return match ? [{ id: mov.id, categoria: match.categoria }] : []
+        })
         if (updates.length > 0) {
           await Promise.all(
             updates.map((u) =>
@@ -183,13 +154,10 @@ Reglas IMPORTANTES:
       }
     }
 
-    const ingresos = movimientos.filter((m) => m.tipo === "ingreso").length
-    const egresos = movimientos.filter((m) => m.tipo === "egreso").length
-
     return NextResponse.json({
       importados: movimientos.length,
-      ingresos,
-      egresos,
+      ingresos: movimientos.filter((m) => m.tipo === "ingreso").length,
+      egresos: movimientos.filter((m) => m.tipo === "egreso").length,
       clasificados,
     })
   } catch (err) {
