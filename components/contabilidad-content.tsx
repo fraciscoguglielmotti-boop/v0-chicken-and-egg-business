@@ -16,12 +16,14 @@ interface Compra { fecha: string; total: number; cantidad: number; precio_unitar
 interface Gasto { fecha: string; monto: number; categoria: string; medio_pago?: string; fecha_pago?: string; descripcion?: string }
 interface MovimientoMP { fecha: string; tipo: string; monto: number; descripcion?: string; categoria?: string }
 
-// Egresos de MP categorizados que no sean transferencias entre cuentas
+// Egresos de MP que no sean transferencias entre cuentas
 function esMPGasto(m: MovimientoMP): boolean {
-  return m.tipo === "egreso" && !!m.categoria && !m.descripcion?.toLowerCase().startsWith("transferencia")
+  const tipo = m.tipo?.toLowerCase()
+  const desc = m.descripcion?.toLowerCase() ?? ""
+  return tipo === "egreso" && !desc.startsWith("transferencia")
 }
 function mpAGasto(m: MovimientoMP): Gasto {
-  return { fecha: m.fecha, monto: m.monto, categoria: m.categoria!, medio_pago: "MercadoPago", descripcion: m.descripcion }
+  return { fecha: m.fecha, monto: m.monto, categoria: m.categoria || "Sin categoría (MP)", medio_pago: "MercadoPago", descripcion: m.descripcion }
 }
 
 // Para tarjeta de crédito con fecha_pago, el gasto impacta en el mes del pago (no del consumo)

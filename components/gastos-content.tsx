@@ -53,11 +53,13 @@ interface GastoUnificado {
 }
 
 function esMPGasto(m: MovimientoMP): boolean {
-  return m.tipo === "egreso" && !!m.categoria && !m.descripcion?.toLowerCase().startsWith("transferencia")
+  const tipo = m.tipo?.toLowerCase()
+  const desc = m.descripcion?.toLowerCase() ?? ""
+  return tipo === "egreso" && !desc.startsWith("transferencia")
 }
 
 function mpAGastoUnificado(m: MovimientoMP): GastoUnificado {
-  return { fecha: m.fecha, categoria: m.categoria!, descripcion: m.descripcion, monto: m.monto, fuente: "mercadopago" }
+  return { fecha: m.fecha, categoria: m.categoria || "Sin categoría (MP)", descripcion: m.descripcion, monto: m.monto, fuente: "mercadopago" }
 }
 
 const MEDIOS_PAGO = ["Efectivo", "Cuenta Francisco", "Cuenta Diego", "MercadoPago", "Tarjeta Credito"]
