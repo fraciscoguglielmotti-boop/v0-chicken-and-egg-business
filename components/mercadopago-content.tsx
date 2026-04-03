@@ -34,18 +34,10 @@ interface Cobro {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const CATEGORIAS = [
-  "Combustible",
-  "Comisión",
-  "Sueldo",
-  "Servicio",
-  "Impuesto",
-  "Proveedor",
-  "Mantenimiento",
-  "Alquiler",
-  "Retiro",
-  "Otro",
-]
+interface CategoriaGasto {
+  id: string
+  nombre: string
+}
 
 // Diferencia en días entre dos strings "YYYY-MM-DD"
 function diffDias(a: string, b: string) {
@@ -73,6 +65,7 @@ export function MercadoPagoContent() {
   // Datos de Supabase
   const { data: movimientos = [], mutate: refreshMov } = useSupabase<MovimientoMP>("movimientos_mp")
   const { data: cobros = [] } = useSupabase<Cobro>("cobros")
+  const { data: categorias = [] } = useSupabase<CategoriaGasto>("categorias_gastos")
 
   // Filtros tab Movimientos
   const [mesFiltro, setMesFiltro] = useState<string>("todos")
@@ -272,8 +265,8 @@ export function MercadoPagoContent() {
                                 <SelectValue placeholder="Categoría" />
                               </SelectTrigger>
                               <SelectContent>
-                                {CATEGORIAS.map((c) => (
-                                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                                {categorias.map((c) => (
+                                  <SelectItem key={c.id} value={c.nombre}>{c.nombre}</SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
