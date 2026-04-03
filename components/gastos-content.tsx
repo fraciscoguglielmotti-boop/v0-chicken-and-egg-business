@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Plus, Search, Pencil, Trash2, CreditCard, Tag } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, CreditCard, Tag, ChevronDown, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -35,12 +35,38 @@ interface Gasto {
   fecha_pago?: string
 }
 
+interface MovimientoMP {
+  id: number
+  fecha: string
+  tipo: string
+  monto: number
+  descripcion?: string
+  categoria?: string
+}
+
+interface GastoUnificado {
+  fecha: string
+  categoria: string
+  descripcion?: string
+  monto: number
+  fuente: "gastos" | "mercadopago"
+}
+
+function esMPGasto(m: MovimientoMP): boolean {
+  return m.tipo === "egreso" && !!m.categoria && !m.descripcion?.toLowerCase().startsWith("transferencia")
+}
+
+function mpAGastoUnificado(m: MovimientoMP): GastoUnificado {
+  return { fecha: m.fecha, categoria: m.categoria!, descripcion: m.descripcion, monto: m.monto, fuente: "mercadopago" }
+}
+
 const MEDIOS_PAGO = ["Efectivo", "Cuenta Francisco", "Cuenta Diego", "MercadoPago", "Tarjeta Credito"]
 const TARJETAS = ["Visa (empresa)", "Visa (personal Francisco)", "Visa (Damián)", "Master", "Tarjeta MP"]
 
 export function GastosContent() {
   const { data: gastos = [], isLoading, mutate } = useSupabase<Gasto>("gastos")
   const { data: categorias = [], mutate: mutateCategorias } = useSupabase<CategoriaGasto>("categorias_gastos")
+  const { data: movimientosMp = [] } = useSupabase<MovimientoMP>("movimientos_mp")
   const { toast } = useToast()
   const [catDialogOpen, setCatDialogOpen] = useState(false)
   const [editingCat, setEditingCat] = useState<CategoriaGasto | null>(null)
@@ -52,6 +78,7 @@ export function GastosContent() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showImport, setShowImport] = useState(false)
+  const [expandedCat, setExpandedCat] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
     tipo: "Egreso",
@@ -188,10 +215,26 @@ export function GastosContent() {
     return categoriaNombres
   }, [categoriaNombres, editingId, formData.categoria])
 
-  const gastosPorCategoria = categoriaNombres.map(cat => ({
-    categoria: cat,
-    total: gastos.filter(g => g.categoria === cat).reduce((sum, g) => sum + g.monto, 0)
-  })).filter(c => c.total > 0)
+  // Unified list: gastos table + categorized MP egresos
+  const gastosUnificados = useMemo<GastoUnificado[]>(() => [
+    ...gastos.map(g => ({ fecha: g.fecha, categoria: g.categoria, descripcion: g.descripcion, monto: g.monto, fuente: "gastos" as const })),
+    ...movimientosMp.filter(esMPGasto).map(mpAGastoUnificado),
+  ], [gastos, movimientosMp])
+
+  const gastosPorCategoria = useMemo(() => {
+    // Include categories that appear in unified list even if not in categorias table
+    const allCats = new Set([
+      ...categoriaNombres,
+      ...gastosUnificados.map(g => g.categoria).filter(Boolean),
+    ])
+    return Array.from(allCats).map(cat => ({
+      categoria: cat,
+      total: gastosUnificados.filter(g => g.categoria === cat).reduce((sum, g) => sum + g.monto, 0),
+      movimientos: gastosUnificados
+        .filter(g => g.categoria === cat)
+        .sort((a, b) => b.fecha.localeCompare(a.fecha)),
+    })).filter(c => c.total > 0).sort((a, b) => b.total - a.total)
+  }, [gastosUnificados, categoriaNombres])
 
   const columns = [
     { key: "fecha", header: "Fecha", render: (g: Gasto) => formatDate(new Date(g.fecha)) },
@@ -427,16 +470,58 @@ export function GastosContent() {
         </TabsContent>
 
         <TabsContent value="resumen" className="space-y-6">
-          {/* Total por categoría */}
+          {/* Total por categoría con desglose expandible */}
           <div>
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">Total por categoría</h3>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {gastosPorCategoria.map((item) => (
-                <div key={item.categoria} className="rounded-lg border p-4">
-                  <h3 className="font-semibold">{item.categoria}</h3>
-                  <p className="text-2xl font-bold text-destructive mt-2">{formatCurrency(item.total)}</p>
-                </div>
-              ))}
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              Total por categoría — {formatCurrency(gastosUnificados.reduce((s, g) => s + g.monto, 0))}
+            </h3>
+            <div className="space-y-2">
+              {gastosPorCategoria.map((item) => {
+                const isOpen = expandedCat === item.categoria
+                return (
+                  <div key={item.categoria} className="rounded-lg border overflow-hidden">
+                    <button
+                      className="flex items-center justify-between w-full px-4 py-3 hover:bg-muted/30 transition-colors text-left"
+                      onClick={() => setExpandedCat(isOpen ? null : item.categoria)}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                        <span className="font-semibold">{item.categoria}</span>
+                        <span className="text-xs text-muted-foreground">({item.movimientos.length} movimientos)</span>
+                      </div>
+                      <span className="font-bold text-destructive tabular-nums">{formatCurrency(item.total)}</span>
+                    </button>
+                    {isOpen && (
+                      <div className="border-t bg-muted/10">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-muted/20">
+                              <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Fecha</th>
+                              <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Descripción</th>
+                              <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Fuente</th>
+                              <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Monto</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {item.movimientos.map((m, i) => (
+                              <tr key={i} className="border-b last:border-0 hover:bg-muted/20">
+                                <td className="px-4 py-2 text-muted-foreground whitespace-nowrap">{formatDate(new Date(m.fecha))}</td>
+                                <td className="px-4 py-2 text-muted-foreground max-w-xs truncate">{m.descripcion || "—"}</td>
+                                <td className="px-4 py-2">
+                                  <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${m.fuente === "mercadopago" ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" : "bg-muted text-muted-foreground"}`}>
+                                    {m.fuente === "mercadopago" ? "MercadoPago" : "Gasto"}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 text-right font-medium text-destructive tabular-nums">{formatCurrency(m.monto)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
 

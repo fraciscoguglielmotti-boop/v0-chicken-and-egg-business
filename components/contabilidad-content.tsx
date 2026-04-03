@@ -13,7 +13,16 @@ const CATEGORIAS_RETIROS = ["Gastos Personales Francisco", "Retiro de socio", "R
 
 interface Venta { fecha: string; cantidad: number; precio_unitario: number; producto_nombre?: string }
 interface Compra { fecha: string; total: number; cantidad: number; precio_unitario: number; producto?: string }
-interface Gasto { fecha: string; monto: number; categoria: string; medio_pago?: string; fecha_pago?: string }
+interface Gasto { fecha: string; monto: number; categoria: string; medio_pago?: string; fecha_pago?: string; descripcion?: string }
+interface MovimientoMP { fecha: string; tipo: string; monto: number; descripcion?: string; categoria?: string }
+
+// Egresos de MP categorizados que no sean transferencias entre cuentas
+function esMPGasto(m: MovimientoMP): boolean {
+  return m.tipo === "egreso" && !!m.categoria && !m.descripcion?.toLowerCase().startsWith("transferencia")
+}
+function mpAGasto(m: MovimientoMP): Gasto {
+  return { fecha: m.fecha, monto: m.monto, categoria: m.categoria!, medio_pago: "MercadoPago", descripcion: m.descripcion }
+}
 
 // Para tarjeta de crédito con fecha_pago, el gasto impacta en el mes del pago (no del consumo)
 function mesContable(g: Gasto): string {
@@ -210,9 +219,16 @@ function prevMonthStr(month: string) {
 }
 
 export function ContabilidadContent() {
-  const { data: ventas = [] }  = useSupabase<Venta>("ventas")
-  const { data: compras = [] } = useSupabase<Compra>("compras")
-  const { data: gastos = [] }  = useSupabase<Gasto>("gastos")
+  const { data: ventas = [] }        = useSupabase<Venta>("ventas")
+  const { data: compras = [] }       = useSupabase<Compra>("compras")
+  const { data: gastos = [] }        = useSupabase<Gasto>("gastos")
+  const { data: movimientosMp = [] } = useSupabase<MovimientoMP>("movimientos_mp")
+
+  // Unifica gastos de la tabla gastos + egresos categorizados de MP
+  const gastosUnificados = useMemo(() => [
+    ...gastos,
+    ...movimientosMp.filter(esMPGasto).map(mpAGasto),
+  ], [gastos, movimientosMp])
 
   // Abrir en el mes anterior: el mes en curso está incompleto, no tiene sentido
   // analizarlo hasta que termine
@@ -224,9 +240,9 @@ export function ContabilidadContent() {
   const [gastosExpanded, setGastosExpanded] = useState(false)
 
   const { eerr, prev } = useMemo(() => ({
-    eerr: calcEERR(ventas, compras, gastos, selectedMonth),
-    prev: calcEERR(ventas, compras, gastos, prevMonthStr(selectedMonth)),
-  }), [ventas, compras, gastos, selectedMonth])
+    eerr: calcEERR(ventas, compras, gastosUnificados, selectedMonth),
+    prev: calcEERR(ventas, compras, gastosUnificados, prevMonthStr(selectedMonth)),
+  }), [ventas, compras, gastosUnificados, selectedMonth])
 
   return (
     <div className="space-y-6 max-w-2xl">
