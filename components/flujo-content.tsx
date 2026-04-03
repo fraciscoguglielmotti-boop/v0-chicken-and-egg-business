@@ -1,16 +1,66 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { useSupabase } from "@/hooks/use-supabase"
+import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight } from "lucide-react"
+import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { formatCurrency } from "@/lib/utils"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChevronDown, ChevronRight, TrendingUp, TrendingDown } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 interface Cobro { fecha: string; monto: number; metodo_pago: string }
 interface Pago { fecha: string; monto: number }
 interface Gasto { fecha: string; monto: number; categoria: string; medio_pago?: string; tarjeta?: string; fecha_pago?: string }
+interface MovimientoMP { fecha: string; tipo: string; monto: number; descripcion?: string }
+interface GastoProyectado {
+  id: string
+  nombre: string
+  categoria?: string
+  monto: number
+  periodicidad: "mensual" | "unico"
+  mes?: string
+  activo: boolean
+}
+
+// ── Helpers proyección ────────────────────────────────────────────────────────
+function getProximosMeses(n: number): { label: string; value: string }[] {
+  const result = []
+  const now = new Date()
+  for (let i = 0; i < n; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    const label = d.toLocaleDateString("es-AR", { month: "long", year: "numeric" })
+    result.push({ label: label.charAt(0).toUpperCase() + label.slice(1), value })
+  }
+  return result
+}
+
+function gastosRealesMes(gastos: Gasto[], movimientosMp: MovimientoMP[], mes: string): number {
+  const realGastos = gastos
+    .filter(g => {
+      const m = g.medio_pago === "Tarjeta Credito" && g.fecha_pago ? g.fecha_pago.slice(0, 7) : g.fecha.slice(0, 7)
+      return m === mes
+    })
+    .reduce((s, g) => s + g.monto, 0)
+  const realMP = movimientosMp
+    .filter(m => m.tipo?.toLowerCase() === "egreso" && !(m.descripcion?.toLowerCase() ?? "").startsWith("transferencia") && m.fecha.slice(0, 7) === mes)
+    .reduce((s, m) => s + m.monto, 0)
+  return realGastos + realMP
+}
+
+function itemsProyectadosMes(proyectados: GastoProyectado[], mes: string): GastoProyectado[] {
+  return proyectados.filter(g => {
+    if (!g.activo) return false
+    return g.periodicidad === "mensual" || (g.periodicidad === "unico" && g.mes === mes)
+  })
+}
 
 function CashRow({ label, value, sub = false, sign = "", onClick, expandable, expanded }: {
   label: string; value: number; sub?: boolean; sign?: string
@@ -63,9 +113,69 @@ export function FlujoContent() {
   const { data: cobros = [] } = useSupabase<Cobro>("cobros")
   const { data: pagos = [] } = useSupabase<Pago>("pagos")
   const { data: gastos = [] } = useSupabase<Gasto>("gastos")
+  const { data: movimientosMp = [] } = useSupabase<MovimientoMP>("movimientos_mp")
+  const { data: proyectados = [], mutate: mutateProyectados } = useSupabase<GastoProyectado>("gastos_proyectados")
+  const { data: categorias = [] } = useSupabase<{ id: string; nombre: string }>("categorias_gastos")
+  const { toast } = useToast()
 
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
   const [gastosExpanded, setGastosExpanded] = useState(false)
+
+  // ── Estado proyección ────────────────────────────────────────────────────
+  const meses = useMemo(() => getProximosMeses(6), [])
+  const mesActual = meses[0].value
+  const [expandedMes, setExpandedMes] = useState<string | null>(mesActual)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [form, setForm] = useState({
+    nombre: "", categoria: "", monto: "",
+    periodicidad: "mensual" as "mensual" | "unico",
+    mes: mesActual, activo: true,
+  })
+  const resetForm = () => setForm({ nombre: "", categoria: "", monto: "", periodicidad: "mensual", mes: mesActual, activo: true })
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const data = {
+      nombre: form.nombre.trim(),
+      categoria: form.categoria || null,
+      monto: parseFloat(form.monto),
+      periodicidad: form.periodicidad,
+      mes: form.periodicidad === "unico" ? form.mes : null,
+      activo: form.activo,
+    }
+    try {
+      if (editingId) {
+        await updateRow("gastos_proyectados", editingId, data)
+        toast({ title: "Gasto actualizado" })
+      } else {
+        await insertRow("gastos_proyectados", data)
+        toast({ title: "Gasto fijo agregado" })
+      }
+      await mutateProyectados()
+      setDialogOpen(false); setEditingId(null); resetForm()
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message, variant: "destructive" })
+    }
+  }
+
+  const handleEdit = (g: GastoProyectado) => {
+    setForm({ nombre: g.nombre, categoria: g.categoria || "", monto: g.monto.toString(), periodicidad: g.periodicidad, mes: g.mes || mesActual, activo: g.activo })
+    setEditingId(g.id); setDialogOpen(true)
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("¿Eliminar este gasto fijo?")) return
+    try { await deleteRow("gastos_proyectados", id); await mutateProyectados() }
+    catch (err: any) { toast({ title: "Error", description: err?.message, variant: "destructive" }) }
+  }
+
+  const handleToggle = async (g: GastoProyectado) => {
+    try { await updateRow("gastos_proyectados", g.id, { activo: !g.activo }); await mutateProyectados() }
+    catch (err: any) { toast({ title: "Error", description: err?.message, variant: "destructive" }) }
+  }
+
+  const categoriaNombres = categorias.map(c => c.nombre)
 
   const flujo = useMemo(() => {
     const prev = prevMonth(selectedMonth)
@@ -122,11 +232,109 @@ export function FlujoContent() {
   }, [cobros, pagos, gastos, selectedMonth])
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <div>
-        <Label>Período</Label>
-        <Input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="w-auto mt-1" />
-      </div>
+    <div className="space-y-6">
+      <Tabs defaultValue="proyeccion">
+        <TabsList>
+          <TabsTrigger value="proyeccion">Proyección</TabsTrigger>
+          <TabsTrigger value="cashflow">Cashflow real</TabsTrigger>
+          <TabsTrigger value="fijos">Gastos Fijos</TabsTrigger>
+        </TabsList>
+
+        {/* ── Tab: Proyección ─────────────────────────────────────────── */}
+        <TabsContent value="proyeccion" className="space-y-3 mt-4">
+          <p className="text-sm text-muted-foreground">
+            Próximos 6 meses. Los gastos fijos mensuales se proyectan automáticamente.
+          </p>
+          {meses.map(({ label, value: mes }, idx) => {
+            const isActual = idx === 0
+            const real = isActual ? gastosRealesMes(gastos, movimientosMp, mes) : 0
+            const items = itemsProyectadosMes(proyectados, mes)
+            const totalProy = items.reduce((s, g) => s + g.monto, 0)
+            const totalMes = isActual ? real + totalProy : totalProy
+            const isOpen = expandedMes === mes
+            return (
+              <div key={mes} className="rounded-lg border overflow-hidden">
+                <button
+                  className="flex items-center justify-between w-full px-4 py-3 hover:bg-muted/30 transition-colors text-left"
+                  onClick={() => setExpandedMes(isOpen ? null : mes)}
+                >
+                  <div className="flex items-center gap-3">
+                    {isOpen ? <ChevronDown className="h-4 w-4 text-muted-foreground" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                    <span className="font-semibold">{label}</span>
+                    {isActual && <Badge variant="secondary" className="text-xs">Mes actual</Badge>}
+                    <span className="text-sm text-muted-foreground">{items.length} fijo{items.length !== 1 ? "s" : ""}</span>
+                  </div>
+                  <span className="font-bold text-destructive tabular-nums">{formatCurrency(totalMes)}</span>
+                </button>
+                {isOpen && (
+                  <div className="border-t bg-muted/10">
+                    {isActual && real > 0 && (
+                      <div className="px-4 py-3 border-b flex justify-between items-center">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Gastos reales hasta hoy</p>
+                        <p className="text-sm font-semibold text-destructive">{formatCurrency(real)}</p>
+                      </div>
+                    )}
+                    {items.length > 0 ? (
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b bg-muted/20">
+                            <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Concepto</th>
+                            <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Categoría</th>
+                            <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Tipo</th>
+                            <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Monto</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {items.map(g => (
+                            <tr key={g.id} className="border-b last:border-0">
+                              <td className="px-4 py-2.5 font-medium">{g.nombre}</td>
+                              <td className="px-4 py-2.5 text-muted-foreground">{g.categoria || "—"}</td>
+                              <td className="px-4 py-2.5">
+                                <Badge variant={g.periodicidad === "mensual" ? "secondary" : "outline"} className="text-xs">
+                                  {g.periodicidad === "mensual" ? "Mensual" : "Único"}
+                                </Badge>
+                              </td>
+                              <td className="px-4 py-2.5 text-right font-semibold text-destructive tabular-nums">{formatCurrency(g.monto)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          {isActual ? (
+                            <>
+                              <tr className="bg-muted/20 border-t">
+                                <td colSpan={3} className="px-4 py-2 text-xs text-muted-foreground">Total fijos</td>
+                                <td className="px-4 py-2 text-right font-semibold text-destructive tabular-nums">{formatCurrency(totalProy)}</td>
+                              </tr>
+                              <tr className="bg-muted/40 border-t">
+                                <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase text-muted-foreground">Total del mes (real + fijos)</td>
+                                <td className="px-4 py-2 text-right font-bold text-destructive tabular-nums">{formatCurrency(totalMes)}</td>
+                              </tr>
+                            </>
+                          ) : (
+                            <tr className="bg-muted/30 border-t">
+                              <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase text-muted-foreground">Total proyectado</td>
+                              <td className="px-4 py-2 text-right font-bold text-destructive tabular-nums">{formatCurrency(totalProy)}</td>
+                            </tr>
+                          )}
+                        </tfoot>
+                      </table>
+                    ) : (
+                      <p className="px-4 py-4 text-sm text-muted-foreground italic">Sin gastos fijos proyectados para este mes.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </TabsContent>
+
+        {/* ── Tab: Cashflow real ──────────────────────────────────────── */}
+        <TabsContent value="cashflow">
+        <div className="space-y-6 max-w-2xl mt-4">
+          <div>
+            <Label>Período</Label>
+            <Input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="w-auto mt-1" />
+          </div>
 
       <Card className="p-6">
         <h3 className="font-semibold text-base mb-1">Cashflow — Resultado por lo Percibido</h3>
@@ -250,6 +458,131 @@ export function FlujoContent() {
           </table>
         </div>
       </Card>
+        </div>
+        </TabsContent>
+
+        {/* ── Tab: Gastos Fijos ──────────────────────────────────────── */}
+        <TabsContent value="fijos" className="space-y-4 mt-4">
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-muted-foreground">
+              {proyectados.filter(g => g.activo).length} activos · {proyectados.filter(g => !g.activo).length} inactivos ·{" "}
+              <span className="font-medium text-destructive">
+                {formatCurrency(proyectados.filter(g => g.activo && g.periodicidad === "mensual").reduce((s, g) => s + g.monto, 0))} / mes
+              </span>
+            </p>
+            <Button onClick={() => { resetForm(); setEditingId(null); setDialogOpen(true) }}>
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo gasto fijo
+            </Button>
+          </div>
+
+          {proyectados.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-10 text-center">
+              <p className="text-muted-foreground text-sm">Agregá alquileres, sueldos, servicios y otros gastos recurrentes.</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Concepto</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Categoría</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Tipo</th>
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Mes</th>
+                    <th className="text-right px-4 py-3 font-medium text-muted-foreground">Monto</th>
+                    <th className="text-center px-4 py-3 font-medium text-muted-foreground">Activo</th>
+                    <th className="px-4 py-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...proyectados]
+                    .sort((a, b) => (a.activo === b.activo ? a.nombre.localeCompare(b.nombre) : a.activo ? -1 : 1))
+                    .map(g => (
+                      <tr key={g.id} className={`border-b last:border-0 transition-opacity ${!g.activo ? "opacity-50" : ""}`}>
+                        <td className="px-4 py-3 font-medium">{g.nombre}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{g.categoria || "—"}</td>
+                        <td className="px-4 py-3">
+                          <Badge variant={g.periodicidad === "mensual" ? "secondary" : "outline"} className="text-xs">
+                            {g.periodicidad === "mensual" ? "Mensual" : "Único"}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{g.periodicidad === "unico" && g.mes ? g.mes : "—"}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-destructive tabular-nums">{formatCurrency(g.monto)}</td>
+                        <td className="px-4 py-3 text-center">
+                          <button onClick={() => handleToggle(g)} className="text-muted-foreground hover:text-foreground transition-colors">
+                            {g.activo ? <ToggleRight className="h-5 w-5 text-green-600" /> : <ToggleLeft className="h-5 w-5" />}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1 justify-end">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(g)}>
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDelete(g.id)}>
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Dialog alta/edición gastos fijos */}
+      <Dialog open={dialogOpen} onOpenChange={open => { setDialogOpen(open); if (!open) { setEditingId(null); resetForm() } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{editingId ? "Editar gasto fijo" : "Nuevo gasto fijo"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label>Concepto</Label>
+              <Input value={form.nombre} onChange={e => setForm({ ...form, nombre: e.target.value })} placeholder="Ej: Alquiler depósito" required autoFocus />
+            </div>
+            <div>
+              <Label>Categoría</Label>
+              <Select value={form.categoria} onValueChange={v => setForm({ ...form, categoria: v })}>
+                <SelectTrigger><SelectValue placeholder="Sin categoría" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Sin categoría</SelectItem>
+                  {categoriaNombres.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Monto</Label>
+              <Input type="number" step="0.01" min="0" value={form.monto} onChange={e => setForm({ ...form, monto: e.target.value })} required />
+            </div>
+            <div>
+              <Label>Periodicidad</Label>
+              <div className="flex gap-2 mt-1">
+                {(["mensual", "unico"] as const).map(p => (
+                  <button key={p} type="button"
+                    className={`flex-1 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${form.periodicidad === p ? "bg-primary text-primary-foreground border-primary" : "hover:bg-muted"}`}
+                    onClick={() => setForm({ ...form, periodicidad: p })}
+                  >
+                    {p === "mensual" ? "Mensual (fijo)" : "Único"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {form.periodicidad === "unico" && (
+              <div>
+                <Label>Mes</Label>
+                <Input type="month" value={form.mes} onChange={e => setForm({ ...form, mes: e.target.value })} required />
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit">{editingId ? "Guardar cambios" : "Agregar"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
