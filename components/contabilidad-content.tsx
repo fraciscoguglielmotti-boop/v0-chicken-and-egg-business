@@ -201,9 +201,12 @@ function calcEERR(todasVentas: Venta[], todasCompras: Compra[], gastos: Gasto[],
   const totalRetiros  = gastosRetiros.reduce((s, g) => s + g.monto, 0)
 
   const desglose: Record<string, number> = {}
+  const movimientosPorCat: Record<string, Gasto[]> = {}
   gastosOp.forEach(g => {
     const cat = g.categoria || "Sin categoría"
     desglose[cat] = (desglose[cat] || 0) + g.monto
+    if (!movimientosPorCat[cat]) movimientosPorCat[cat] = []
+    movimientosPorCat[cat].push(g)
   })
 
   const resultadoOp      = margenBruto - totalGastosOp
@@ -211,7 +214,7 @@ function calcEERR(todasVentas: Venta[], todasCompras: Compra[], gastos: Gasto[],
   const resultadoFinal   = resultadoOp - totalSueldos - totalRetiros
   const resultadoFinalPct = totalVentas > 0 ? (resultadoFinal / totalVentas) * 100 : 0
 
-  return { totalVentas, totalCMV, margenBruto, margenPct, totalGastosOp, desglose, totalSueldos, totalRetiros, resultadoOp, resultadoOpPct, resultadoFinal, resultadoFinalPct }
+  return { totalVentas, totalCMV, margenBruto, margenPct, totalGastosOp, desglose, movimientosPorCat, gastosSueldos, gastosRetiros, totalSueldos, totalRetiros, resultadoOp, resultadoOpPct, resultadoFinal, resultadoFinalPct }
 }
 
 function prevMonthStr(month: string) {
@@ -240,6 +243,9 @@ export function ContabilidadContent() {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
   })
   const [gastosExpanded, setGastosExpanded] = useState(false)
+  const [expandedCat, setExpandedCat] = useState<string | null>(null)
+  const [sueldosExpanded, setSueldosExpanded] = useState(false)
+  const [retirosExpanded, setRetirosExpanded] = useState(false)
 
   const { eerr, prev } = useMemo(() => ({
     eerr: calcEERR(ventas, compras, gastosUnificados, selectedMonth),
@@ -274,12 +280,39 @@ export function ContabilidadContent() {
 
           {gastosExpanded && (
             <div className="pl-4 ml-2 border-l-2 border-border/30 mb-1">
-              {Object.entries(eerr.desglose).sort((a, b) => b[1] - a[1]).map(([cat, total]) => (
-                <div key={cat} className="flex items-center justify-between py-1.5 text-xs">
-                  <span className="text-muted-foreground">{cat}</span>
-                  <span className="tabular-nums text-muted-foreground">{formatCurrency(total)}</span>
-                </div>
-              ))}
+              {Object.entries(eerr.desglose).sort((a, b) => b[1] - a[1]).map(([cat, total]) => {
+                const movs = eerr.movimientosPorCat[cat] ?? []
+                const catOpen = expandedCat === cat
+                return (
+                  <div key={cat}>
+                    <button
+                      className="flex items-center justify-between w-full py-1.5 text-xs hover:bg-muted/30 rounded px-1 transition-colors"
+                      onClick={() => setExpandedCat(catOpen ? null : cat)}
+                    >
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        {catOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                        {cat}
+                        <span className="text-muted-foreground/50">({movs.length})</span>
+                      </span>
+                      <span className="tabular-nums text-muted-foreground">{formatCurrency(total)}</span>
+                    </button>
+                    {catOpen && (
+                      <div className="ml-4 mb-1 border-l border-border/20 pl-3">
+                        {movs.sort((a, b) => b.fecha.localeCompare(a.fecha)).map((g, i) => (
+                          <div key={i} className="flex items-center justify-between py-1 text-xs border-b border-border/10 last:border-0">
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-muted-foreground/70 tabular-nums">{g.fecha.slice(0, 10)}</span>
+                              {g.descripcion && <span className="text-muted-foreground truncate max-w-[200px]">{g.descripcion}</span>}
+                              {g.medio_pago && <span className="text-muted-foreground/50">{g.medio_pago}</span>}
+                            </div>
+                            <span className="tabular-nums text-muted-foreground ml-4 shrink-0">{formatCurrency(g.monto)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
               {Object.keys(eerr.desglose).length === 0 && (
                 <p className="py-2 text-xs text-muted-foreground italic">Sin gastos operativos en este período</p>
               )}
@@ -287,8 +320,63 @@ export function ContabilidadContent() {
           )}
 
           <EERRTotal label="= Resultado Operativo" value={eerr.resultadoOp} pct={eerr.resultadoOpPct} />
-          <EERRRow label="(−) Sueldos y Comisiones" value={eerr.totalSueldos} />
-          {eerr.totalRetiros > 0 && <EERRRow label="(−) Retiros personales" value={eerr.totalRetiros} />}
+
+          {/* Sueldos expandible */}
+          <button
+            onClick={() => setSueldosExpanded(v => !v)}
+            className="flex items-center justify-between w-full py-2.5 border-b border-border/40 text-left hover:bg-muted/30 rounded transition-colors"
+          >
+            <span className="flex items-center gap-1 text-sm text-muted-foreground">
+              {sueldosExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              (−) Sueldos y Comisiones
+            </span>
+            <span className="text-sm font-medium tabular-nums">{formatCurrency(eerr.totalSueldos)}</span>
+          </button>
+          {sueldosExpanded && (
+            <div className="pl-4 ml-2 border-l-2 border-border/30 mb-1">
+              {eerr.gastosSueldos.sort((a, b) => b.fecha.localeCompare(a.fecha)).map((g, i) => (
+                <div key={i} className="flex items-center justify-between py-1.5 text-xs border-b border-border/10 last:border-0">
+                  <div className="flex flex-col">
+                    <span className="text-muted-foreground/70">{g.fecha.slice(0, 10)}</span>
+                    <span className="text-muted-foreground">{g.descripcion || g.categoria}</span>
+                    {g.medio_pago && <span className="text-muted-foreground/50">{g.medio_pago}</span>}
+                  </div>
+                  <span className="tabular-nums text-muted-foreground">{formatCurrency(g.monto)}</span>
+                </div>
+              ))}
+              {eerr.gastosSueldos.length === 0 && <p className="py-2 text-xs text-muted-foreground italic">Sin movimientos</p>}
+            </div>
+          )}
+
+          {/* Retiros expandible */}
+          {eerr.totalRetiros > 0 && (
+            <>
+              <button
+                onClick={() => setRetirosExpanded(v => !v)}
+                className="flex items-center justify-between w-full py-2.5 border-b border-border/40 text-left hover:bg-muted/30 rounded transition-colors"
+              >
+                <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                  {retirosExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                  (−) Retiros personales
+                </span>
+                <span className="text-sm font-medium tabular-nums">{formatCurrency(eerr.totalRetiros)}</span>
+              </button>
+              {retirosExpanded && (
+                <div className="pl-4 ml-2 border-l-2 border-border/30 mb-1">
+                  {eerr.gastosRetiros.sort((a, b) => b.fecha.localeCompare(a.fecha)).map((g, i) => (
+                    <div key={i} className="flex items-center justify-between py-1.5 text-xs border-b border-border/10 last:border-0">
+                      <div className="flex flex-col">
+                        <span className="text-muted-foreground/70">{g.fecha.slice(0, 10)}</span>
+                        <span className="text-muted-foreground">{g.descripcion || g.categoria}</span>
+                      </div>
+                      <span className="tabular-nums text-muted-foreground">{formatCurrency(g.monto)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
           <EERRTotal label="= Resultado del Período" value={eerr.resultadoFinal} pct={eerr.resultadoFinalPct} />
         </div>
       </Card>
