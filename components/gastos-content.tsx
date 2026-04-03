@@ -33,6 +33,7 @@ interface Gasto {
   cuota_actual?: number
   cuotas_total?: number
   fecha_pago?: string
+  pagado?: boolean
 }
 
 interface MovimientoMP {
@@ -91,7 +92,8 @@ export function GastosContent() {
     tarjeta: "",
     banco: "",
     cuota_actual: 1,
-    cuotas_total: 1
+    cuotas_total: 1,
+    pagado: true,
   })
 
   const handleCatSubmit = async (e: React.FormEvent) => {
@@ -162,7 +164,8 @@ export function GastosContent() {
       tarjeta: gasto.tarjeta || "",
       banco: gasto.banco || "",
       cuota_actual: gasto.cuota_actual || 1,
-      cuotas_total: gasto.cuotas_total || 1
+      cuotas_total: gasto.cuotas_total || 1,
+      pagado: gasto.pagado !== false,
     })
     setEditingId(gasto.id)
     setIsDialogOpen(true)
@@ -189,7 +192,8 @@ export function GastosContent() {
       tarjeta: "",
       banco: "",
       cuota_actual: 1,
-      cuotas_total: 1
+      cuotas_total: 1,
+      pagado: true,
     })
   }
 
@@ -218,8 +222,9 @@ export function GastosContent() {
   }, [categoriaNombres, editingId, formData.categoria])
 
   // Unified list: gastos table + categorized MP egresos
+  // Solo gastos ya pagados en el resumen (los pendientes son compromisos futuros)
   const gastosUnificados = useMemo<GastoUnificado[]>(() => [
-    ...gastos.map(g => ({ fecha: g.fecha, categoria: g.categoria, descripcion: g.descripcion, monto: g.monto, fuente: "gastos" as const })),
+    ...gastos.filter(g => g.pagado !== false).map(g => ({ fecha: g.fecha, categoria: g.categoria, descripcion: g.descripcion, monto: g.monto, fuente: "gastos" as const })),
     ...movimientosMp.filter(esMPGasto).map(mpAGastoUnificado),
   ], [gastos, movimientosMp])
 
@@ -238,8 +243,25 @@ export function GastosContent() {
     })).filter(c => c.total > 0).sort((a, b) => b.total - a.total)
   }, [gastosUnificados, categoriaNombres])
 
+  const handleMarcarPagado = async (g: Gasto) => {
+    try {
+      await updateRow("gastos", g.id, { pagado: true })
+      await mutate()
+      toast({ title: "Marcado como pagado", description: `${g.categoria} — ${formatCurrency(g.monto)}` })
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message, variant: "destructive" })
+    }
+  }
+
   const columns = [
-    { key: "fecha", header: "Fecha", render: (g: Gasto) => formatDate(new Date(g.fecha)) },
+    {
+      key: "fecha", header: "Fecha", render: (g: Gasto) => (
+        <div>
+          <p>{formatDate(new Date(g.fecha))}</p>
+          {g.pagado === false && <Badge variant="outline" className="text-xs text-amber-600 border-amber-400 mt-0.5">Pendiente</Badge>}
+        </div>
+      )
+    },
     { key: "categoria", header: "Categoría", render: (g: Gasto) => <Badge variant="outline">{g.categoria}</Badge> },
     { key: "descripcion", header: "Descripción", render: (g: Gasto) => g.descripcion || "-" },
     { key: "monto", header: "Monto", render: (g: Gasto) => <span className="font-semibold text-destructive">{formatCurrency(g.monto)}</span> },
@@ -267,7 +289,12 @@ export function GastosContent() {
       key: "actions",
       header: "Acciones",
       render: (g: Gasto) => (
-        <div className="flex gap-2">
+        <div className="flex gap-1">
+          {g.pagado === false && (
+            <Button variant="outline" size="sm" className="text-xs h-7 text-green-700 border-green-400 hover:bg-green-50" onClick={() => handleMarcarPagado(g)}>
+              ✓ Pagar
+            </Button>
+          )}
           <Button variant="ghost" size="icon" onClick={() => handleEdit(g)}>
             <Pencil className="h-4 w-4" />
           </Button>
@@ -369,13 +396,19 @@ export function GastosContent() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label>Fecha</Label>
-                      <Input 
-                        type="date" 
-                        value={formData.fecha} 
-                        max={new Date().toISOString().split('T')[0]}
-                        onChange={(e) => setFormData({...formData, fecha: e.target.value})} 
-                        required 
+                      <Input
+                        type="date"
+                        value={formData.fecha}
+                        onChange={(e) => {
+                          const fecha = e.target.value
+                          const esFuturo = fecha > new Date().toISOString().split('T')[0]
+                          setFormData({ ...formData, fecha, pagado: !esFuturo })
+                        }}
+                        required
                       />
+                      {formData.fecha > new Date().toISOString().split('T')[0] && (
+                        <p className="text-xs text-amber-600 mt-1">Fecha futura → se guardará como pendiente</p>
+                      )}
                     </div>
                     <div>
                       <Label>Categoria</Label>
@@ -452,6 +485,19 @@ export function GastosContent() {
                       </div>
                     </>
                   )}
+
+                  <div className="flex items-center gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, pagado: !formData.pagado })}
+                      className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${formData.pagado ? "bg-green-50 border-green-400 text-green-700" : "bg-amber-50 border-amber-400 text-amber-700"}`}
+                    >
+                      {formData.pagado ? "✓ Ya pagado" : "⏳ Pendiente de pago"}
+                    </button>
+                    <span className="text-xs text-muted-foreground">
+                      {formData.pagado ? "Impacta en gastos reales" : "No impacta hasta que lo marques como pagado"}
+                    </span>
+                  </div>
 
                   <DialogFooter>
                     <Button type="submit">{editingId ? "Actualizar" : "Guardar"}</Button>

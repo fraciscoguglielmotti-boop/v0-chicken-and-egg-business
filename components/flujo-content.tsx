@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast"
 
 interface Cobro { fecha: string; monto: number; metodo_pago: string }
 interface Pago { fecha: string; monto: number }
-interface Gasto { fecha: string; monto: number; categoria: string; medio_pago?: string; tarjeta?: string; fecha_pago?: string }
+interface Gasto { id: string; fecha: string; monto: number; categoria: string; descripcion?: string; medio_pago?: string; tarjeta?: string; fecha_pago?: string; pagado?: boolean }
 interface MovimientoMP { fecha: string; tipo: string; monto: number; descripcion?: string }
 interface GastoProyectado {
   id: string
@@ -112,7 +112,7 @@ function prevMonth(month: string) {
 export function FlujoContent() {
   const { data: cobros = [] } = useSupabase<Cobro>("cobros")
   const { data: pagos = [] } = useSupabase<Pago>("pagos")
-  const { data: gastos = [] } = useSupabase<Gasto>("gastos")
+  const { data: gastos = [], mutate: mutateGastos } = useSupabase<Gasto>("gastos")
   const { data: movimientosMp = [] } = useSupabase<MovimientoMP>("movimientos_mp")
   const { data: proyectados = [], mutate: mutateProyectados } = useSupabase<GastoProyectado>("gastos_proyectados")
   const { data: categorias = [] } = useSupabase<{ id: string; nombre: string }>("categorias_gastos")
@@ -177,6 +177,22 @@ export function FlujoContent() {
 
   const categoriaNombres = categorias.map(c => c.nombre)
 
+  // Pagos pendientes (gastos con pagado=false), ordenados por fecha ascendente (más urgentes primero)
+  const gastosPendientes = useMemo(() =>
+    gastos.filter(g => g.pagado === false).sort((a, b) => a.fecha.localeCompare(b.fecha)),
+    [gastos]
+  )
+
+  const handleMarcarPagado = async (g: Gasto) => {
+    try {
+      await updateRow("gastos", g.id, { pagado: true })
+      await mutateGastos()
+      toast({ title: "Pago registrado", description: `${g.categoria} — ${formatCurrency(g.monto)}` })
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message, variant: "destructive" })
+    }
+  }
+
   const flujo = useMemo(() => {
     const prev = prevMonth(selectedMonth)
 
@@ -186,7 +202,7 @@ export function FlujoContent() {
 
     const cobrosFiltrados   = cobros.filter(c => c.fecha.startsWith(selectedMonth))
     const pagosFiltrados    = pagos.filter(p => p.fecha.startsWith(selectedMonth))
-    const gastosFiltrados   = gastos.filter(g => fechaEfectiva(g).startsWith(selectedMonth))
+    const gastosFiltrados   = gastos.filter(g => g.pagado !== false && fechaEfectiva(g).startsWith(selectedMonth))
 
     const totalIngresos      = cobrosFiltrados.reduce((s, c) => s + Number(c.monto), 0)
     const cobrosEfectivo     = cobrosFiltrados.filter(c => c.metodo_pago === "efectivo").reduce((s, c) => s + Number(c.monto), 0)
@@ -374,6 +390,47 @@ export function FlujoContent() {
           <CashTotal label="= Resultado de Caja" value={flujo.resultado} />
         </div>
       </Card>
+
+      {/* Pagos a Realizar */}
+      {gastosPendientes.length > 0 && (
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="font-semibold text-base">Pagos a Realizar</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {gastosPendientes.length} pendiente{gastosPendientes.length !== 1 ? "s" : ""} · Total: <span className="font-semibold text-destructive">{formatCurrency(gastosPendientes.reduce((s, g) => s + g.monto, 0))}</span>
+              </p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {gastosPendientes.map(g => {
+              const hoy = new Date().toISOString().slice(0, 10)
+              const vencido = g.fecha < hoy
+              const dias = Math.ceil((new Date(g.fecha).getTime() - new Date(hoy).getTime()) / (1000 * 60 * 60 * 24))
+              return (
+                <div key={g.id} className={`flex items-center justify-between rounded-lg border px-4 py-3 ${vencido ? "border-red-400/40 bg-red-500/5" : dias <= 7 ? "border-amber-400/40 bg-amber-500/5" : "border-border bg-muted/10"}`}>
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{g.categoria}</span>
+                      {g.descripcion && <span className="text-xs text-muted-foreground truncate">{g.descripcion}</span>}
+                    </div>
+                    <span className={`text-xs font-medium ${vencido ? "text-red-600" : dias <= 7 ? "text-amber-600" : "text-muted-foreground"}`}>
+                      {vencido ? `Vencido hace ${Math.abs(dias)} día${Math.abs(dias) !== 1 ? "s" : ""}` : dias === 0 ? "Hoy" : `En ${dias} día${dias !== 1 ? "s" : ""}`} · {new Date(g.fecha + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })}
+                    </span>
+                    {g.medio_pago && <span className="text-xs text-muted-foreground">{g.medio_pago}</span>}
+                  </div>
+                  <div className="flex items-center gap-3 ml-4 shrink-0">
+                    <span className="font-bold text-destructive tabular-nums">{formatCurrency(g.monto)}</span>
+                    <Button size="sm" variant="outline" className="text-green-700 border-green-400 hover:bg-green-50 h-8 text-xs" onClick={() => handleMarcarPagado(g)}>
+                      ✓ Pagar
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+      )}
 
       {/* Vencimientos de tarjetas */}
       {(flujo.proximos.length > 0 || flujo.vencidos.length > 0) && (

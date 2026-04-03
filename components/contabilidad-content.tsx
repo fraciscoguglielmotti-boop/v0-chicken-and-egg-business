@@ -13,7 +13,7 @@ const CATEGORIAS_RETIROS = ["Gastos Personales Francisco", "Retiro de socio", "R
 
 interface Venta { fecha: string; cantidad: number; precio_unitario: number; producto_nombre?: string }
 interface Compra { fecha: string; total: number; cantidad: number; precio_unitario: number; producto?: string }
-interface Gasto { fecha: string; monto: number; categoria: string; medio_pago?: string; fecha_pago?: string; descripcion?: string }
+interface Gasto { fecha: string; monto: number; categoria: string; medio_pago?: string; fecha_pago?: string; descripcion?: string; pagado?: boolean }
 interface MovimientoMP { fecha: string; tipo: string; monto: number; descripcion?: string; categoria?: string }
 
 // Egresos de MP que no sean transferencias entre cuentas
@@ -230,8 +230,9 @@ export function ContabilidadContent() {
   const { data: movimientosMp = [] } = useSupabase<MovimientoMP>("movimientos_mp")
 
   // Unifica gastos de la tabla gastos + egresos categorizados de MP
+  // Solo gastos pagados — los pendientes (pagado=false) no impactan en el EERR todavía
   const gastosUnificados = useMemo(() => [
-    ...gastos,
+    ...gastos.filter(g => g.pagado !== false),
     ...movimientosMp.filter(esMPGasto).map(mpAGasto),
   ], [gastos, movimientosMp])
 
