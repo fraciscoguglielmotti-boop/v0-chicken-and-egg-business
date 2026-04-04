@@ -105,6 +105,7 @@ interface DatosMensuales {
   topClientes: { nombre: string; monto: number }[]
   distribucionMetodosPago: { name: string; value: number }[]
   rentabilidadProductos: { producto: string; ingresos: number; costo: number; margen: number }[]
+  clientesMes: { nombre: string; cajones: number; totalVendido: number; costoVendido: number; ganancia: number; margen: number }[]
 }
 
 // ─── Tooltip dark-mode ────────────────────────────────────────────────────────
@@ -520,6 +521,43 @@ function PdfTemplateMensual({ data }: { data: DatosMensuales }) {
         </div>
       ))}
 
+      {/* Tabla principal: todos los clientes del mes */}
+      {data.clientesMes?.length > 0 && (
+        <>
+          <div style={S.sectionTitle}>Ventas por Cliente — {data.mes}</div>
+          {/* Header de tabla */}
+          <div style={{ display: "flex", background: "#1e3a5f", color: "#fff", borderRadius: "6px 6px 0 0", padding: "8px 12px", fontSize: "10px", fontWeight: "700", marginBottom: "0", letterSpacing: "0.04em" }}>
+            <span style={{ flex: 3 }}>CLIENTE</span>
+            <span style={{ width: "70px", textAlign: "right" }}>CAJONES</span>
+            <span style={{ width: "120px", textAlign: "right" }}>VENDIDO</span>
+            <span style={{ width: "120px", textAlign: "right" }}>COSTO</span>
+            <span style={{ width: "100px", textAlign: "right" }}>GANANCIA</span>
+            <span style={{ width: "55px", textAlign: "right" }}>MRG %</span>
+          </div>
+          {data.clientesMes.map((c, i) => (
+            <div key={c.nombre} style={{ display: "flex", alignItems: "center", padding: "7px 12px", background: i % 2 === 0 ? "#f8fafc" : "#fff", fontSize: "10.5px", borderLeft: "1px solid #e2e8f0", borderRight: "1px solid #e2e8f0", borderBottom: i === data.clientesMes.length - 1 ? "2px solid #1e3a5f" : "1px solid #e2e8f0" }}>
+              <span style={{ flex: 3, fontWeight: "500", color: "#1e293b" }}>{c.nombre}</span>
+              <span style={{ width: "70px", textAlign: "right", color: "#64748b" }}>{c.cajones}</span>
+              <span style={{ width: "120px", textAlign: "right", fontWeight: "600", color: "#1e293b" }}>{formatCurrency(c.totalVendido)}</span>
+              <span style={{ width: "120px", textAlign: "right", color: "#64748b" }}>{formatCurrency(c.costoVendido)}</span>
+              <span style={{ width: "100px", textAlign: "right", fontWeight: "700", color: c.ganancia >= 0 ? "#16a34a" : "#dc2626" }}>{formatCurrency(c.ganancia)}</span>
+              <span style={{ width: "55px", textAlign: "right", fontWeight: "600", color: c.margen >= 20 ? "#16a34a" : c.margen >= 10 ? "#d97706" : "#dc2626" }}>{c.margen}%</span>
+            </div>
+          ))}
+          {/* Totales */}
+          <div style={{ display: "flex", padding: "8px 12px", background: "#1e3a5f", color: "#fff", fontSize: "10.5px", fontWeight: "700", borderRadius: "0 0 6px 6px", marginBottom: "16px" }}>
+            <span style={{ flex: 3 }}>TOTAL ({data.clientesMes.length} clientes)</span>
+            <span style={{ width: "70px", textAlign: "right" }}>{data.clientesMes.reduce((s, c) => s + c.cajones, 0)}</span>
+            <span style={{ width: "120px", textAlign: "right" }}>{formatCurrency(data.clientesMes.reduce((s, c) => s + c.totalVendido, 0))}</span>
+            <span style={{ width: "120px", textAlign: "right" }}>{formatCurrency(data.clientesMes.reduce((s, c) => s + c.costoVendido, 0))}</span>
+            <span style={{ width: "100px", textAlign: "right" }}>{formatCurrency(data.clientesMes.reduce((s, c) => s + c.ganancia, 0))}</span>
+            <span style={{ width: "55px", textAlign: "right" }}>
+              {data.resumen.ventas > 0 ? ((data.clientesMes.reduce((s, c) => s + c.ganancia, 0) / data.resumen.ventas) * 100).toFixed(1) : 0}%
+            </span>
+          </div>
+        </>
+      )}
+
       {data.rentabilidadProductos?.length > 0 && (
         <>
           <div style={S.sectionTitle}>Rentabilidad por Producto</div>
@@ -533,19 +571,6 @@ function PdfTemplateMensual({ data }: { data: DatosMensuales }) {
               <span style={{ flex: 1 }}>{p.producto}</span>
               <span style={{ width: "70px", textAlign: "center", color: p.margen >= 25 ? "#16a34a" : "#d97706", fontWeight: "600" }}>{p.margen}%</span>
               <span style={{ width: "120px", textAlign: "right", fontWeight: "600" }}>{formatCurrency(p.ingresos)}</span>
-            </div>
-          ))}
-        </>
-      )}
-
-      {data.topClientes?.length > 0 && (
-        <>
-          <div style={S.sectionTitle}>Top Clientes del Mes</div>
-          {data.topClientes.slice(0, 8).map((c, i) => (
-            <div key={c.nombre} style={S.tableRow}>
-              <div style={S.rankBadge(i)}>{i + 1}</div>
-              <span style={{ flex: 1 }}>{c.nombre}</span>
-              <span style={{ fontWeight: "600" }}>{formatCurrency(c.monto)}</span>
             </div>
           ))}
         </>
@@ -860,78 +885,112 @@ function ReporteMensual({ data, isLoading, pdfRef, printRef, mes, onMesChange }:
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />Ventas por Cliente — {data?.mes ?? ""}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading || !data ? (
+              <div className="space-y-2">{[0,1,2,3,4].map((i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+            ) : !data.clientesMes?.length ? (
+              <p className="text-sm text-muted-foreground">Sin datos este mes.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-[#1e3a5f] text-white">
+                      <th className="px-3 py-2 text-left font-semibold">Cliente</th>
+                      <th className="px-3 py-2 text-right font-semibold">Cajones</th>
+                      <th className="px-3 py-2 text-right font-semibold">Vendido</th>
+                      <th className="px-3 py-2 text-right font-semibold">Costo</th>
+                      <th className="px-3 py-2 text-right font-semibold">Ganancia</th>
+                      <th className="px-3 py-2 text-right font-semibold">Mrg %</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.clientesMes.map((c, i) => (
+                      <tr key={c.nombre} className={i % 2 === 0 ? "bg-slate-50 dark:bg-slate-900/40" : ""}>
+                        <td className="px-3 py-2 font-medium">{c.nombre}</td>
+                        <td className="px-3 py-2 text-right">{c.cajones}</td>
+                        <td className="px-3 py-2 text-right">{formatCurrency(c.totalVendido)}</td>
+                        <td className="px-3 py-2 text-right text-muted-foreground">{formatCurrency(c.costoVendido)}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-green-700 dark:text-green-400">{formatCurrency(c.ganancia)}</td>
+                        <td className="px-3 py-2 text-right">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-bold ${c.margen >= 20 ? "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300" : c.margen >= 10 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300"}`}>
+                            {c.margen}%
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-[#1e3a5f] text-white font-bold">
+                      <td className="px-3 py-2">TOTAL</td>
+                      <td className="px-3 py-2 text-right">{data.clientesMes.reduce((s, c) => s + c.cajones, 0)}</td>
+                      <td className="px-3 py-2 text-right">{formatCurrency(data.clientesMes.reduce((s, c) => s + c.totalVendido, 0))}</td>
+                      <td className="px-3 py-2 text-right">{formatCurrency(data.clientesMes.reduce((s, c) => s + c.costoVendido, 0))}</td>
+                      <td className="px-3 py-2 text-right">{formatCurrency(data.clientesMes.reduce((s, c) => s + c.ganancia, 0))}</td>
+                      <td className="px-3 py-2 text-right">
+                        {(() => { const tv = data.clientesMes.reduce((s, c) => s + c.totalVendido, 0); const cv = data.clientesMes.reduce((s, c) => s + c.costoVendido, 0); return tv > 0 ? `${(((tv - cv) / tv) * 100).toFixed(1)}%` : "—" })()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Users className="h-4 w-4 text-muted-foreground" />Top Clientes del Mes
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2.5">
-              {isLoading || !data ? [0,1,2,3,4].map((i) => <Skeleton key={i} className="h-6 w-full" />) :
-                data.topClientes.length === 0 ? <p className="text-sm text-muted-foreground">Sin datos este mes.</p> :
-                data.topClientes.map((c, i) => (
-                  <div key={c.nombre} className="flex items-center justify-between">
+            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Métodos de Pago</CardTitle></CardHeader>
+            <CardContent>
+              {isLoading || !data || !data.distribucionMetodosPago.length ? (
+                <p className="text-sm text-muted-foreground">Sin cobros este mes.</p>
+              ) : (
+                <div className="flex items-center gap-4">
+                  <ResponsiveContainer width={120} height={120}>
+                    <PieChart>
+                      <Pie data={data.distribucionMetodosPago} dataKey="value" cx="50%" cy="50%" outerRadius={50} innerRadius={28}>
+                        {data.distribucionMetodosPago.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="space-y-2 flex-1">
+                    {data.distribucionMetodosPago.map((item, i) => (
+                      <div key={item.name} className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-1.5">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
+                          <span>{item.name}</span>
+                        </div>
+                        <span className="font-medium">{item.value}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Rentabilidad por Producto</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              {isLoading || !data ? [0,1,2,3].map((i) => <Skeleton key={i} className="h-6 w-full" />) :
+                data.rentabilidadProductos.length === 0 ? <p className="text-sm text-muted-foreground">Sin datos este mes.</p> :
+                data.rentabilidadProductos.map((p) => (
+                  <div key={p.producto} className="flex items-center justify-between text-sm">
+                    <span className="truncate max-w-[140px]">{p.producto}</span>
                     <div className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary shrink-0">{i + 1}</span>
-                      <span className="text-sm truncate max-w-[160px]">{c.nombre}</span>
+                      <Badge variant={p.margen >= 25 ? "default" : "secondary"} className="text-xs">{p.margen}%</Badge>
+                      <span className="text-muted-foreground w-24 text-right">{formatCurrency(p.ingresos)}</span>
                     </div>
-                    <span className="text-sm font-semibold shrink-0">{formatCurrency(c.monto)}</span>
                   </div>
                 ))
               }
             </CardContent>
           </Card>
-
-          <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Métodos de Pago</CardTitle></CardHeader>
-              <CardContent>
-                {isLoading || !data || !data.distribucionMetodosPago.length ? (
-                  <p className="text-sm text-muted-foreground">Sin cobros este mes.</p>
-                ) : (
-                  <div className="flex items-center gap-4">
-                    <ResponsiveContainer width={120} height={120}>
-                      <PieChart>
-                        <Pie data={data.distribucionMetodosPago} dataKey="value" cx="50%" cy="50%" outerRadius={50} innerRadius={28}>
-                          {data.distribucionMetodosPago.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="space-y-2 flex-1">
-                      {data.distribucionMetodosPago.map((item, i) => (
-                        <div key={item.name} className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-1.5">
-                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: COLORS[i] }} />
-                            <span>{item.name}</span>
-                          </div>
-                          <span className="font-medium">{item.value}%</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Rentabilidad por Producto</CardTitle></CardHeader>
-              <CardContent className="space-y-2">
-                {isLoading || !data ? [0,1,2,3].map((i) => <Skeleton key={i} className="h-6 w-full" />) :
-                  data.rentabilidadProductos.length === 0 ? <p className="text-sm text-muted-foreground">Sin datos este mes.</p> :
-                  data.rentabilidadProductos.map((p) => (
-                    <div key={p.producto} className="flex items-center justify-between text-sm">
-                      <span className="truncate max-w-[140px]">{p.producto}</span>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={p.margen >= 25 ? "default" : "secondary"} className="text-xs">{p.margen}%</Badge>
-                        <span className="text-muted-foreground w-24 text-right">{formatCurrency(p.ingresos)}</span>
-                      </div>
-                    </div>
-                  ))
-                }
-              </CardContent>
-            </Card>
-          </div>
         </div>
       </div>
     </div>
