@@ -36,7 +36,8 @@ interface Proveedor {
   nombre: string
 }
 
-const CUENTAS_DESTINO = ["Agroaves", "Francisco", "Diego", "MercadoPago", "Otra"]
+const CUENTAS_DESTINO = ["Agroaves", "Francisco", "Diego"]
+const METODOS_PAGO = ["efectivo", "transferencia", "mercadopago", "cheque"]
 
 export function CobrosContent() {
   const { data: cobros = [], isLoading, mutate } = useSupabase<Cobro>("cobros")
@@ -83,12 +84,12 @@ export function CobrosContent() {
         cliente_nombre: formData.cliente_nombre,
         monto: parseMonto(formData.monto),
         metodo_pago: formData.metodo_pago,
-        cuenta_destino: formData.metodo_pago === "transferencia" ? formData.cuenta_destino : null,
+        cuenta_destino: (formData.metodo_pago === "transferencia" || formData.metodo_pago === "mercadopago") ? formData.cuenta_destino : null,
         observaciones: formData.observaciones || null,
         verificado_agroaves: formData.verificado_agroaves
       })
 
-      if (formData.metodo_pago === "transferencia" && formData.cuenta_destino?.toLowerCase() === "agroaves") {
+      if ((formData.metodo_pago === "transferencia" || formData.metodo_pago === "mercadopago") && formData.cuenta_destino?.toLowerCase() === "agroaves") {
         const proveedorAgroaves = proveedores.find(p =>
           p.nombre.toLowerCase().includes('agroaves') ||
           p.nombre.toLowerCase().includes('agro aves')
@@ -137,7 +138,7 @@ export function CobrosContent() {
         cliente_nombre: editFormData.cliente_nombre,
         monto: parseMonto(editFormData.monto),
         metodo_pago: editFormData.metodo_pago,
-        cuenta_destino: editFormData.metodo_pago === "transferencia" ? editFormData.cuenta_destino : null,
+        cuenta_destino: (editFormData.metodo_pago === "transferencia" || editFormData.metodo_pago === "mercadopago") ? editFormData.cuenta_destino : null,
         observaciones: editFormData.observaciones || null
       })
       await mutate()
@@ -259,15 +260,14 @@ export function CobrosContent() {
               </div>
               <div>
                 <Label>Metodo de Pago</Label>
-                <Select value={formData.metodo_pago} onValueChange={(value) => setFormData({...formData, metodo_pago: value})}>
+                <Select value={formData.metodo_pago} onValueChange={(value) => setFormData({...formData, metodo_pago: value, cuenta_destino: ""})}>
                   <SelectTrigger><SelectValue placeholder="Seleccionar metodo" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="efectivo">Efectivo</SelectItem>
-                    <SelectItem value="transferencia">Transferencia</SelectItem>
+                    {METODOS_PAGO.map(m => <SelectItem key={m} value={m} className="capitalize">{m.charAt(0).toUpperCase() + m.slice(1)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
-              {formData.metodo_pago === "transferencia" && (
+              {(formData.metodo_pago === "transferencia" || formData.metodo_pago === "mercadopago") && (
                 <div>
                   <Label>Cuenta Destino</Label>
                   <Select value={formData.cuenta_destino} onValueChange={(value) => setFormData({...formData, cuenta_destino: value})}>
@@ -282,7 +282,7 @@ export function CobrosContent() {
                 <Label>Observaciones</Label>
                 <Input value={formData.observaciones} onChange={(e) => setFormData({...formData, observaciones: e.target.value})} />
               </div>
-              {formData.metodo_pago === "transferencia" && formData.cuenta_destino?.toLowerCase() === "agroaves" && (
+              {(formData.metodo_pago === "transferencia" || formData.metodo_pago === "mercadopago") && formData.cuenta_destino?.toLowerCase() === "agroaves" && (
                 <div className="rounded-lg bg-muted p-3">
                   <div className="flex items-center gap-2">
                     <Checkbox id="verificado_agroaves" checked={formData.verificado_agroaves} onCheckedChange={(checked) => setFormData({...formData, verificado_agroaves: checked as boolean})} />
@@ -335,15 +335,14 @@ export function CobrosContent() {
             </div>
             <div>
               <Label>Metodo de Pago</Label>
-              <Select value={editFormData.metodo_pago} onValueChange={(value) => setEditFormData({ ...editFormData, metodo_pago: value })}>
+              <Select value={editFormData.metodo_pago} onValueChange={(value) => setEditFormData({ ...editFormData, metodo_pago: value, cuenta_destino: "" })}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar metodo" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="efectivo">Efectivo</SelectItem>
-                  <SelectItem value="transferencia">Transferencia</SelectItem>
+                  {METODOS_PAGO.map(m => <SelectItem key={m} value={m} className="capitalize">{m.charAt(0).toUpperCase() + m.slice(1)}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
-            {editFormData.metodo_pago === "transferencia" && (
+            {(editFormData.metodo_pago === "transferencia" || editFormData.metodo_pago === "mercadopago") && (
               <div>
                 <Label>Cuenta Destino</Label>
                 <Select value={editFormData.cuenta_destino} onValueChange={(value) => setEditFormData({ ...editFormData, cuenta_destino: value })}>
