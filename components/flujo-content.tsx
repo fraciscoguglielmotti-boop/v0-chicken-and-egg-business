@@ -602,10 +602,10 @@ export function FlujoContent() {
             </div>
             <div>
               <Label>Categoría</Label>
-              <Select value={form.categoria} onValueChange={v => setForm({ ...form, categoria: v })}>
+              <Select value={form.categoria || "__none__"} onValueChange={v => setForm({ ...form, categoria: v === "__none__" ? "" : v })}>
                 <SelectTrigger><SelectValue placeholder="Sin categoría" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Sin categoría</SelectItem>
+                  <SelectItem value="__none__">Sin categoría</SelectItem>
                   {categoriaNombres.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
