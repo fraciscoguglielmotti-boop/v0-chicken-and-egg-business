@@ -85,7 +85,6 @@ const ALL_SECTIONS = [
       { name: "Caja", href: "/caja", icon: Wallet },
       { name: "MercadoPago", href: "/mercadopago", icon: Landmark },
       { name: "EERR", href: "/eerr", icon: Calculator },
-      { name: "Presupuestos", href: "/presupuestos", icon: Target },
       { name: "Flujo de Fondos", href: "/flujo", icon: TrendingUp },
       { name: "KPIs Ejecutivos", href: "/kpis", icon: LineChart },
       { name: "Reportes Ejecutivos", href: "/reportes-ejecutivos", icon: BookOpen },

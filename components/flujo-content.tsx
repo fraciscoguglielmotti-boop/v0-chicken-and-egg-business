@@ -18,7 +18,8 @@ import { useToast } from "@/hooks/use-toast"
 interface Cobro { fecha: string; monto: number; metodo_pago: string }
 interface Pago { fecha: string; monto: number }
 interface Gasto { id: string; fecha: string; monto: number; categoria: string; descripcion?: string; medio_pago?: string; tarjeta?: string; fecha_pago?: string; pagado?: boolean }
-interface MovimientoMP { fecha: string; tipo: string; monto: number; descripcion?: string }
+interface MovimientoMP { fecha: string; tipo: string; monto: number; descripcion?: string; categoria?: string }
+interface Presupuesto { id: string; categoria: string; monto: number; mes: number; anio: number }
 interface GastoProyectado {
   id: string
   nombre: string
@@ -28,6 +29,8 @@ interface GastoProyectado {
   mes?: string
   activo: boolean
 }
+
+const MESES_LABELS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
 // ── Helpers proyección ────────────────────────────────────────────────────────
 function getProximosMeses(n: number): { label: string; value: string }[] {
@@ -116,10 +119,45 @@ export function FlujoContent() {
   const { data: movimientosMp = [] } = useSupabase<MovimientoMP>("movimientos_mp")
   const { data: proyectados = [], mutate: mutateProyectados } = useSupabase<GastoProyectado>("gastos_proyectados")
   const { data: categorias = [] } = useSupabase<{ id: string; nombre: string }>("categorias_gastos")
+  const { data: presupuestos = [], mutate: mutatePresupuestos } = useSupabase<Presupuesto>("presupuestos")
   const { toast } = useToast()
 
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
   const [gastosExpanded, setGastosExpanded] = useState(false)
+
+  // ── Estado Presupuesto ───────────────────────────────────────────────────
+  const [presMes, setPresMes] = useState(new Date().getMonth() + 1)
+  const [presAnio, setPresAnio] = useState(new Date().getFullYear())
+  const [presDialogOpen, setPresDialogOpen] = useState(false)
+  const [presEditingId, setPresEditingId] = useState<string | null>(null)
+  const [presForm, setPresForm] = useState({ categoria: "", monto: "" })
+  const presAnios = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i)
+
+  const resetPresForm = () => setPresForm({ categoria: "", monto: "" })
+
+  const handlePresSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const data = { categoria: presForm.categoria, monto: parseFloat(presForm.monto), mes: presMes, anio: presAnio }
+    try {
+      if (presEditingId) {
+        await updateRow("presupuestos", presEditingId, data)
+        toast({ title: "Presupuesto actualizado" })
+      } else {
+        await insertRow("presupuestos", data)
+        toast({ title: "Presupuesto creado" })
+      }
+      await mutatePresupuestos()
+      setPresDialogOpen(false); setPresEditingId(null); resetPresForm()
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message, variant: "destructive" })
+    }
+  }
+
+  const handlePresDelete = async (id: string) => {
+    if (!confirm("¿Eliminar este presupuesto?")) return
+    try { await deleteRow("presupuestos", id); await mutatePresupuestos() }
+    catch (err: any) { toast({ title: "Error", description: err?.message, variant: "destructive" }) }
+  }
 
   // ── Estado proyección ────────────────────────────────────────────────────
   const meses = useMemo(() => getProximosMeses(6), [])
@@ -176,6 +214,41 @@ export function FlujoContent() {
   }
 
   const categoriaNombres = categorias.map(c => c.nombre)
+
+  // ── Comparación presupuesto ──────────────────────────────────────────────
+  const comparacionPresupuesto = useMemo(() => {
+    const prefixMes = `${presAnio}-${String(presMes).padStart(2, "0")}`
+    const presDelMes = presupuestos.filter(p => p.mes === presMes && p.anio === presAnio)
+    const gastosDelMes = gastos.filter(g => g.fecha.startsWith(prefixMes) && g.pagado !== false)
+    const mpDelMes = movimientosMp.filter(m => {
+      const tipo = m.tipo?.toLowerCase()
+      const desc = m.descripcion?.toLowerCase() ?? ""
+      return tipo === "egreso" && !desc.startsWith("transferencia") && m.fecha.startsWith(prefixMes)
+    })
+    const fijosActivos = proyectados.filter(g => g.activo && (g.periodicidad === "mensual" || (g.periodicidad === "unico" && g.mes === prefixMes)))
+
+    const todasCats = new Set([
+      ...presDelMes.map(p => p.categoria),
+      ...(gastosDelMes.map(g => g.categoria).filter(Boolean) as string[]),
+      ...(mpDelMes.map(m => m.categoria).filter(Boolean) as string[]),
+      ...fijosActivos.map(g => g.categoria).filter(Boolean) as string[],
+    ])
+
+    return Array.from(todasCats).map(categoria => {
+      const presupuesto = presDelMes.find(p => p.categoria === categoria)
+      const gastadoReal = gastosDelMes.filter(g => g.categoria === categoria).reduce((s, g) => s + g.monto, 0)
+        + mpDelMes.filter(m => m.categoria === categoria).reduce((s, m) => s + m.monto, 0)
+      const fijosCategoria = fijosActivos.filter(g => g.categoria === categoria).reduce((s, g) => s + g.monto, 0)
+      const presupuestado = presupuesto?.monto ?? 0
+      const totalComprometido = gastadoReal + fijosCategoria
+      const porcentajeUsado = presupuestado > 0 ? (gastadoReal / presupuestado) * 100 : 0
+      const diferencia = presupuestado - gastadoReal
+      return { categoria, presupuestado, gastadoReal, fijosCategoria, totalComprometido, diferencia, porcentajeUsado, tienePresupuesto: !!presupuesto, presupuestoId: presupuesto?.id }
+    }).sort((a, b) => {
+      if (a.tienePresupuesto !== b.tienePresupuesto) return a.tienePresupuesto ? -1 : 1
+      return b.gastadoReal - a.gastadoReal
+    })
+  }, [presupuestos, gastos, movimientosMp, proyectados, presMes, presAnio])
 
   // Pagos pendientes (gastos con pagado=false), ordenados por fecha ascendente (más urgentes primero)
   const gastosPendientes = useMemo(() =>
@@ -252,6 +325,7 @@ export function FlujoContent() {
       <Tabs defaultValue="proyeccion">
         <TabsList>
           <TabsTrigger value="proyeccion">Proyección</TabsTrigger>
+          <TabsTrigger value="presupuesto">Presupuesto</TabsTrigger>
           <TabsTrigger value="cashflow">Cashflow real</TabsTrigger>
           <TabsTrigger value="fijos">Gastos Fijos</TabsTrigger>
         </TabsList>
@@ -518,6 +592,120 @@ export function FlujoContent() {
         </div>
         </TabsContent>
 
+        {/* ── Tab: Presupuesto ───────────────────────────────────────── */}
+        <TabsContent value="presupuesto" className="space-y-4 mt-4">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="flex gap-3 items-end">
+              <div>
+                <Label className="text-xs">Mes</Label>
+                <Select value={presMes.toString()} onValueChange={v => setPresMes(parseInt(v))}>
+                  <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>{MESES_LABELS.map((m, i) => <SelectItem key={i+1} value={(i+1).toString()}>{m}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Año</Label>
+                <Select value={presAnio.toString()} onValueChange={v => setPresAnio(parseInt(v))}>
+                  <SelectTrigger className="w-[100px]"><SelectValue /></SelectTrigger>
+                  <SelectContent>{presAnios.map(a => <SelectItem key={a} value={a.toString()}>{a}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+            <Button onClick={() => { resetPresForm(); setPresEditingId(null); setPresDialogOpen(true) }}>
+              <Plus className="mr-2 h-4 w-4" />Nuevo presupuesto
+            </Button>
+          </div>
+
+          {comparacionPresupuesto.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-10 text-center">
+              <p className="text-muted-foreground text-sm">No hay presupuestos ni gastos para este mes.</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {comparacionPresupuesto.map(item => (
+                <Card key={item.categoria} className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold">{item.categoria}</h3>
+                    {item.tienePresupuesto ? (
+                      <Badge variant={item.porcentajeUsado > 100 ? "destructive" : item.porcentajeUsado > 80 ? "secondary" : "default"}>
+                        {item.porcentajeUsado.toFixed(0)}% usado
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-xs">Sin presupuesto</Badge>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 text-sm">
+                    {item.tienePresupuesto && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Presupuestado</span>
+                        <span className="font-medium">{formatCurrency(item.presupuestado)}</span>
+                      </div>
+                    )}
+                    {item.fijosCategoria > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Fijos proyectados</span>
+                        <span className="font-medium text-orange-600 tabular-nums">{formatCurrency(item.fijosCategoria)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Gastado real</span>
+                      <span className="font-medium tabular-nums">{formatCurrency(item.gastadoReal)}</span>
+                    </div>
+                    {item.tienePresupuesto && (
+                      <div className="flex justify-between border-t pt-1.5">
+                        <span className="font-semibold">Diferencia</span>
+                        <span className={`font-bold tabular-nums ${item.diferencia >= 0 ? "text-green-600" : "text-red-600"}`}>
+                          {formatCurrency(Math.abs(item.diferencia))} {item.diferencia >= 0 ? "disponible" : "excedido"}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {item.tienePresupuesto && (
+                    <div className="mt-3 space-y-1">
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all ${item.porcentajeUsado > 100 ? "bg-red-600" : item.porcentajeUsado > 80 ? "bg-orange-500" : "bg-green-600"}`}
+                          style={{ width: `${Math.min(item.porcentajeUsado, 100)}%` }}
+                        />
+                      </div>
+                      {item.fijosCategoria > 0 && item.presupuestado > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Con fijos: {Math.min(((item.gastadoReal + item.fijosCategoria) / item.presupuestado) * 100, 100).toFixed(0)}% comprometido
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="mt-3 flex gap-1">
+                    {item.tienePresupuesto && item.presupuestoId ? (
+                      <>
+                        <Button variant="ghost" size="sm" onClick={() => {
+                          const p = presupuestos.find(p => p.id === item.presupuestoId)
+                          if (p) { setPresForm({ categoria: p.categoria, monto: p.monto.toString() }); setPresEditingId(p.id); setPresDialogOpen(true) }
+                        }}>
+                          <Pencil className="h-3.5 w-3.5 mr-1" />Editar
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => item.presupuestoId && handlePresDelete(item.presupuestoId)}>
+                          <Trash2 className="h-3.5 w-3.5 mr-1" />Eliminar
+                        </Button>
+                      </>
+                    ) : (
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        setPresForm({ categoria: item.categoria ?? "", monto: "" })
+                        setPresEditingId(null); setPresDialogOpen(true)
+                      }}>
+                        <Plus className="h-3.5 w-3.5 mr-1" />Agregar presupuesto
+                      </Button>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
         {/* ── Tab: Gastos Fijos ──────────────────────────────────────── */}
         <TabsContent value="fijos" className="space-y-4 mt-4">
           <div className="flex justify-between items-center">
@@ -588,6 +776,51 @@ export function FlujoContent() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Dialog alta/edición presupuesto */}
+      <Dialog open={presDialogOpen} onOpenChange={open => { setPresDialogOpen(open); if (!open) { setPresEditingId(null); resetPresForm() } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{presEditingId ? "Editar presupuesto" : "Nuevo presupuesto"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handlePresSubmit} className="space-y-4">
+            <div>
+              <Label>Categoría</Label>
+              <Select value={presForm.categoria || "__none__"} onValueChange={v => setPresForm({ ...presForm, categoria: v === "__none__" ? "" : v })}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar categoría" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sin categoría</SelectItem>
+                  {categoriaNombres.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Monto presupuestado</Label>
+              <Input type="number" step="0.01" min="0" value={presForm.monto} onChange={e => setPresForm({ ...presForm, monto: e.target.value })} required />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Mes</Label>
+                <Select value={presMes.toString()} onValueChange={v => setPresMes(parseInt(v))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{MESES_LABELS.map((m, i) => <SelectItem key={i+1} value={(i+1).toString()}>{m}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Año</Label>
+                <Select value={presAnio.toString()} onValueChange={v => setPresAnio(parseInt(v))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{presAnios.map(a => <SelectItem key={a} value={a.toString()}>{a}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setPresDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit">{presEditingId ? "Actualizar" : "Guardar"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog alta/edición gastos fijos */}
       <Dialog open={dialogOpen} onOpenChange={open => { setDialogOpen(open); if (!open) { setEditingId(null); resetForm() } }}>
