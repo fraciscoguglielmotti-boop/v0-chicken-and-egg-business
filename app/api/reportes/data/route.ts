@@ -389,6 +389,47 @@ export async function GET(req: NextRequest) {
 
       const mesLabel = d.now.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
 
+      // Por cliente: cajones, total vendido, costo, ganancia
+      // Costo = cantidad vendida × precio promedio de compra del producto
+      const avgCostPorProducto: Record<string, number> = {}
+      for (const [prod, ingreso] of Object.entries(vPorProd)) {
+        const prodNorm = prod.toLowerCase().trim()
+        // Buscar la compra del mes que coincida con el producto
+        let totalCostComp = 0, totalQtyComp = 0
+        for (const c of compMes ?? []) {
+          const compProd = (c.producto ?? "").toLowerCase().trim()
+          if (compProd.includes(prodNorm) || prodNorm.includes(compProd)) {
+            const t = c.total > 0 ? c.total : (c.cantidad ?? 0) * (c.precio_unitario ?? 0)
+            totalCostComp += t
+            totalQtyComp += c.cantidad ?? 0
+          }
+        }
+        avgCostPorProducto[prod] = totalQtyComp > 0 ? totalCostComp / totalQtyComp : 0
+      }
+
+      const clienteMap: Record<string, { cajones: number; totalVendido: number; costoVendido: number }> = {}
+      for (const v of vMes ?? []) {
+        const nombre = v.cliente_nombre || "Sin nombre"
+        const prod = v.producto_nombre || "Sin producto"
+        const qty = v.cantidad ?? 0
+        const ingreso = qty * (v.precio_unitario ?? 0)
+        const costo = qty * (avgCostPorProducto[prod] ?? 0)
+        if (!clienteMap[nombre]) clienteMap[nombre] = { cajones: 0, totalVendido: 0, costoVendido: 0 }
+        clienteMap[nombre].cajones += qty
+        clienteMap[nombre].totalVendido += ingreso
+        clienteMap[nombre].costoVendido += costo
+      }
+      const clientesMes = Object.entries(clienteMap)
+        .map(([nombre, d]) => ({
+          nombre,
+          cajones: Math.round(d.cajones),
+          totalVendido: Math.round(d.totalVendido),
+          costoVendido: Math.round(d.costoVendido),
+          ganancia: Math.round(d.totalVendido - d.costoVendido),
+          margen: d.totalVendido > 0 ? round1(((d.totalVendido - d.costoVendido) / d.totalVendido) * 100) : 0,
+        }))
+        .sort((a, b) => b.totalVendido - a.totalVendido)
+
       return NextResponse.json({
         mes: mesLabel.charAt(0).toUpperCase() + mesLabel.slice(1),
         resumen: {
@@ -420,6 +461,7 @@ export async function GET(req: NextRequest) {
         topClientes: topClientes(vMes ?? [], 8),
         distribucionMetodosPago,
         rentabilidadProductos,
+        clientesMes,
       })
     }
 
