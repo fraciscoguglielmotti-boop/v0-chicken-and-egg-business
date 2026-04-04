@@ -1,6 +1,90 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 
+// ─── FIFO CMV por cliente ────────────────────────────────────────────────────
+// Misma lógica que en contabilidad-content.tsx pero retorna costo por fila de venta
+
+interface CompraFIFO { fecha: string; producto: string; total: number; cantidad: number; precio_unitario: number }
+interface VentaFIFO { fecha: string; cliente_nombre: string; producto_nombre: string; cantidad: number; precio_unitario: number }
+interface LoteFIFO { qty: number; costUnit: number }
+
+function calcCMV_FIFO_porCliente(
+  todasCompras: CompraFIFO[],
+  todasVentas: VentaFIFO[],
+  monthPrefix: string
+): Record<string, { cajones: number; totalVendido: number; costoVendido: number }> {
+  const norm = (s?: string) => (s ?? "").toLowerCase().trim()
+
+  // Construir colas FIFO por producto (orden cronológico)
+  const queues = new Map<string, LoteFIFO[]>()
+  const ultimoCostoUnit = new Map<string, number>()
+  const sortedCompras = [...todasCompras].sort((a, b) => a.fecha.localeCompare(b.fecha))
+  for (const c of sortedCompras) {
+    if (!c.cantidad || c.cantidad <= 0) continue
+    const total = c.total > 0 ? c.total : c.cantidad * c.precio_unitario
+    const costUnit = total / c.cantidad
+    const prod = norm(c.producto) || "__sin_producto__"
+    if (!queues.has(prod)) queues.set(prod, [])
+    queues.get(prod)!.push({ qty: c.cantidad, costUnit })
+    ultimoCostoUnit.set(prod, costUnit)
+  }
+  const ultimoCostoGlobal = sortedCompras.length > 0
+    ? (() => { const last = sortedCompras[sortedCompras.length - 1]; const t = last.total > 0 ? last.total : last.cantidad * last.precio_unitario; return last.cantidad > 0 ? t / last.cantidad : 0 })()
+    : 0
+
+  const result: Record<string, { cajones: number; totalVendido: number; costoVendido: number }> = {}
+
+  const endOfMonth = monthPrefix + "-31"
+  const sortedVentas = [...todasVentas]
+    .filter(v => v.fecha <= endOfMonth)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha))
+
+  for (const v of sortedVentas) {
+    if (!v.cantidad || v.cantidad <= 0) continue
+    const prodVenta = norm(v.producto_nombre)
+
+    let queue = queues.get(prodVenta)
+    if (!queue) {
+      const entry = Array.from(queues.entries()).find(
+        ([k]) => k !== "__sin_producto__" && (k.includes(prodVenta) || prodVenta.includes(k))
+      )
+      queue = entry?.[1] ?? queues.get("__sin_producto__")
+    }
+
+    let remaining = v.cantidad
+    let ventaCost = 0
+
+    if (queue) {
+      while (remaining > 0.0001 && queue.length > 0) {
+        const lot = queue[0]
+        const used = Math.min(remaining, lot.qty)
+        ventaCost += used * lot.costUnit
+        lot.qty -= used
+        remaining -= used
+        if (lot.qty <= 0.0001) queue.shift()
+      }
+    }
+    if (remaining > 0.0001) {
+      const fallback = ultimoCostoUnit.get(prodVenta)
+        ?? Array.from(ultimoCostoUnit.entries()).find(([k]) => k !== "__sin_producto__" && (k.includes(prodVenta) || prodVenta.includes(k)))?.[1]
+        ?? ultimoCostoUnit.get("__sin_producto__")
+        ?? ultimoCostoGlobal
+      ventaCost += remaining * fallback
+    }
+
+    // Solo acumular si la venta es del mes objetivo
+    if (v.fecha.startsWith(monthPrefix)) {
+      const nombre = v.cliente_nombre || "Sin nombre"
+      if (!result[nombre]) result[nombre] = { cajones: 0, totalVendido: 0, costoVendido: 0 }
+      result[nombre].cajones += v.cantidad
+      result[nombre].totalVendido += v.cantidad * (v.precio_unitario ?? 0)
+      result[nombre].costoVendido += ventaCost
+    }
+  }
+
+  return result
+}
+
 // ─── Helpers de fecha ─────────────────────────────────────────────────────────
 
 function toDateStr(d: Date) {
@@ -298,6 +382,8 @@ export async function GET(req: NextRequest) {
         { data: compMesAnt },
         { data: vSeis },
         { data: cSeis },
+        { data: todasCompras },
+        { data: todasVentasHist },
       ] = await Promise.all([
         supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", d.monthStart).lte("fecha", d.monthEnd),
         supabase.from("ventas").select("cantidad,precio_unitario").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
@@ -311,6 +397,9 @@ export async function GET(req: NextRequest) {
         supabase.from("compras").select("total,cantidad,precio_unitario").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
         supabase.from("ventas").select("fecha,cantidad,precio_unitario").gte("fecha", d.sixMonthsAgo).lte("fecha", d.monthEnd),
         supabase.from("cobros").select("fecha,monto").gte("fecha", d.sixMonthsAgo).lte("fecha", d.monthEnd),
+        // FIFO: necesitamos todos los datos históricos
+        supabase.from("compras").select("fecha,total,producto,cantidad,precio_unitario").lte("fecha", d.monthEnd).order("fecha", { ascending: true }),
+        supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").lte("fecha", d.monthEnd).order("fecha", { ascending: true }),
       ])
 
       const totalVMes = sumVentas(vMes ?? [])
@@ -389,26 +478,19 @@ export async function GET(req: NextRequest) {
 
       const mesLabel = d.now.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
 
-      // Por cliente: cajones, total vendido, costo proporcional, ganancia
-      // El costo se distribuye proporcional al ingreso de cada cliente (consistente con el margen global)
-      const clienteMap: Record<string, { cajones: number; totalVendido: number }> = {}
-      for (const v of vMes ?? []) {
-        const nombre = v.cliente_nombre || "Sin nombre"
-        const qty = v.cantidad ?? 0
-        const ingreso = qty * (v.precio_unitario ?? 0)
-        if (!clienteMap[nombre]) clienteMap[nombre] = { cajones: 0, totalVendido: 0 }
-        clienteMap[nombre].cajones += qty
-        clienteMap[nombre].totalVendido += ingreso
-      }
-      const clientesMes = Object.entries(clienteMap)
+      // Por cliente: FIFO sobre datos históricos completos
+      const monthPrefix = d.monthStart.slice(0, 7) // "YYYY-MM"
+      const fifoMap = calcCMV_FIFO_porCliente(todasCompras ?? [], todasVentasHist ?? [], monthPrefix)
+      const clientesMes = Object.entries(fifoMap)
         .map(([nombre, d]) => {
-          const costoVendido = totalVMes > 0 ? Math.round((d.totalVendido / totalVMes) * totalCompMes) : 0
-          const ganancia = Math.round(d.totalVendido - costoVendido)
-          const margen = d.totalVendido > 0 ? round1(((d.totalVendido - costoVendido) / d.totalVendido) * 100) : 0
+          const costoVendido = Math.round(d.costoVendido)
+          const totalVendido = Math.round(d.totalVendido)
+          const ganancia = totalVendido - costoVendido
+          const margen = totalVendido > 0 ? round1(((totalVendido - costoVendido) / totalVendido) * 100) : 0
           return {
             nombre,
             cajones: Math.round(d.cajones),
-            totalVendido: Math.round(d.totalVendido),
+            totalVendido,
             costoVendido,
             ganancia,
             margen,
