@@ -1,11 +1,14 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Copy, Check, FileText } from "lucide-react"
+import { Copy, Check, FileText, Key, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Card } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { useSupabase } from "@/hooks/use-supabase"
 import { formatCurrency } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
@@ -134,8 +137,130 @@ export function FacturasContent() {
 
   const isLoading = loadingClientes || loadingCobros
 
+  // ── Monotributo ──────────────────────────────────────────────────────────
+  const monotributo = useMemo(() => {
+    const personas = ["Francisco", "Diego"] as const
+    const result: Record<string, { total: number; clientes: Record<string, number> }> = {}
+    for (const p of personas) result[p] = { total: 0, clientes: {} }
+
+    for (const c of cobros) {
+      if (!c.fecha.startsWith(mesSel)) continue
+      if (c.metodo_pago?.toLowerCase() !== "transferencia") continue
+      const dest = c.cuenta_destino
+      if (dest !== "Francisco" && dest !== "Diego") continue
+      result[dest].total += Number(c.monto)
+      result[dest].clientes[c.cliente_nombre] = (result[dest].clientes[c.cliente_nombre] ?? 0) + Number(c.monto)
+    }
+    return result
+  }, [cobros, mesSel])
+
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-4xl">
+      <Tabs defaultValue="agroaves">
+        <TabsList>
+          <TabsTrigger value="agroaves">Facturas Agroaves</TabsTrigger>
+          <TabsTrigger value="monotributo">Facturas Monotributo</TabsTrigger>
+          <TabsTrigger value="acceso">Datos de Acceso</TabsTrigger>
+        </TabsList>
+
+        {/* ── Monotributo ─────────────────────────────────────────────── */}
+        <TabsContent value="monotributo" className="space-y-4 mt-4">
+          <div className="flex items-center gap-4">
+            <Label className="shrink-0 text-sm font-medium">Período:</Label>
+            <Select value={mesSel} onValueChange={(v) => { setMesSel(v); setSeleccionados(new Set()) }}>
+              <SelectTrigger className="w-52"><SelectValue /></SelectTrigger>
+              <SelectContent>{mesOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {(["Francisco", "Diego"] as const).map(persona => {
+              const d = monotributo[persona]
+              const clientesOrdenados = Object.entries(d.clientes).sort((a, b) => b[1] - a[1])
+              return (
+                <Card key={persona} className="p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <User className="h-4 w-4 text-primary" />
+                      </div>
+                      <h3 className="font-semibold text-base">{persona}</h3>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Total a facturar</p>
+                      <p className="text-xl font-bold text-primary">{formatCurrency(d.total)}</p>
+                    </div>
+                  </div>
+
+                  {clientesOrdenados.length === 0 ? (
+                    <p className="text-sm text-muted-foreground italic">Sin transferencias este mes.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Por cliente</p>
+                      {clientesOrdenados.map(([nombre, monto], i) => (
+                        <div key={nombre} className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            {i === 0 && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">★ Mayor</Badge>}
+                            <span className="text-sm">{nombre}</span>
+                          </div>
+                          <span className="text-sm font-semibold tabular-nums">{formatCurrency(monto)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              )
+            })}
+          </div>
+        </TabsContent>
+
+        {/* ── Datos de Acceso ─────────────────────────────────────────── */}
+        <TabsContent value="acceso" className="space-y-4 mt-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            {[
+              {
+                persona: "Francisco Guglielmotti",
+                items: [
+                  { label: "Portal AFIP", value: "https://auth.afip.gob.ar/contribuyente_/login.xhtml", isLink: true },
+                  { label: "CUIT", value: "Guardado en configuración" },
+                  { label: "Clave fiscal", value: "Guardado en configuración" },
+                ]
+              },
+              {
+                persona: "Diego",
+                items: [
+                  { label: "Portal AFIP", value: "https://auth.afip.gob.ar/contribuyente_/login.xhtml", isLink: true },
+                  { label: "CUIT", value: "Guardado en configuración" },
+                  { label: "Clave fiscal", value: "Guardado en configuración" },
+                ]
+              }
+            ].map(({ persona, items }) => (
+              <Card key={persona} className="p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <Key className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="font-semibold">{persona}</h3>
+                </div>
+                <div className="space-y-3">
+                  {items.map(({ label, value, isLink }) => (
+                    <div key={label}>
+                      <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
+                      {isLink ? (
+                        <a href={value} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline break-all">{value}</a>
+                      ) : (
+                        <p className="text-sm font-medium">{value}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">Para editar los datos de acceso, contactá al administrador del sistema.</p>
+        </TabsContent>
+
+        {/* ── Facturas Agroaves (contenido existente) ──────────────────── */}
+        <TabsContent value="agroaves">
+    <div className="space-y-6 max-w-3xl mt-4">
       {/* Selector de mes */}
       <div className="flex items-center gap-4">
         <Label className="shrink-0 text-sm font-medium">Período:</Label>
@@ -268,6 +393,9 @@ export function FacturasContent() {
           )}
         </div>
       </div>
+    </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

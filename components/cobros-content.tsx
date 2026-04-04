@@ -47,6 +47,8 @@ export function CobrosContent() {
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [fechaDesde, setFechaDesde] = useState("")
   const [fechaHasta, setFechaHasta] = useState("")
+  const [filtroCuenta, setFiltroCuenta] = useState("")
+  const [filtroMetodo, setFiltroMetodo] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   useEffect(() => {
@@ -161,6 +163,8 @@ export function CobrosContent() {
     .filter((c) => c.cliente_nombre.toLowerCase().includes(debouncedSearch.toLowerCase()))
     .filter((c) => !fechaDesde || c.fecha >= fechaDesde)
     .filter((c) => !fechaHasta || c.fecha <= fechaHasta)
+    .filter((c) => !filtroCuenta || filtroCuenta === "__todos__" || c.cuenta_destino === filtroCuenta)
+    .filter((c) => !filtroMetodo || filtroMetodo === "__todos__" || c.metodo_pago === filtroMetodo)
 
   const columns = [
     { key: "fecha", header: "Fecha", render: (c: Cobro) => formatDate(new Date(c.fecha)) },
@@ -207,8 +211,22 @@ export function CobrosContent() {
           <Label className="text-sm whitespace-nowrap">Hasta:</Label>
           <Input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="w-auto" />
         </div>
-        {(fechaDesde || fechaHasta) && (
-          <Button variant="outline" size="sm" onClick={() => { setFechaDesde(""); setFechaHasta("") }}>Limpiar</Button>
+        <Select value={filtroCuenta || "__todos__"} onValueChange={v => setFiltroCuenta(v === "__todos__" ? "" : v)}>
+          <SelectTrigger className="w-[145px]"><SelectValue placeholder="Cuenta" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__todos__">Todas las cuentas</SelectItem>
+            {CUENTAS_DESTINO.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filtroMetodo || "__todos__"} onValueChange={v => setFiltroMetodo(v === "__todos__" ? "" : v)}>
+          <SelectTrigger className="w-[145px]"><SelectValue placeholder="Método" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__todos__">Todos los métodos</SelectItem>
+            {["efectivo","transferencia","cheque","tarjeta"].map(m => <SelectItem key={m} value={m} className="capitalize">{m.charAt(0).toUpperCase()+m.slice(1)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {(fechaDesde || fechaHasta || filtroCuenta || filtroMetodo) && (
+          <Button variant="outline" size="sm" onClick={() => { setFechaDesde(""); setFechaHasta(""); setFiltroCuenta(""); setFiltroMetodo("") }}>Limpiar</Button>
         )}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>

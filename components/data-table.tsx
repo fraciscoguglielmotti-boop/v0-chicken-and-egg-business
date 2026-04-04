@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { cn } from "@/lib/utils"
 
-const PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 25
 
 interface Column<T> {
   key: keyof T | string
@@ -41,6 +41,7 @@ interface DataTableProps<T> {
   emptyMessage?: string
   onEdit?: (item: T) => void
   onDelete?: (id: string) => void
+  defaultPageSize?: number
 }
 
 function sortValues(a: any, b: any, dir: 'asc' | 'desc'): number {
@@ -73,11 +74,13 @@ export function DataTable<T extends { id: string }>({
   emptyMessage = "No hay datos disponibles",
   onEdit,
   onDelete,
+  defaultPageSize = DEFAULT_PAGE_SIZE,
 }: DataTableProps<T>) {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [pageSize, setPageSize] = useState(defaultPageSize)
 
   const handleSort = (key: string) => {
     if (key === '__actions__') return
@@ -98,9 +101,10 @@ export function DataTable<T extends { id: string }>({
   }, [data, sortKey, sortDir])
 
   const hasActions = onEdit || onDelete
-  const totalPages = Math.ceil(sortedData.length / PAGE_SIZE)
-  const paginated = sortedData.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
-  const showPagination = sortedData.length > PAGE_SIZE
+  const effectivePageSize = pageSize === 0 ? sortedData.length : pageSize
+  const totalPages = Math.ceil(sortedData.length / effectivePageSize)
+  const paginated = pageSize === 0 ? sortedData : sortedData.slice((currentPage - 1) * effectivePageSize, currentPage * effectivePageSize)
+  const showPagination = sortedData.length > DEFAULT_PAGE_SIZE
 
   const effectiveColumns: Column<T>[] = hasActions
     ? [
@@ -196,33 +200,33 @@ export function DataTable<T extends { id: string }>({
         </div>
 
         {showPagination && (
-          <div className="flex items-center justify-between border-t px-4 py-3">
-            <span className="text-sm text-muted-foreground">
-              {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, sortedData.length)} de {sortedData.length} registros
-            </span>
+          <div className="flex items-center justify-between border-t px-4 py-3 flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="text-sm">
-                {currentPage} / {totalPages}
+              <span className="text-sm text-muted-foreground">
+                {pageSize === 0
+                  ? `${sortedData.length} registros (todos)`
+                  : `${(currentPage - 1) * effectivePageSize + 1}–${Math.min(currentPage * effectivePageSize, sortedData.length)} de ${sortedData.length}`}
               </span>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
+              <span className="text-xs text-muted-foreground hidden sm:inline">· Mostrar:</span>
+              {[25, 50, 100, 0].map(s => (
+                <button
+                  key={s}
+                  className={cn("text-xs px-2 py-0.5 rounded border transition-colors", pageSize === s ? "bg-primary text-primary-foreground border-primary" : "border-border hover:bg-muted")}
+                  onClick={() => { setPageSize(s); setCurrentPage(1) }}
+                >{s === 0 ? "Todos" : s}</button>
+              ))}
             </div>
+            {pageSize !== 0 && (
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}>
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <span className="text-sm">{currentPage} / {totalPages}</span>
+                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </div>

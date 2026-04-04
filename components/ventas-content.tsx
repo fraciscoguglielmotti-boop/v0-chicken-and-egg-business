@@ -52,6 +52,8 @@ export function VentasContent() {
   const [debouncedSearch, setDebouncedSearch] = useState("")
   const [fechaDesde, setFechaDesde] = useState("")
   const [fechaHasta, setFechaHasta] = useState("")
+  const [filtroProducto, setFiltroProducto] = useState("")
+  const [filtroVendedor, setFiltroVendedor] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
 
   useEffect(() => {
@@ -168,6 +170,8 @@ export function VentasContent() {
     .filter((v) => v.cliente_nombre.toLowerCase().includes(debouncedSearch.toLowerCase()))
     .filter((v) => !fechaDesde || v.fecha >= fechaDesde)
     .filter((v) => !fechaHasta || v.fecha <= fechaHasta)
+    .filter((v) => !filtroProducto || (v.producto_nombre ?? "").toLowerCase().includes(filtroProducto.toLowerCase()))
+    .filter((v) => !filtroVendedor || filtroVendedor === "__todos__" || v.vendedor === filtroVendedor)
 
   const columns = [
     { key: "fecha", header: "Fecha", render: (v: Venta) => formatDate(new Date(v.fecha)) },
@@ -199,8 +203,22 @@ export function VentasContent() {
           <Label className="text-sm whitespace-nowrap">Hasta:</Label>
           <Input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="w-auto" />
         </div>
-        {(fechaDesde || fechaHasta) && (
-          <Button variant="outline" size="sm" onClick={() => { setFechaDesde(""); setFechaHasta("") }}>Limpiar</Button>
+        <div className="relative min-w-[160px]">
+          <Input
+            placeholder="Producto..."
+            value={filtroProducto}
+            onChange={(e) => setFiltroProducto(e.target.value)}
+          />
+        </div>
+        <Select value={filtroVendedor || "__todos__"} onValueChange={v => setFiltroVendedor(v === "__todos__" ? "" : v)}>
+          <SelectTrigger className="w-[150px]"><SelectValue placeholder="Vendedor" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__todos__">Todos los vendedores</SelectItem>
+            {vendedores.map(v => <SelectItem key={v.id} value={v.nombre}>{v.nombre}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {(fechaDesde || fechaHasta || filtroProducto || filtroVendedor) && (
+          <Button variant="outline" size="sm" onClick={() => { setFechaDesde(""); setFechaHasta(""); setFiltroProducto(""); setFiltroVendedor("") }}>Limpiar filtros</Button>
         )}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
