@@ -477,108 +477,162 @@ function PdfTemplateSemanal({ data }: { data: DatosSemanales }) {
 
 function PdfTemplateMensual({ data }: { data: DatosMensuales }) {
   const today = new Date().toLocaleDateString("es-AR", { year: "numeric", month: "long", day: "numeric" })
+  const navy = "#1e3a5f"
+  const totalVendido = data.clientesMes?.reduce((s, c) => s + c.totalVendido, 0) ?? 0
+  const totalCosto   = data.clientesMes?.reduce((s, c) => s + c.costoVendido, 0) ?? 0
+  const totalGanancia = data.clientesMes?.reduce((s, c) => s + c.ganancia, 0) ?? 0
+  const totalCajones = data.clientesMes?.reduce((s, c) => s + c.cajones, 0) ?? 0
+  const totalMargen  = totalVendido > 0 ? ((totalGanancia / totalVendido) * 100).toFixed(1) : "0.0"
+
+  const thStyle: React.CSSProperties = { padding: "8px 10px", textAlign: "left", fontSize: "9.5px", fontWeight: "700", letterSpacing: "0.06em", color: "#fff", background: navy }
+  const thR: React.CSSProperties = { ...thStyle, textAlign: "right" }
+  const tdStyle: React.CSSProperties = { padding: "7px 10px", fontSize: "10.5px", color: "#1e293b", verticalAlign: "middle" }
+  const tdR: React.CSSProperties = { ...tdStyle, textAlign: "right" }
+  const tfStyle: React.CSSProperties = { padding: "8px 10px", fontSize: "10.5px", fontWeight: "700", color: "#fff", background: navy }
+  const tfR: React.CSSProperties = { ...tfStyle, textAlign: "right" }
+
   return (
-    <div style={S.page}>
-      <div style={S.header}>
+    <div style={{ ...S.page, padding: "36px 44px" }}>
+      {/* Barra superior de color */}
+      <div style={{ background: navy, height: "5px", borderRadius: "3px", marginBottom: "24px" }} />
+
+      {/* Encabezado */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "28px" }}>
         <div>
-          <div style={S.logoName}>AviGest</div>
-          <div style={S.logoSub}>Distribuidora Avícola</div>
+          <div style={{ fontSize: "24px", fontWeight: "800", color: navy, letterSpacing: "-0.5px" }}>AviGest</div>
+          <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "2px" }}>Distribuidora Avícola</div>
         </div>
-        <div style={S.reportTitle}>
-          <div style={S.reportTitleText}>Reporte Mensual</div>
-          <div style={S.reportDate}>{data.mes}</div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: "18px", fontWeight: "700", color: navy }}>Reporte Mensual</div>
+          <div style={{ fontSize: "13px", color: "#374151", fontWeight: "600", marginTop: "3px" }}>{data.mes}</div>
+          <div style={{ fontSize: "10px", color: "#9ca3af", marginTop: "2px" }}>Emitido el {today}</div>
         </div>
       </div>
 
-      <div style={S.sectionTitle}>Resultados del Mes</div>
-      <div style={{ ...S.kpiGrid, gridTemplateColumns: "repeat(3, 1fr)" }}>
+      {/* KPIs principales */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px", marginBottom: "24px" }}>
         {[
-          { label: "Ventas Totales", value: formatCurrency(data.resumen.ventas), delta: data.vs_mes_anterior.ventas },
-          { label: "Cobros Totales", value: formatCurrency(data.resumen.cobros), delta: data.vs_mes_anterior.cobros },
-          { label: "Resultado Neto", value: formatCurrency(data.resumen.resultadoNeto), delta: data.vs_mes_anterior.resultado },
-        ].map((k) => (
-          <div key={k.label} style={S.kpiBox}>
-            <div style={S.kpiLabel}>{k.label}</div>
-            <div style={{ ...S.kpiValue, fontSize: "17px" }}>{k.value}</div>
-            <div style={S.kpiDelta(k.delta >= 0)}>{k.delta >= 0 ? "▲" : "▼"} {Math.abs(k.delta)}% vs mes ant.</div>
+          { label: "Ventas Totales", value: formatCurrency(data.resumen.ventas), delta: data.vs_mes_anterior.ventas, accent: "#2563eb" },
+          { label: "Cobros Totales", value: formatCurrency(data.resumen.cobros), delta: data.vs_mes_anterior.cobros, accent: "#16a34a" },
+          { label: "Resultado Neto", value: formatCurrency(data.resumen.resultadoNeto), delta: data.vs_mes_anterior.resultado, accent: data.resumen.resultadoNeto >= 0 ? "#16a34a" : "#dc2626" },
+        ].map(k => (
+          <div key={k.label} style={{ border: `1.5px solid #e5e7eb`, borderTop: `3px solid ${k.accent}`, borderRadius: "6px", padding: "14px 16px", background: "#fafafa" }}>
+            <div style={{ fontSize: "9.5px", color: "#6b7280", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "6px" }}>{k.label}</div>
+            <div style={{ fontSize: "18px", fontWeight: "800", color: "#111827" }}>{k.value}</div>
+            <div style={{ fontSize: "10px", fontWeight: "600", color: k.delta >= 0 ? "#16a34a" : "#dc2626", marginTop: "4px" }}>{k.delta >= 0 ? "▲" : "▼"} {Math.abs(k.delta)}% vs mes anterior</div>
           </div>
         ))}
       </div>
 
-      <div style={S.sectionTitle}>Indicadores Financieros</div>
-      {[
-        { label: "Tasa de cobranza", value: `${data.kpis.tasaCobranza}%` },
-        { label: "Margen bruto", value: `${data.kpis.margenBruto}%` },
-        { label: "Margen neto", value: `${data.kpis.margenNeto}%` },
-        { label: "Ticket promedio por operación", value: formatCurrency(data.kpis.ticketPromedio) },
-        { label: "Crecimiento mensual", value: `${data.kpis.crecimientoMensual >= 0 ? "+" : ""}${data.kpis.crecimientoMensual}%` },
-        { label: "Compras (CMV)", value: formatCurrency(data.resumen.compras) },
-        { label: "Gastos operativos", value: formatCurrency(data.resumen.gastos) },
-      ].map((r) => (
-        <div key={r.label} style={S.indRow}>
-          <span style={S.indLabel}>{r.label}</span>
-          <span style={S.indValue}>{r.value}</span>
+      {/* Indicadores secundarios — 2 columnas */}
+      <div style={{ borderTop: `2px solid ${navy}`, paddingTop: "14px", marginBottom: "22px" }}>
+        <div style={{ fontSize: "9.5px", fontWeight: "700", color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "10px" }}>Indicadores Financieros</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
+          {[
+            { label: "Margen bruto", value: `${data.kpis.margenBruto}%` },
+            { label: "Tasa de cobranza", value: `${data.kpis.tasaCobranza}%` },
+            { label: "Margen neto", value: `${data.kpis.margenNeto}%` },
+            { label: "Ticket promedio", value: formatCurrency(data.kpis.ticketPromedio) },
+            { label: "Crecimiento mensual", value: `${data.kpis.crecimientoMensual >= 0 ? "+" : ""}${data.kpis.crecimientoMensual}%` },
+            { label: "CMV (Compras)", value: formatCurrency(data.resumen.compras) },
+            { label: "Gastos operativos", value: formatCurrency(data.resumen.gastos) },
+            { label: "Cajones vendidos", value: `${totalCajones}` },
+          ].map(r => (
+            <div key={r.label} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", borderBottom: "1px solid #f3f4f6", fontSize: "11px" }}>
+              <span style={{ color: "#6b7280" }}>{r.label}</span>
+              <span style={{ fontWeight: "600", color: "#111827" }}>{r.value}</span>
+            </div>
+          ))}
         </div>
-      ))}
+      </div>
 
-      {/* Tabla principal: todos los clientes del mes */}
-      {data.clientesMes?.length > 0 && (
-        <>
-          <div style={S.sectionTitle}>Ventas por Cliente — {data.mes}</div>
-          {/* Header de tabla */}
-          <div style={{ display: "flex", background: "#1e3a5f", color: "#fff", borderRadius: "6px 6px 0 0", padding: "8px 12px", fontSize: "10px", fontWeight: "700", marginBottom: "0", letterSpacing: "0.04em" }}>
-            <span style={{ flex: 3 }}>CLIENTE</span>
-            <span style={{ width: "70px", textAlign: "right" }}>CAJONES</span>
-            <span style={{ width: "120px", textAlign: "right" }}>VENDIDO</span>
-            <span style={{ width: "120px", textAlign: "right" }}>COSTO</span>
-            <span style={{ width: "100px", textAlign: "right" }}>GANANCIA</span>
-            <span style={{ width: "55px", textAlign: "right" }}>MRG %</span>
+      {/* Tabla de clientes */}
+      {(data.clientesMes?.length ?? 0) > 0 && (
+        <div style={{ marginBottom: "22px" }}>
+          <div style={{ fontSize: "9.5px", fontWeight: "700", color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "10px", borderTop: `2px solid ${navy}`, paddingTop: "14px" }}>
+            Ventas por Cliente — {data.mes}
           </div>
-          {data.clientesMes.map((c, i) => (
-            <div key={c.nombre} style={{ display: "flex", alignItems: "center", padding: "7px 12px", background: i % 2 === 0 ? "#f8fafc" : "#fff", fontSize: "10.5px", borderLeft: "1px solid #e2e8f0", borderRight: "1px solid #e2e8f0", borderBottom: i === data.clientesMes.length - 1 ? "2px solid #1e3a5f" : "1px solid #e2e8f0" }}>
-              <span style={{ flex: 3, fontWeight: "500", color: "#1e293b" }}>{c.nombre}</span>
-              <span style={{ width: "70px", textAlign: "right", color: "#64748b" }}>{c.cajones}</span>
-              <span style={{ width: "120px", textAlign: "right", fontWeight: "600", color: "#1e293b" }}>{formatCurrency(c.totalVendido)}</span>
-              <span style={{ width: "120px", textAlign: "right", color: "#64748b" }}>{formatCurrency(c.costoVendido)}</span>
-              <span style={{ width: "100px", textAlign: "right", fontWeight: "700", color: c.ganancia >= 0 ? "#16a34a" : "#dc2626" }}>{formatCurrency(c.ganancia)}</span>
-              <span style={{ width: "55px", textAlign: "right", fontWeight: "600", color: c.margen >= 20 ? "#16a34a" : c.margen >= 10 ? "#d97706" : "#dc2626" }}>{c.margen}%</span>
-            </div>
-          ))}
-          {/* Totales */}
-          <div style={{ display: "flex", padding: "8px 12px", background: "#1e3a5f", color: "#fff", fontSize: "10.5px", fontWeight: "700", borderRadius: "0 0 6px 6px", marginBottom: "16px" }}>
-            <span style={{ flex: 3 }}>TOTAL ({data.clientesMes.length} clientes)</span>
-            <span style={{ width: "70px", textAlign: "right" }}>{data.clientesMes.reduce((s, c) => s + c.cajones, 0)}</span>
-            <span style={{ width: "120px", textAlign: "right" }}>{formatCurrency(data.clientesMes.reduce((s, c) => s + c.totalVendido, 0))}</span>
-            <span style={{ width: "120px", textAlign: "right" }}>{formatCurrency(data.clientesMes.reduce((s, c) => s + c.costoVendido, 0))}</span>
-            <span style={{ width: "100px", textAlign: "right" }}>{formatCurrency(data.clientesMes.reduce((s, c) => s + c.ganancia, 0))}</span>
-            <span style={{ width: "55px", textAlign: "right" }}>
-              {data.resumen.ventas > 0 ? ((data.clientesMes.reduce((s, c) => s + c.ganancia, 0) / data.resumen.ventas) * 100).toFixed(1) : 0}%
-            </span>
-          </div>
-        </>
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "32%" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "18%" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "6%" }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, borderRadius: "6px 0 0 0" }}>CLIENTE</th>
+                <th style={{ ...thR }}>CAJ.</th>
+                <th style={{ ...thR }}>VENDIDO</th>
+                <th style={{ ...thR }}>COSTO</th>
+                <th style={{ ...thR }}>GANANCIA</th>
+                <th style={{ ...thR, borderRadius: "0 6px 0 0" }}>MRG</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.clientesMes.map((c, i) => (
+                <tr key={c.nombre} style={{ background: i % 2 === 0 ? "#f8fafc" : "#ffffff" }}>
+                  <td style={{ ...tdStyle, fontWeight: "500" }}>{c.nombre}</td>
+                  <td style={{ ...tdR, color: "#64748b" }}>{c.cajones}</td>
+                  <td style={{ ...tdR, fontWeight: "600" }}>{formatCurrency(c.totalVendido)}</td>
+                  <td style={{ ...tdR, color: "#64748b" }}>{formatCurrency(c.costoVendido)}</td>
+                  <td style={{ ...tdR, fontWeight: "700", color: c.ganancia >= 0 ? "#16a34a" : "#dc2626" }}>{formatCurrency(c.ganancia)}</td>
+                  <td style={{ ...tdR, fontWeight: "700", color: c.margen >= 20 ? "#16a34a" : c.margen >= 10 ? "#d97706" : "#dc2626" }}>{c.margen}%</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td style={{ ...tfStyle, borderRadius: "0 0 0 6px" }}>TOTAL — {data.clientesMes.length} clientes</td>
+                <td style={tfR}>{totalCajones}</td>
+                <td style={tfR}>{formatCurrency(totalVendido)}</td>
+                <td style={tfR}>{formatCurrency(totalCosto)}</td>
+                <td style={tfR}>{formatCurrency(totalGanancia)}</td>
+                <td style={{ ...tfR, borderRadius: "0 0 6px 0" }}>{totalMargen}%</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       )}
 
+      {/* Rentabilidad por producto */}
       {data.rentabilidadProductos?.length > 0 && (
-        <>
-          <div style={S.sectionTitle}>Rentabilidad por Producto</div>
-          <div style={S.tableHead}>
-            <span style={{ flex: 1 }}>Producto</span>
-            <span style={{ width: "70px", textAlign: "center" }}>Margen</span>
-            <span style={{ width: "120px", textAlign: "right" }}>Ingresos</span>
+        <div style={{ marginBottom: "22px" }}>
+          <div style={{ fontSize: "9.5px", fontWeight: "700", color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "10px", borderTop: `2px solid ${navy}`, paddingTop: "14px" }}>
+            Rentabilidad por Producto
           </div>
-          {data.rentabilidadProductos.map((p) => (
-            <div key={p.producto} style={S.tableRow}>
-              <span style={{ flex: 1 }}>{p.producto}</span>
-              <span style={{ width: "70px", textAlign: "center", color: p.margen >= 25 ? "#16a34a" : "#d97706", fontWeight: "600" }}>{p.margen}%</span>
-              <span style={{ width: "120px", textAlign: "right", fontWeight: "600" }}>{formatCurrency(p.ingresos)}</span>
-            </div>
-          ))}
-        </>
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "60%" }} />
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "20%" }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th style={{ ...thStyle, borderRadius: "6px 0 0 0" }}>PRODUCTO</th>
+                <th style={{ ...thR }}>MARGEN</th>
+                <th style={{ ...thR, borderRadius: "0 6px 0 0" }}>INGRESOS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rentabilidadProductos.map((p, i) => (
+                <tr key={p.producto} style={{ background: i % 2 === 0 ? "#f8fafc" : "#fff" }}>
+                  <td style={tdStyle}>{p.producto}</td>
+                  <td style={{ ...tdR, fontWeight: "700", color: p.margen >= 25 ? "#16a34a" : "#d97706" }}>{p.margen}%</td>
+                  <td style={{ ...tdR, fontWeight: "600" }}>{formatCurrency(p.ingresos)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      <div style={S.footer}>
-        <span>Generado por AviGest</span>
-        <span>{today}</span>
+      {/* Footer */}
+      <div style={{ marginTop: "28px", paddingTop: "12px", borderTop: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", fontSize: "9px", color: "#9ca3af" }}>
+        <span>AviGest — Sistema de Gestión Avícola · Confidencial</span>
+        <span>Generado el {today}</span>
       </div>
     </div>
   )
