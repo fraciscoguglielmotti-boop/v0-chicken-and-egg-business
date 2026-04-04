@@ -1,87 +1,45 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 
-// ─── FIFO CMV por cliente ────────────────────────────────────────────────────
-// Misma lógica que en contabilidad-content.tsx pero retorna costo por fila de venta
+// ─── Costo promedio por producto para reporte de clientes ────────────────────
+// Usa costo promedio ponderado de compras históricas por producto.
+// Match estricto (nombre normalizado): si no hay compra para ese producto, costo = 0.
+// Esto evita asignar costos incorrectos cuando los nombres no coinciden exactamente.
 
-interface CompraFIFO { fecha: string; producto: string; total: number; cantidad: number; precio_unitario: number }
-interface VentaFIFO { fecha: string; cliente_nombre: string; producto_nombre: string; cantidad: number; precio_unitario: number }
-interface LoteFIFO { qty: number; costUnit: number }
-
-function calcCMV_FIFO_porCliente(
-  todasCompras: CompraFIFO[],
-  todasVentas: VentaFIFO[],
-  monthPrefix: string
+function calcCostoPorCliente(
+  todasCompras: { fecha: string; producto: string; total: number; cantidad: number; precio_unitario: number }[],
+  ventasMes: { fecha: string; cliente_nombre: string; producto_nombre: string; cantidad: number; precio_unitario: number }[]
 ): Record<string, { cajones: number; totalVendido: number; costoVendido: number }> {
-  const norm = (s?: string) => (s ?? "").toLowerCase().trim()
+  const norm = (s?: string) => (s ?? "").toLowerCase().trim().replace(/\s+/g, " ")
 
-  // Construir colas FIFO por producto (orden cronológico)
-  const queues = new Map<string, LoteFIFO[]>()
-  const ultimoCostoUnit = new Map<string, number>()
-  const sortedCompras = [...todasCompras].sort((a, b) => a.fecha.localeCompare(b.fecha))
-  for (const c of sortedCompras) {
+  // Costo promedio ponderado por producto (histórico hasta el mes)
+  const costoPorProducto: Record<string, { totalCosto: number; totalQty: number }> = {}
+  for (const c of todasCompras) {
     if (!c.cantidad || c.cantidad <= 0) continue
-    const total = c.total > 0 ? c.total : c.cantidad * c.precio_unitario
-    const costUnit = total / c.cantidad
-    const prod = norm(c.producto) || "__sin_producto__"
-    if (!queues.has(prod)) queues.set(prod, [])
-    queues.get(prod)!.push({ qty: c.cantidad, costUnit })
-    ultimoCostoUnit.set(prod, costUnit)
+    const prod = norm(c.producto)
+    if (!prod) continue
+    const total = c.total > 0 ? c.total : c.cantidad * (c.precio_unitario ?? 0)
+    if (!costoPorProducto[prod]) costoPorProducto[prod] = { totalCosto: 0, totalQty: 0 }
+    costoPorProducto[prod].totalCosto += total
+    costoPorProducto[prod].totalQty += c.cantidad
   }
-  const ultimoCostoGlobal = sortedCompras.length > 0
-    ? (() => { const last = sortedCompras[sortedCompras.length - 1]; const t = last.total > 0 ? last.total : last.cantidad * last.precio_unitario; return last.cantidad > 0 ? t / last.cantidad : 0 })()
-    : 0
+  const avgCost: Record<string, number> = {}
+  for (const [prod, d] of Object.entries(costoPorProducto)) {
+    avgCost[prod] = d.totalQty > 0 ? d.totalCosto / d.totalQty : 0
+  }
 
+  // Acumular por cliente usando costo promedio del producto (match estricto)
   const result: Record<string, { cajones: number; totalVendido: number; costoVendido: number }> = {}
-
-  const endOfMonth = monthPrefix + "-31"
-  const sortedVentas = [...todasVentas]
-    .filter(v => v.fecha <= endOfMonth)
-    .sort((a, b) => a.fecha.localeCompare(b.fecha))
-
-  for (const v of sortedVentas) {
+  for (const v of ventasMes) {
     if (!v.cantidad || v.cantidad <= 0) continue
-    const prodVenta = norm(v.producto_nombre)
-
-    let queue = queues.get(prodVenta)
-    if (!queue) {
-      const entry = Array.from(queues.entries()).find(
-        ([k]) => k !== "__sin_producto__" && (k.includes(prodVenta) || prodVenta.includes(k))
-      )
-      queue = entry?.[1] ?? queues.get("__sin_producto__")
-    }
-
-    let remaining = v.cantidad
-    let ventaCost = 0
-
-    if (queue) {
-      while (remaining > 0.0001 && queue.length > 0) {
-        const lot = queue[0]
-        const used = Math.min(remaining, lot.qty)
-        ventaCost += used * lot.costUnit
-        lot.qty -= used
-        remaining -= used
-        if (lot.qty <= 0.0001) queue.shift()
-      }
-    }
-    if (remaining > 0.0001) {
-      const fallback = ultimoCostoUnit.get(prodVenta)
-        ?? Array.from(ultimoCostoUnit.entries()).find(([k]) => k !== "__sin_producto__" && (k.includes(prodVenta) || prodVenta.includes(k)))?.[1]
-        ?? ultimoCostoUnit.get("__sin_producto__")
-        ?? ultimoCostoGlobal
-      ventaCost += remaining * fallback
-    }
-
-    // Solo acumular si la venta es del mes objetivo
-    if (v.fecha.startsWith(monthPrefix)) {
-      const nombre = v.cliente_nombre || "Sin nombre"
-      if (!result[nombre]) result[nombre] = { cajones: 0, totalVendido: 0, costoVendido: 0 }
-      result[nombre].cajones += v.cantidad
-      result[nombre].totalVendido += v.cantidad * (v.precio_unitario ?? 0)
-      result[nombre].costoVendido += ventaCost
-    }
+    const nombre = v.cliente_nombre || "Sin nombre"
+    const prodKey = norm(v.producto_nombre)
+    const costUnit = avgCost[prodKey] ?? 0   // 0 si no hay compra registrada para ese producto
+    if (!result[nombre]) result[nombre] = { cajones: 0, totalVendido: 0, costoVendido: 0 }
+    result[nombre].cajones += v.cantidad
+    result[nombre].totalVendido += v.cantidad * (v.precio_unitario ?? 0)
+    result[nombre].costoVendido += v.cantidad * costUnit
   }
-
   return result
 }
 
@@ -397,9 +355,9 @@ export async function GET(req: NextRequest) {
         supabase.from("compras").select("total,cantidad,precio_unitario").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
         supabase.from("ventas").select("fecha,cantidad,precio_unitario").gte("fecha", d.sixMonthsAgo).lte("fecha", d.monthEnd),
         supabase.from("cobros").select("fecha,monto").gte("fecha", d.sixMonthsAgo).lte("fecha", d.monthEnd),
-        // FIFO: necesitamos todos los datos históricos
-        supabase.from("compras").select("fecha,total,producto,cantidad,precio_unitario").lte("fecha", d.monthEnd).order("fecha", { ascending: true }),
-        supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").lte("fecha", d.monthEnd).order("fecha", { ascending: true }),
+        // Costo promedio: compras históricas hasta fin del mes para calcular costo por producto
+        supabase.from("compras").select("fecha,total,producto,cantidad,precio_unitario").lte("fecha", d.monthEnd),
+        supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").lte("fecha", d.monthEnd),
       ])
 
       const totalVMes = sumVentas(vMes ?? [])
@@ -478,10 +436,9 @@ export async function GET(req: NextRequest) {
 
       const mesLabel = d.now.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
 
-      // Por cliente: FIFO sobre datos históricos completos
-      const monthPrefix = d.monthStart.slice(0, 7) // "YYYY-MM"
-      const fifoMap = calcCMV_FIFO_porCliente(todasCompras ?? [], todasVentasHist ?? [], monthPrefix)
-      const clientesMes = Object.entries(fifoMap)
+      // Por cliente: costo promedio ponderado por producto (match estricto de nombre)
+      const costoMap = calcCostoPorCliente(todasCompras ?? [], vMes ?? [])
+      const clientesMes = Object.entries(costoMap)
         .map(([nombre, d]) => {
           const costoVendido = Math.round(d.costoVendido)
           const totalVendido = Math.round(d.totalVendido)
