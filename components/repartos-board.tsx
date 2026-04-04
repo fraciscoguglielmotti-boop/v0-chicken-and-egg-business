@@ -360,35 +360,42 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
       })
 
       const body: any[] = []
+
+      // Paleta de fondos alternados por producto (gris claro / blanco) para separación visual
+      const bgPalette: [number, number, number][] = [
+        [245, 245, 245],
+        [255, 255, 255],
+        [235, 242, 252],
+        [252, 245, 235],
+      ]
+
+      let acumulado = 0
+      let paletteIdx = 0
       grupos.forEach((peds, calibre) => {
-        // Encabezado de grupo
-        body.push([{
-          content: `Pollo ${calibre}`,
-          colSpan: 4,
-          styles: { fillColor: [55, 55, 55], textColor: 255, fontStyle: "bold", fontSize: 8 },
-        }])
+        const bg = bgPalette[paletteIdx % bgPalette.length]
+        paletteIdx++
 
-        let acumulado = 0
-        peds.forEach(p => {
+        // Ordenar clientes alfabéticamente dentro del grupo
+        const pedsOrdenados = [...peds].sort((a, b) => a.cliente.localeCompare(b.cliente, "es"))
+
+        pedsOrdenados.forEach(p => {
           acumulado += p.cantidad
-          body.push([p.cliente, p.cantidad, calibre, acumulado])
+          body.push([
+            { content: p.cliente, styles: { fillColor: bg } },
+            { content: p.cantidad, styles: { halign: "center", fillColor: bg } },
+            { content: calibre, styles: { halign: "center", fillColor: bg } },
+            { content: acumulado, styles: { halign: "right", fontStyle: "bold", fillColor: bg } },
+          ])
         })
-
-        // Fila de total por grupo
-        const totalGrupo = peds.reduce((s, p) => s + p.cantidad, 0)
-        body.push([
-          { content: `Total Pollo ${calibre}`, colSpan: 3, styles: { fontStyle: "bold", fillColor: [230, 230, 230] } },
-          { content: totalGrupo, styles: { fontStyle: "bold", halign: "right", fillColor: [230, 230, 230] } },
-        ])
-        // Fila vacía separadora entre grupos
-        body.push([{ content: "", colSpan: 4, styles: { cellPadding: 1 } }])
       })
 
-      // Total general del vehículo (A + B + ...)
+      // Única fila final: TOTAL con desglose por calibre
       const totalVehiculo = pedidosVehiculo.reduce((s, p) => s + p.cantidad, 0)
-      const etiquetas = Array.from(grupos.keys()).join(" + ")
+      const etiquetaTotal = Array.from(grupos.entries())
+        .map(([cal, peds]) => `Pollo ${cal} (${peds.reduce((s, p) => s + p.cantidad, 0)})`)
+        .join("  +  ")
       body.push([
-        { content: `TOTAL ${etiquetas}`, colSpan: 3, styles: { fontStyle: "bold", fillColor: [20, 20, 20], textColor: 255, fontSize: 9 } },
+        { content: `TOTAL: ${etiquetaTotal}`, colSpan: 3, styles: { fontStyle: "bold", fillColor: [20, 20, 20], textColor: 255, fontSize: 8 } },
         { content: totalVehiculo, styles: { fontStyle: "bold", halign: "right", fillColor: [20, 20, 20], textColor: 255, fontSize: 9 } },
       ])
 
