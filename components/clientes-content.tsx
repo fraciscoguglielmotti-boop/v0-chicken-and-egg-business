@@ -23,7 +23,12 @@ interface Cliente {
   fecha_alta: string
   created_at: string
   vendedor_nombre?: string
+  condicion_pago?: string
+  plazo_dias?: number
+  dia_pago?: number
 }
+
+const DIAS_SEMANA = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"]
 
 interface Vendedor {
   id: string
@@ -60,6 +65,9 @@ export function ClientesContent() {
     direccion: "",
     saldo_inicial: "0",
     vendedor_nombre: "",
+    condicion_pago: "inmediato",
+    plazo_dias: "0",
+    dia_pago: "1",
   })
 
   // WhatsApp phone dialog state
@@ -76,6 +84,11 @@ export function ClientesContent() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const condData = {
+        condicion_pago: form.condicion_pago,
+        plazo_dias: form.condicion_pago === 'dias' ? Number(form.plazo_dias) : null,
+        dia_pago: (form.condicion_pago === 'dia_semana' || form.condicion_pago === 'dia_mes') ? Number(form.dia_pago) : null,
+      }
       if (editingCliente) {
         await updateRow("clientes", editingCliente.id, {
           nombre: form.nombre,
@@ -84,6 +97,7 @@ export function ClientesContent() {
           direccion: form.direccion || null,
           saldo_inicial: Number(form.saldo_inicial),
           vendedor_nombre: form.vendedor_nombre || null,
+          ...condData,
         })
       } else {
         await insertRow("clientes", {
@@ -94,6 +108,7 @@ export function ClientesContent() {
           saldo_inicial: Number(form.saldo_inicial),
           fecha_alta: new Date().toISOString().split('T')[0],
           vendedor_nombre: form.vendedor_nombre || null,
+          ...condData,
         })
       }
       await mutate()
@@ -115,6 +130,9 @@ export function ClientesContent() {
       direccion: cliente.direccion || "",
       saldo_inicial: String(cliente.saldo_inicial || 0),
       vendedor_nombre: cliente.vendedor_nombre || "",
+      condicion_pago: cliente.condicion_pago || "inmediato",
+      plazo_dias: String(cliente.plazo_dias || 0),
+      dia_pago: String(cliente.dia_pago || 1),
     })
     setDialogOpen(true)
   }
@@ -131,8 +149,17 @@ export function ClientesContent() {
   }
 
   const resetForm = () => {
-    setForm({ nombre: "", cuit: "", telefono: "", direccion: "", saldo_inicial: "0", vendedor_nombre: "" })
+    setForm({ nombre: "", cuit: "", telefono: "", direccion: "", saldo_inicial: "0", vendedor_nombre: "", condicion_pago: "inmediato", plazo_dias: "0", dia_pago: "1" })
     setEditingCliente(null)
+  }
+
+  const labelCondicion = (c: Cliente) => {
+    switch (c.condicion_pago) {
+      case 'dias': return `${c.plazo_dias ?? 0} días`
+      case 'dia_semana': return DIAS_SEMANA[(c.dia_pago ?? 1) - 1] ?? "—"
+      case 'dia_mes': return `Día ${c.dia_pago}`
+      default: return "Inmediato"
+    }
   }
 
   const getClienteBalance = (nombre: string) => {
@@ -191,6 +218,7 @@ export function ClientesContent() {
     { key: "telefono", header: "Telefono", render: (c: Cliente) => c.telefono || "-" },
     { key: "direccion", header: "Direccion", render: (c: Cliente) => c.direccion || "-", mobileHidden: true },
     { key: "vendedor_nombre", header: "Vendedor", render: (c: Cliente) => c.vendedor_nombre || "-", mobileHidden: true },
+    { key: "condicion_pago", header: "Cond. Pago", render: (c: Cliente) => <span className="text-sm text-muted-foreground">{labelCondicion(c)}</span>, mobileHidden: true },
     { key: "saldo_inicial", header: "Saldo Inicial", render: (c: Cliente) => <Badge variant={c.saldo_inicial > 0 ? "destructive" : "outline"}>{formatCurrency(c.saldo_inicial)}</Badge> },
     { key: "fecha_alta", header: "Fecha Alta", render: (c: Cliente) => formatDate(new Date(c.fecha_alta)), mobileHidden: true },
     {
@@ -303,17 +331,47 @@ export function ClientesContent() {
               <div className="space-y-2">
                 <Label>Vendedor asignado</Label>
                 <Select value={form.vendedor_nombre} onValueChange={(v) => setForm({ ...form, vendedor_nombre: v === "__none__" ? "" : v })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sin asignar" />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Sin asignar</SelectItem>
-                    {vendedores.map(v => (
-                      <SelectItem key={v.id} value={v.nombre}>{v.nombre}</SelectItem>
-                    ))}
+                    {vendedores.map(v => <SelectItem key={v.id} value={v.nombre}>{v.nombre}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="space-y-2 border-t pt-4">
+                <Label className="text-sm font-semibold">Condición de pago</Label>
+                <Select value={form.condicion_pago} onValueChange={(v) => setForm({ ...form, condicion_pago: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="inmediato">Inmediato (en el momento)</SelectItem>
+                    <SelectItem value="dias">A X días de la venta</SelectItem>
+                    <SelectItem value="dia_semana">Día fijo de la semana</SelectItem>
+                    <SelectItem value="dia_mes">Día fijo del mes</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.condicion_pago === 'dias' && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Label className="text-sm whitespace-nowrap">Plazo (días)</Label>
+                    <Input type="number" min="1" max="365" value={form.plazo_dias} onChange={e => setForm({ ...form, plazo_dias: e.target.value })} className="w-24" />
+                  </div>
+                )}
+                {form.condicion_pago === 'dia_semana' && (
+                  <Select value={form.dia_pago} onValueChange={v => setForm({ ...form, dia_pago: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {DIAS_SEMANA.map((d, i) => <SelectItem key={i+1} value={String(i+1)}>{d}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
+                {form.condicion_pago === 'dia_mes' && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Label className="text-sm whitespace-nowrap">Día del mes</Label>
+                    <Input type="number" min="1" max="31" value={form.dia_pago} onChange={e => setForm({ ...form, dia_pago: e.target.value })} className="w-24" />
+                  </div>
+                )}
+              </div>
+
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                   Cancelar

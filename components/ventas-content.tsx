@@ -5,7 +5,7 @@ import { Plus, Search, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { DataTable } from "./data-table"
@@ -23,12 +23,43 @@ interface Venta {
   precio_unitario: number
   vendedor?: string
   observaciones?: string
+  fecha_vto_cobro?: string
+  cobrado?: boolean
 }
 
 interface Cliente {
   id: string
   nombre: string
   vendedor_nombre?: string
+  condicion_pago?: string
+  plazo_dias?: number
+  dia_pago?: number
+}
+
+function calcVencimiento(fechaVenta: string, cliente: Cliente | undefined): string {
+  if (!cliente || !fechaVenta) return fechaVenta
+  const d = new Date(fechaVenta + 'T12:00:00Z')
+  switch (cliente.condicion_pago) {
+    case 'dias': {
+      d.setUTCDate(d.getUTCDate() + (cliente.plazo_dias ?? 0))
+      return d.toISOString().split('T')[0]
+    }
+    case 'dia_semana': {
+      // 1=Lunes, 7=Domingo → JS 0=Dom, 1=Lun
+      const target = ((cliente.dia_pago ?? 1) % 7)
+      const daysToAdd = (target - d.getUTCDay() + 7) % 7 || 7
+      d.setUTCDate(d.getUTCDate() + daysToAdd)
+      return d.toISOString().split('T')[0]
+    }
+    case 'dia_mes': {
+      const targetDay = cliente.dia_pago ?? 1
+      const thisMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), targetDay))
+      const nextMonth = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, targetDay))
+      return (thisMonth > d ? thisMonth : nextMonth).toISOString().split('T')[0]
+    }
+    default:
+      return fechaVenta
+  }
 }
 
 interface Vendedor {
@@ -66,8 +97,15 @@ export function VentasContent() {
     fecha: new Date().toISOString().split('T')[0],
     cliente_nombre: "",
     vendedor: "",
-    lineas: [emptyLinea()]
+    lineas: [emptyLinea()],
+    fecha_vto_cobro: new Date().toISOString().split('T')[0],
   })
+
+  // Auto-recalcular vencimiento cuando cambia cliente o fecha
+  const recalcVto = (fecha: string, clienteNombre: string) => {
+    const cliente = clientes.find(c => c.nombre === clienteNombre)
+    return calcVencimiento(fecha, cliente)
+  }
   const [editingVenta, setEditingVenta] = useState<Venta | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editFormData, setEditFormData] = useState({
@@ -94,12 +132,15 @@ export function VentasContent() {
           producto_nombre: l.producto,
           cantidad: parseFloat(l.cantidad),
           precio_unitario: parseFloat(l.precio_unitario),
-          vendedor: formData.vendedor || null
+          vendedor: formData.vendedor || null,
+          fecha_vto_cobro: formData.fecha_vto_cobro || null,
+          cobrado: false,
         })
       ))
       await mutate()
       setIsDialogOpen(false)
-      setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", vendedor: "", lineas: [emptyLinea()] })
+      const hoy = new Date().toISOString().split('T')[0]
+      setFormData({ fecha: hoy, cliente_nombre: "", vendedor: "", lineas: [emptyLinea()], fecha_vto_cobro: hoy })
       toast({
         title: lineasValidas.length === 1 ? "Venta registrada" : `${lineasValidas.length} ventas registradas`,
         description: `${formData.cliente_nombre} — ${lineasValidas.map(l => l.producto).join(", ")}`
@@ -173,6 +214,18 @@ export function VentasContent() {
     .filter((v) => !filtroProducto || (v.producto_nombre ?? "").toLowerCase().includes(filtroProducto.toLowerCase()))
     .filter((v) => !filtroVendedor || filtroVendedor === "__todos__" || v.vendedor === filtroVendedor)
 
+  const handleMarcarCobrado = async (v: Venta) => {
+    try {
+      await updateRow("ventas", v.id, { cobrado: true })
+      await mutate()
+      toast({ title: "Marcada como cobrada", description: `${v.cliente_nombre}` })
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message, variant: "destructive" })
+    }
+  }
+
+  const hoy = new Date().toISOString().split('T')[0]
+
   const columns = [
     { key: "fecha", header: "Fecha", render: (v: Venta) => formatDate(new Date(v.fecha)) },
     { key: "cliente_nombre", header: "Cliente" },
@@ -181,6 +234,20 @@ export function VentasContent() {
     { key: "precio_unitario", header: "Precio Unit.", render: (v: Venta) => <CurrencyDisplay amount={v.precio_unitario} />, mobileHidden: true },
     { key: "total", header: "Total", render: (v: Venta) => <CurrencyDisplay amount={v.cantidad * v.precio_unitario} className="font-semibold" /> },
     { key: "vendedor", header: "Vendedor", render: (v: Venta) => v.vendedor || "-", mobileHidden: true },
+    { key: "cobrado", header: "Cobro", mobileHidden: true, render: (v: Venta) => {
+      if (v.cobrado) return <Badge variant="default" className="text-xs">✓ Cobrado</Badge>
+      if (!v.fecha_vto_cobro) return <span className="text-xs text-muted-foreground">—</span>
+      const vencido = v.fecha_vto_cobro < hoy
+      const dias = Math.ceil((new Date(v.fecha_vto_cobro).getTime() - new Date(hoy).getTime()) / 86400000)
+      return (
+        <div className="flex items-center gap-1.5">
+          <Badge variant={vencido ? "destructive" : dias <= 3 ? "secondary" : "outline"} className="text-xs whitespace-nowrap">
+            {vencido ? `Vencido ${Math.abs(dias)}d` : dias === 0 ? "Hoy" : `En ${dias}d`}
+          </Badge>
+          <button className="text-[10px] text-green-700 font-semibold hover:underline" onClick={e => { e.stopPropagation(); handleMarcarCobrado(v) }}>✓</button>
+        </div>
+      )
+    }},
   ]
 
   return (
@@ -239,7 +306,10 @@ export function VentasContent() {
                     type="date"
                     value={formData.fecha}
                     max={new Date().toISOString().split('T')[0]}
-                    onChange={(e) => setFormData({...formData, fecha: e.target.value})}
+                    onChange={(e) => {
+                      const vto = recalcVto(e.target.value, formData.cliente_nombre)
+                      setFormData({...formData, fecha: e.target.value, fecha_vto_cobro: vto})
+                    }}
                     required
                   />
                 </div>
@@ -262,7 +332,8 @@ export function VentasContent() {
                 <Label>Cliente</Label>
                 <Select value={formData.cliente_nombre} onValueChange={(value) => {
                   const cliente = clientes.find(c => c.nombre === value)
-                  setFormData({ ...formData, cliente_nombre: value, vendedor: cliente?.vendedor_nombre ?? formData.vendedor })
+                  const vto = calcVencimiento(formData.fecha, cliente)
+                  setFormData({ ...formData, cliente_nombre: value, vendedor: cliente?.vendedor_nombre ?? formData.vendedor, fecha_vto_cobro: vto })
                 }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar cliente" />
@@ -273,6 +344,20 @@ export function VentasContent() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div>
+                <Label>Vencimiento cobro</Label>
+                <Input
+                  type="date"
+                  value={formData.fecha_vto_cobro}
+                  onChange={(e) => setFormData({ ...formData, fecha_vto_cobro: e.target.value })}
+                />
+                {formData.cliente_nombre && (() => {
+                  const cliente = clientes.find(c => c.nombre === formData.cliente_nombre)
+                  if (!cliente || !cliente.condicion_pago || cliente.condicion_pago === 'inmediato') return null
+                  return <p className="text-xs text-muted-foreground mt-1">Calculado por condición de pago del cliente. Podés ajustarlo manualmente.</p>
+                })()}
               </div>
 
               {/* Líneas de productos */}

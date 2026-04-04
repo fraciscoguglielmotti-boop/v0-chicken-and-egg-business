@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast"
 
 interface Cobro { fecha: string; monto: number; metodo_pago: string }
 interface Pago { fecha: string; monto: number }
+interface VentaPendiente { id: string; fecha: string; cliente_nombre: string; producto_nombre?: string; cantidad: number; precio_unitario: number; fecha_vto_cobro?: string; cobrado?: boolean }
 interface Gasto { id: string; fecha: string; monto: number; categoria: string; descripcion?: string; medio_pago?: string; tarjeta?: string; fecha_pago?: string; pagado?: boolean }
 interface MovimientoMP { fecha: string; tipo: string; monto: number; descripcion?: string; categoria?: string }
 interface Presupuesto { id: string; categoria: string; monto: number; mes: number; anio: number }
@@ -116,6 +117,7 @@ export function FlujoContent() {
   const { data: cobros = [] } = useSupabase<Cobro>("cobros")
   const { data: pagos = [] } = useSupabase<Pago>("pagos")
   const { data: gastos = [], mutate: mutateGastos } = useSupabase<Gasto>("gastos")
+  const { data: ventas = [], mutate: mutateVentas } = useSupabase<VentaPendiente>("ventas")
   const { data: movimientosMp = [] } = useSupabase<MovimientoMP>("movimientos_mp")
   const { data: proyectados = [], mutate: mutateProyectados } = useSupabase<GastoProyectado>("gastos_proyectados")
   const { data: categorias = [] } = useSupabase<{ id: string; nombre: string }>("categorias_gastos")
@@ -266,6 +268,35 @@ export function FlujoContent() {
     }
   }
 
+  // ── Cuentas por cobrar ──────────────────────────────────────────────────
+  const cuentasPorCobrar = useMemo(() => {
+    const hoy = new Date().toISOString().slice(0, 10)
+    return ventas
+      .filter(v => v.cobrado !== true)
+      .sort((a, b) => {
+        const fa = a.fecha_vto_cobro ?? a.fecha
+        const fb = b.fecha_vto_cobro ?? b.fecha
+        return fa.localeCompare(fb)
+      })
+      .map(v => {
+        const vto = v.fecha_vto_cobro ?? v.fecha
+        const diasDiff = Math.ceil((new Date(vto).getTime() - new Date(hoy).getTime()) / 86400000)
+        const estado: 'vencido' | 'hoy' | 'proximo' | 'ok' =
+          diasDiff < 0 ? 'vencido' : diasDiff === 0 ? 'hoy' : diasDiff <= 7 ? 'proximo' : 'ok'
+        return { ...v, vto, diasDiff, estado, total: v.cantidad * v.precio_unitario }
+      })
+  }, [ventas])
+
+  const handleCobrarVenta = async (v: VentaPendiente) => {
+    try {
+      await updateRow("ventas", v.id, { cobrado: true })
+      await mutateVentas()
+      toast({ title: "Cobro registrado", description: `${v.cliente_nombre} — ${formatCurrency(v.cantidad * v.precio_unitario)}` })
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message, variant: "destructive" })
+    }
+  }
+
   const flujo = useMemo(() => {
     const prev = prevMonth(selectedMonth)
 
@@ -327,6 +358,14 @@ export function FlujoContent() {
           <TabsTrigger value="proyeccion">Proyección</TabsTrigger>
           <TabsTrigger value="presupuesto">Presupuesto</TabsTrigger>
           <TabsTrigger value="cashflow">Cashflow real</TabsTrigger>
+          <TabsTrigger value="cobrar" className="relative">
+            Cuentas x Cobrar
+            {cuentasPorCobrar.filter(v => v.estado === 'vencido').length > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
+                {cuentasPorCobrar.filter(v => v.estado === 'vencido').length}
+              </span>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="fijos">Gastos Fijos</TabsTrigger>
         </TabsList>
 
@@ -703,6 +742,93 @@ export function FlujoContent() {
                 </Card>
               ))}
             </div>
+          )}
+        </TabsContent>
+
+        {/* ── Tab: Cuentas x Cobrar ──────────────────────────────────── */}
+        <TabsContent value="cobrar" className="space-y-4 mt-4">
+          {cuentasPorCobrar.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-10 text-center">
+              <p className="text-muted-foreground text-sm">No hay ventas pendientes de cobro.</p>
+            </div>
+          ) : (
+            <>
+              {/* Resumen */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Total pendiente", value: cuentasPorCobrar.reduce((s, v) => s + v.total, 0), color: "text-foreground" },
+                  { label: "Vencido", value: cuentasPorCobrar.filter(v => v.estado === 'vencido').reduce((s, v) => s + v.total, 0), color: "text-red-600" },
+                  { label: "Vence en 7 días", value: cuentasPorCobrar.filter(v => v.estado === 'proximo' || v.estado === 'hoy').reduce((s, v) => s + v.total, 0), color: "text-amber-600" },
+                  { label: "Al día", value: cuentasPorCobrar.filter(v => v.estado === 'ok').reduce((s, v) => s + v.total, 0), color: "text-green-600" },
+                ].map(card => (
+                  <Card key={card.label} className="p-4">
+                    <p className="text-xs text-muted-foreground">{card.label}</p>
+                    <p className={`text-lg font-bold tabular-nums mt-1 ${card.color}`}>{formatCurrency(card.value)}</p>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Lista por cliente */}
+              {(() => {
+                const porCliente: Record<string, typeof cuentasPorCobrar> = {}
+                for (const v of cuentasPorCobrar) {
+                  if (!porCliente[v.cliente_nombre]) porCliente[v.cliente_nombre] = []
+                  porCliente[v.cliente_nombre].push(v)
+                }
+                // Sort clients: vencidos first, then by total desc
+                const clientesOrdenados = Object.entries(porCliente).sort(([, a], [, b]) => {
+                  const aVencido = a.some(v => v.estado === 'vencido')
+                  const bVencido = b.some(v => v.estado === 'vencido')
+                  if (aVencido !== bVencido) return aVencido ? -1 : 1
+                  return b.reduce((s, v) => s + v.total, 0) - a.reduce((s, v) => s + v.total, 0)
+                })
+                return clientesOrdenados.map(([cliente, items]) => {
+                  const totalCliente = items.reduce((s, v) => s + v.total, 0)
+                  const hasVencido = items.some(v => v.estado === 'vencido')
+                  const hasProximo = items.some(v => v.estado === 'proximo' || v.estado === 'hoy')
+                  return (
+                    <Card key={cliente} className={`overflow-hidden ${hasVencido ? "border-red-400/50" : hasProximo ? "border-amber-400/50" : ""}`}>
+                      <div className={`flex items-center justify-between px-4 py-3 ${hasVencido ? "bg-red-500/5" : hasProximo ? "bg-amber-500/5" : "bg-muted/20"}`}>
+                        <div className="flex items-center gap-3">
+                          <span className="font-semibold">{cliente}</span>
+                          {hasVencido && <Badge variant="destructive" className="text-xs">Vencido</Badge>}
+                          {!hasVencido && hasProximo && <Badge variant="secondary" className="text-xs">Próximo</Badge>}
+                          <span className="text-xs text-muted-foreground">{items.length} venta{items.length !== 1 ? "s" : ""}</span>
+                        </div>
+                        <span className={`font-bold tabular-nums ${hasVencido ? "text-red-600" : ""}`}>{formatCurrency(totalCliente)}</span>
+                      </div>
+                      <div className="divide-y">
+                        {items.map(v => (
+                          <div key={v.id} className="flex items-center justify-between px-4 py-3">
+                            <div className="flex flex-col gap-0.5 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-medium">{v.producto_nombre || "—"}</span>
+                                <span className="text-xs text-muted-foreground">· {new Date(v.fecha + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })}</span>
+                              </div>
+                              <span className={`text-xs font-medium ${v.estado === 'vencido' ? "text-red-600" : v.estado === 'hoy' ? "text-amber-600" : v.estado === 'proximo' ? "text-amber-500" : "text-muted-foreground"}`}>
+                                {v.estado === 'vencido'
+                                  ? `Vencido hace ${Math.abs(v.diasDiff)} día${Math.abs(v.diasDiff) !== 1 ? "s" : ""}`
+                                  : v.estado === 'hoy'
+                                  ? "Vence hoy"
+                                  : v.estado === 'proximo'
+                                  ? `Vence en ${v.diasDiff} día${v.diasDiff !== 1 ? "s" : ""}`
+                                  : `Vence ${new Date(v.vto + "T12:00:00").toLocaleDateString("es-AR", { day: "numeric", month: "short" })}`}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 ml-4 shrink-0">
+                              <span className="font-bold tabular-nums">{formatCurrency(v.total)}</span>
+                              <Button size="sm" variant="outline" className="text-green-700 border-green-400 hover:bg-green-50 h-8 text-xs" onClick={() => handleCobrarVenta(v)}>
+                                ✓ Cobrar
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )
+                })
+              })()}
+            </>
           )}
         </TabsContent>
 
