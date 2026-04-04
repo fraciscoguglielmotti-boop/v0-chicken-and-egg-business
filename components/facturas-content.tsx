@@ -146,10 +146,14 @@ export function FacturasContent() {
     for (const c of cobros) {
       if (!c.fecha.startsWith(mesSel)) continue
       if (c.metodo_pago?.toLowerCase() !== "transferencia") continue
-      const dest = c.cuenta_destino
-      if (dest !== "Francisco" && dest !== "Diego") continue
-      result[dest].total += Number(c.monto)
-      result[dest].clientes[c.cliente_nombre] = (result[dest].clientes[c.cliente_nombre] ?? 0) + Number(c.monto)
+      const dest = c.cuenta_destino ?? ""
+      // Match flexible: "Francisco", "Francisco Guglielmotti", etc.
+      const persona = dest.toLowerCase().startsWith("francisco") ? "Francisco"
+        : dest.toLowerCase().startsWith("diego") ? "Diego"
+        : null
+      if (!persona) continue
+      result[persona].total += Number(c.monto)
+      result[persona].clientes[c.cliente_nombre] = (result[persona].clientes[c.cliente_nombre] ?? 0) + Number(c.monto)
     }
     return result
   }, [cobros, mesSel])
