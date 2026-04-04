@@ -137,8 +137,8 @@ export function PresupuestosContent() {
     // Categorías con presupuesto o con gastos reales
     const todasCats = new Set([
       ...presupuestosDelMes.map(p => p.categoria),
-      ...gastosDelMes.map(g => g.categoria).filter(Boolean),
-      ...mpDelMes.map(m => m.categoria).filter(Boolean),
+      ...(gastosDelMes.map(g => g.categoria).filter(Boolean) as string[]),
+      ...(mpDelMes.map(m => m.categoria).filter(Boolean) as string[]),
     ])
 
     return Array.from(todasCats).map(categoria => {
@@ -292,7 +292,7 @@ export function PresupuestosContent() {
                   </>
                 ) : (
                   <Button variant="ghost" size="sm" onClick={() => {
-                    setFormData({ categoria: item.categoria, monto: "", mes: selectedMes, anio: selectedAnio })
+                    setFormData({ categoria: item.categoria ?? "", monto: "", mes: selectedMes, anio: selectedAnio })
                     setIsDialogOpen(true)
                   }}>
                     <Plus className="h-3.5 w-3.5 mr-1" />Agregar presupuesto
