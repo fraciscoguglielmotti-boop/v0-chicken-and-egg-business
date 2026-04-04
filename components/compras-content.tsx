@@ -60,6 +60,9 @@ export function ComprasContent() {
   const [searchTerm, setSearchTerm] = useState("")
   const [fechaDesde, setFechaDesde] = useState("")
   const [fechaHasta, setFechaHasta] = useState("")
+  const [filtroProveedor, setFiltroProveedor] = useState("")
+  const [filtroProducto, setFiltroProducto] = useState("")
+  const [filtroEstado, setFiltroEstado] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState(emptyForm())
   const [editingCompra, setEditingCompra] = useState<Compra | null>(null)
@@ -163,12 +166,16 @@ export function ComprasContent() {
 
   const filteredCompras = compras
     .filter((c) =>
+      !searchTerm ||
       c.proveedor_nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
       c.producto.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (c.numero_lote ?? "").toLowerCase().includes(searchTerm.toLowerCase())
     )
     .filter((c) => !fechaDesde || c.fecha >= fechaDesde)
     .filter((c) => !fechaHasta || c.fecha <= fechaHasta)
+    .filter((c) => !filtroProveedor || filtroProveedor === "__todos__" || c.proveedor_nombre === filtroProveedor)
+    .filter((c) => !filtroProducto || filtroProducto === "__todos__" || c.producto === filtroProducto)
+    .filter((c) => !filtroEstado || filtroEstado === "__todos__" || c.estado === filtroEstado)
 
   const columns = [
     { key: "numero_lote", header: "Lote", render: (c: Compra) => c.numero_lote ? <Badge variant="outline" className="font-mono text-xs">{c.numero_lote}</Badge> : <span className="text-muted-foreground text-xs">—</span> },
@@ -312,8 +319,30 @@ export function ComprasContent() {
           <Label className="text-sm whitespace-nowrap">Hasta:</Label>
           <Input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="w-auto" />
         </div>
-        {(fechaDesde || fechaHasta) && (
-          <Button variant="outline" size="sm" onClick={() => { setFechaDesde(""); setFechaHasta("") }}>Limpiar</Button>
+        <Select value={filtroProveedor || "__todos__"} onValueChange={v => setFiltroProveedor(v === "__todos__" ? "" : v)}>
+          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Proveedor" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__todos__">Todos los proveedores</SelectItem>
+            {proveedores.map(p => <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filtroProducto || "__todos__"} onValueChange={v => setFiltroProducto(v === "__todos__" ? "" : v)}>
+          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Producto" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__todos__">Todos los productos</SelectItem>
+            {productosActivos.map(p => <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filtroEstado || "__todos__"} onValueChange={v => setFiltroEstado(v === "__todos__" ? "" : v)}>
+          <SelectTrigger className="w-[130px]"><SelectValue placeholder="Estado" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__todos__">Todos</SelectItem>
+            <SelectItem value="pendiente">Pendiente</SelectItem>
+            <SelectItem value="pagado">Pagado</SelectItem>
+          </SelectContent>
+        </Select>
+        {(fechaDesde || fechaHasta || filtroProveedor || filtroProducto || filtroEstado) && (
+          <Button variant="outline" size="sm" onClick={() => { setFechaDesde(""); setFechaHasta(""); setFiltroProveedor(""); setFiltroProducto(""); setFiltroEstado("") }}>Limpiar filtros</Button>
         )}
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

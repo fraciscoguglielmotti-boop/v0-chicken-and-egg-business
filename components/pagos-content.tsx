@@ -32,6 +32,10 @@ export function PagosContent() {
   const { data: proveedores = [] } = useSupabase<Proveedor>("proveedores")
   const { toast } = useToast()
   const [searchTerm, setSearchTerm] = useState("")
+  const [fechaDesde, setFechaDesde] = useState("")
+  const [fechaHasta, setFechaHasta] = useState("")
+  const [filtroProveedor, setFiltroProveedor] = useState("")
+  const [filtroMetodo, setFiltroMetodo] = useState("")
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
@@ -111,9 +115,14 @@ export function PagosContent() {
     }
   }
 
-  const filteredPagos = pagos.filter((p) =>
-    p.proveedor_nombre.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const metodosUnicos = [...new Set(pagos.map(p => p.metodo_pago).filter(Boolean))] as string[]
+
+  const filteredPagos = pagos
+    .filter((p) => !searchTerm || p.proveedor_nombre.toLowerCase().includes(searchTerm.toLowerCase()))
+    .filter((p) => !fechaDesde || p.fecha >= fechaDesde)
+    .filter((p) => !fechaHasta || p.fecha <= fechaHasta)
+    .filter((p) => !filtroProveedor || filtroProveedor === "__todos__" || p.proveedor_nombre === filtroProveedor)
+    .filter((p) => !filtroMetodo || filtroMetodo === "__todos__" || p.metodo_pago === filtroMetodo)
 
   const columns = [
     { key: "fecha", header: "Fecha", render: (p: Pago) => formatDate(new Date(p.fecha)) },
@@ -134,6 +143,31 @@ export function PagosContent() {
             className="pl-9"
           />
         </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm whitespace-nowrap">Desde:</Label>
+          <Input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="w-auto" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm whitespace-nowrap">Hasta:</Label>
+          <Input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="w-auto" />
+        </div>
+        <Select value={filtroProveedor || "__todos__"} onValueChange={v => setFiltroProveedor(v === "__todos__" ? "" : v)}>
+          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Proveedor" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__todos__">Todos los proveedores</SelectItem>
+            {proveedores.map(p => <SelectItem key={p.id} value={p.nombre}>{p.nombre}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filtroMetodo || "__todos__"} onValueChange={v => setFiltroMetodo(v === "__todos__" ? "" : v)}>
+          <SelectTrigger className="w-[150px]"><SelectValue placeholder="Método" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__todos__">Todos los métodos</SelectItem>
+            {metodosUnicos.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        {(fechaDesde || fechaHasta || filtroProveedor || filtroMetodo) && (
+          <Button variant="outline" size="sm" onClick={() => { setFechaDesde(""); setFechaHasta(""); setFiltroProveedor(""); setFiltroMetodo("") }}>Limpiar filtros</Button>
+        )}
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button className="ml-auto">
