@@ -22,6 +22,16 @@ interface Cobro {
   monto: number
   metodo_pago: string
   cuenta_destino?: string
+  recibido_por?: string
+}
+
+interface TransferenciaInterna {
+  id: string
+  fecha: string
+  origen: string
+  destino: string
+  monto: number
+  observaciones?: string
 }
 
 interface Gasto {
@@ -50,6 +60,7 @@ interface PagoTarjeta {
 
 const TARJETAS_CAJA = ["Visa (empresa)", "Visa (personal Francisco)", "Visa (Damián)", "Master", "Tarjeta MP"]
 const CUENTAS_ORIGEN = ["Cuenta Francisco", "Cuenta Diego"]
+const BOLSILLOS = ["Damián (efectivo)", "Francisco (efectivo)", "Diego (efectivo)", "Cuenta Francisco", "Cuenta Diego"]
 
 // ─── Bolsillo card ────────────────────────────────────────────────────────────
 
@@ -95,6 +106,7 @@ export function CajaContent() {
   const { data: gastos = [] } = useSupabase<Gasto>("gastos")
   const { data: pagos = [] } = useSupabase<Pago>("pagos")
   const { data: pagosTarjeta = [], mutate: mutatePagosTarjeta } = useSupabase<PagoTarjeta>("pagos_tarjeta")
+  const { data: transferencias = [], mutate: mutateTransferencias } = useSupabase<TransferenciaInterna>("transferencias_internas")
   const { toast } = useToast()
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -105,6 +117,48 @@ export function CajaContent() {
     cuenta_origen: "",
     observaciones: "",
   })
+
+  const [transDialogOpen, setTransDialogOpen] = useState(false)
+  const [transForm, setTransForm] = useState({
+    fecha: new Date().toISOString().split("T")[0],
+    origen: "",
+    destino: "",
+    monto: "",
+    observaciones: "",
+  })
+
+  const handleTransferenciaInterna = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (transForm.origen === transForm.destino) {
+      toast({ title: "Error", description: "El origen y destino no pueden ser iguales", variant: "destructive" })
+      return
+    }
+    try {
+      await insertRow("transferencias_internas", {
+        fecha: transForm.fecha,
+        origen: transForm.origen,
+        destino: transForm.destino,
+        monto: parseFloat(transForm.monto),
+        observaciones: transForm.observaciones || null,
+      })
+      await mutateTransferencias()
+      setTransDialogOpen(false)
+      setTransForm({ fecha: new Date().toISOString().split("T")[0], origen: "", destino: "", monto: "", observaciones: "" })
+      toast({ title: "Movimiento registrado", description: `${transForm.origen} → ${transForm.destino}` })
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" })
+    }
+  }
+
+  const handleDeleteTransferencia = async (id: string) => {
+    try {
+      await deleteRow("transferencias_internas", id)
+      await mutateTransferencias()
+      toast({ title: "Movimiento eliminado" })
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" })
+    }
+  }
 
   const handlePagarTarjeta = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -138,10 +192,25 @@ export function CajaContent() {
   // ─── Cálculos de saldo por bolsillo ────────────────────────────────────────
 
   const saldos = useMemo(() => {
-    // Efectivo
-    const cobrosEfectivo = cobros.filter(c => c.metodo_pago === "efectivo").reduce((s, c) => s + Number(c.monto), 0)
+    // Helper: transferencias internas que afectan un bolsillo
+    const transEntrantes = (bolsillo: string) => transferencias.filter(t => t.destino === bolsillo).reduce((s, t) => s + Number(t.monto), 0)
+    const transSalientes = (bolsillo: string) => transferencias.filter(t => t.origen === bolsillo).reduce((s, t) => s + Number(t.monto), 0)
+
+    // Efectivo por persona
+    const cobrosPorReceptor = (receptor: string) =>
+      cobros.filter(c => c.metodo_pago === "efectivo" && c.recibido_por === receptor).reduce((s, c) => s + Number(c.monto), 0)
+    // Gastos efectivo sin asignar a persona → se restan del total
     const gastosEfectivo = gastos.filter(g => g.medio_pago === "Efectivo").reduce((s, g) => s + Number(g.monto), 0)
     const pagosEfectivo = pagos.filter(p => p.metodo_pago === "Efectivo").reduce((s, p) => s + Number(p.monto), 0)
+
+    const efectivoDamian   = cobrosPorReceptor("Damián") + transEntrantes("Damián (efectivo)") - transSalientes("Damián (efectivo)")
+    const efectivoFrancisco = cobrosPorReceptor("Francisco") + transEntrantes("Francisco (efectivo)") - transSalientes("Francisco (efectivo)")
+    const efectivoDiego    = cobrosPorReceptor("Diego") + transEntrantes("Diego (efectivo)") - transSalientes("Diego (efectivo)")
+    // Efectivo sin recibido_por → va a pool general
+    const cobrosEfectivoSinAsignar = cobros.filter(c => c.metodo_pago === "efectivo" && !c.recibido_por).reduce((s, c) => s + Number(c.monto), 0)
+    const totalEfectivoBruto = efectivoDamian + efectivoFrancisco + efectivoDiego + cobrosEfectivoSinAsignar
+    // Repartimos gastos/pagos efectivo proporcionalmente al total bruto (simplificación pragmática)
+    const totalEfectivo = totalEfectivoBruto - gastosEfectivo - pagosEfectivo
 
     // Cuenta Francisco
     const cobrosFrancisco = cobros.filter(c => c.metodo_pago === "transferencia" && c.cuenta_destino === "Francisco").reduce((s, c) => s + Number(c.monto), 0)
@@ -165,12 +234,12 @@ export function CajaContent() {
     const totalDeudaTarjetas = deudaPorTarjeta.reduce((s, d) => s + d.deuda, 0)
 
     return {
-      efectivo: { saldo: cobrosEfectivo - gastosEfectivo - pagosEfectivo, cobros: cobrosEfectivo, gastos: gastosEfectivo, pagos: pagosEfectivo },
-      francisco: { saldo: cobrosFrancisco - gastosFrancisco - pagosFrancisco - pagosTarjetaFrancisco, cobros: cobrosFrancisco, gastos: gastosFrancisco, pagos: pagosFrancisco, tarjetas: pagosTarjetaFrancisco },
-      diego: { saldo: cobrosDiego - gastosDiego - pagosDiego - pagosTarjetaDiego, cobros: cobrosDiego, gastos: gastosDiego, pagos: pagosDiego, tarjetas: pagosTarjetaDiego },
+      efectivo: { saldo: totalEfectivo, damian: efectivoDamian, francisco: efectivoFrancisco, diego: efectivoDiego, sinAsignar: cobrosEfectivoSinAsignar, gastos: gastosEfectivo, pagos: pagosEfectivo },
+      francisco: { saldo: cobrosFrancisco - gastosFrancisco - pagosFrancisco - pagosTarjetaFrancisco + transEntrantes("Cuenta Francisco") - transSalientes("Cuenta Francisco"), cobros: cobrosFrancisco, gastos: gastosFrancisco, pagos: pagosFrancisco, tarjetas: pagosTarjetaFrancisco },
+      diego: { saldo: cobrosDiego - gastosDiego - pagosDiego - pagosTarjetaDiego + transEntrantes("Cuenta Diego") - transSalientes("Cuenta Diego"), cobros: cobrosDiego, gastos: gastosDiego, pagos: pagosDiego, tarjetas: pagosTarjetaDiego },
       deudaPorTarjeta,
       totalDeudaTarjetas,
-      totalDisponible: (cobrosEfectivo - gastosEfectivo - pagosEfectivo) + (cobrosFrancisco - gastosFrancisco - pagosFrancisco - pagosTarjetaFrancisco) + (cobrosDiego - gastosDiego - pagosDiego - pagosTarjetaDiego),
+      totalDisponible: totalEfectivo + (cobrosFrancisco - gastosFrancisco - pagosFrancisco - pagosTarjetaFrancisco) + (cobrosDiego - gastosDiego - pagosDiego - pagosTarjetaDiego),
     }
   }, [cobros, gastos, pagos, pagosTarjeta])
 
@@ -179,6 +248,7 @@ export function CajaContent() {
       <Tabs defaultValue="saldos">
         <TabsList>
           <TabsTrigger value="saldos">Saldos</TabsTrigger>
+          <TabsTrigger value="internos">Movimientos Internos</TabsTrigger>
           <TabsTrigger value="tarjetas">Tarjetas</TabsTrigger>
         </TabsList>
 
@@ -208,12 +278,15 @@ export function CajaContent() {
           {/* Bolsillos */}
           <div className="grid gap-4 sm:grid-cols-2">
             <BolsilloCard
-              label="Efectivo"
+              label="Efectivo (total)"
               icon={Banknote}
               color="text-green-600"
               saldo={saldos.efectivo.saldo}
               detalle={[
-                { label: "Cobros cobrados", value: saldos.efectivo.cobros, sign: "+" },
+                { label: "Damián", value: saldos.efectivo.damian, sign: "+" },
+                { label: "Francisco (cash)", value: saldos.efectivo.francisco, sign: "+" },
+                { label: "Diego (cash)", value: saldos.efectivo.diego, sign: "+" },
+                ...(saldos.efectivo.sinAsignar > 0 ? [{ label: "Sin asignar", value: saldos.efectivo.sinAsignar, sign: "+" as const }] : []),
                 { label: "Gastos en efectivo", value: saldos.efectivo.gastos, sign: "-" },
                 { label: "Pagos a proveedores", value: saldos.efectivo.pagos, sign: "-" },
               ]}
@@ -243,6 +316,57 @@ export function CajaContent() {
               ]}
             />
           </div>
+        </TabsContent>
+
+        {/* ── MOVIMIENTOS INTERNOS ── */}
+        <TabsContent value="internos" className="space-y-4 mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Movimientos entre bolsillos</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Ej: Diego le da efectivo a Francisco, Francisco paga desde su cuenta a Diego, etc.</p>
+            </div>
+            <Button onClick={() => setTransDialogOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Registrar movimiento
+            </Button>
+          </div>
+
+          {transferencias.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-10 text-center">
+              <p className="text-sm text-muted-foreground">No hay movimientos internos registrados</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="text-left p-3 font-semibold">Fecha</th>
+                    <th className="text-left p-3 font-semibold">Desde</th>
+                    <th className="text-left p-3 font-semibold">Hacia</th>
+                    <th className="text-left p-3 font-semibold hidden sm:table-cell">Observaciones</th>
+                    <th className="text-right p-3 font-semibold">Monto</th>
+                    <th className="p-3" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...transferencias].sort((a, b) => b.fecha.localeCompare(a.fecha)).map((t) => (
+                    <tr key={t.id} className="border-t hover:bg-muted/20">
+                      <td className="p-3 text-muted-foreground">{formatDate(new Date(t.fecha))}</td>
+                      <td className="p-3 font-medium">{t.origen}</td>
+                      <td className="p-3">
+                        <span className="text-muted-foreground">→</span> {t.destino}
+                      </td>
+                      <td className="p-3 hidden sm:table-cell text-muted-foreground text-xs">{t.observaciones || "-"}</td>
+                      <td className="p-3 text-right font-semibold">{formatCurrency(Number(t.monto))}</td>
+                      <td className="p-3 text-right">
+                        <button onClick={() => handleDeleteTransferencia(t.id)} className="text-xs text-muted-foreground hover:text-destructive transition-colors">✕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </TabsContent>
 
         {/* ── TARJETAS ── */}
@@ -323,6 +447,58 @@ export function CajaContent() {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Dialog: movimiento interno */}
+      <Dialog open={transDialogOpen} onOpenChange={setTransDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar movimiento interno</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleTransferenciaInterna} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Fecha</Label>
+                <Input type="date" value={transForm.fecha} max={new Date().toISOString().split("T")[0]}
+                  onChange={(e) => setTransForm({ ...transForm, fecha: e.target.value })} required />
+              </div>
+              <div className="space-y-2">
+                <Label>Monto</Label>
+                <Input type="number" step="0.01" placeholder="0" value={transForm.monto}
+                  onChange={(e) => setTransForm({ ...transForm, monto: e.target.value })} required />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Desde (origen)</Label>
+              <Select value={transForm.origen} onValueChange={(v) => setTransForm({ ...transForm, origen: v })}>
+                <SelectTrigger><SelectValue placeholder="¿Quién entrega?" /></SelectTrigger>
+                <SelectContent>
+                  {BOLSILLOS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Hacia (destino)</Label>
+              <Select value={transForm.destino} onValueChange={(v) => setTransForm({ ...transForm, destino: v })}>
+                <SelectTrigger><SelectValue placeholder="¿Quién recibe?" /></SelectTrigger>
+                <SelectContent>
+                  {BOLSILLOS.filter(b => b !== transForm.origen).map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Observaciones (opcional)</Label>
+              <Input placeholder="Ej: Diego le da a Francisco para pagar Agroaves" value={transForm.observaciones}
+                onChange={(e) => setTransForm({ ...transForm, observaciones: e.target.value })} />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setTransDialogOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={!transForm.origen || !transForm.destino || !transForm.monto}>
+                Registrar
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog: registrar pago de tarjeta */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

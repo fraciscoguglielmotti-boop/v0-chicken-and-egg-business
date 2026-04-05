@@ -22,6 +22,7 @@ interface Cobro {
   monto: number
   metodo_pago?: string
   cuenta_destino?: string
+  recibido_por?: string
   observaciones?: string
   verificado_agroaves: boolean
 }
@@ -38,6 +39,7 @@ interface Proveedor {
 
 const CUENTAS_DESTINO = ["Agroaves", "Francisco", "Diego"]
 const METODOS_PAGO = ["efectivo", "transferencia", "mercadopago", "cheque"]
+const RECEPTORES_EFECTIVO = ["Damián", "Francisco", "Diego"]
 
 export function CobrosContent() {
   const { data: cobros = [], isLoading, mutate } = useSupabase<Cobro>("cobros")
@@ -62,6 +64,7 @@ export function CobrosContent() {
     monto: "",
     metodo_pago: "efectivo",
     cuenta_destino: "",
+    recibido_por: "",
     observaciones: "",
     verificado_agroaves: false
   })
@@ -73,6 +76,7 @@ export function CobrosContent() {
     monto: "",
     metodo_pago: "efectivo",
     cuenta_destino: "",
+    recibido_por: "",
     observaciones: ""
   })
 
@@ -85,6 +89,7 @@ export function CobrosContent() {
         monto: parseMonto(formData.monto),
         metodo_pago: formData.metodo_pago,
         cuenta_destino: (formData.metodo_pago === "transferencia" || formData.metodo_pago === "mercadopago") ? formData.cuenta_destino : null,
+        recibido_por: formData.metodo_pago === "efectivo" ? (formData.recibido_por || null) : null,
         observaciones: formData.observaciones || null,
         verificado_agroaves: formData.verificado_agroaves
       })
@@ -124,6 +129,7 @@ export function CobrosContent() {
       monto: cobro.monto != null ? formatMonto(String(Math.round(cobro.monto))) : "",
       metodo_pago: cobro.metodo_pago ?? "efectivo",
       cuenta_destino: cobro.cuenta_destino ?? "",
+      recibido_por: cobro.recibido_por ?? "",
       observaciones: cobro.observaciones ?? ""
     })
     setIsEditDialogOpen(true)
@@ -139,6 +145,7 @@ export function CobrosContent() {
         monto: parseMonto(editFormData.monto),
         metodo_pago: editFormData.metodo_pago,
         cuenta_destino: (editFormData.metodo_pago === "transferencia" || editFormData.metodo_pago === "mercadopago") ? editFormData.cuenta_destino : null,
+        recibido_por: editFormData.metodo_pago === "efectivo" ? (editFormData.recibido_por || null) : null,
         observaciones: editFormData.observaciones || null
       })
       await mutate()
@@ -172,7 +179,7 @@ export function CobrosContent() {
     { key: "cliente_nombre", header: "Cliente" },
     { key: "monto", header: "Monto", render: (c: Cobro) => <CurrencyDisplay amount={Number(c.monto)} className="font-semibold text-primary" /> },
     { key: "metodo_pago", header: "Metodo", render: (c: Cobro) => <span className="capitalize">{c.metodo_pago || "-"}</span>, mobileHidden: true },
-    { key: "cuenta_destino", header: "Destino", render: (c: Cobro) => c.cuenta_destino || "-", mobileHidden: true },
+    { key: "cuenta_destino", header: "Destino / Receptor", render: (c: Cobro) => c.cuenta_destino || c.recibido_por || "-", mobileHidden: true },
     { key: "verificado_agroaves", header: "Verificado", render: (c: Cobro) => (
       <Badge
         variant={c.verificado_agroaves ? "default" : "outline"}
@@ -278,6 +285,18 @@ export function CobrosContent() {
                   </Select>
                 </div>
               )}
+              {formData.metodo_pago === "efectivo" && (
+                <div>
+                  <Label>Recibido por</Label>
+                  <Select value={formData.recibido_por || "__none__"} onValueChange={(v) => setFormData({...formData, recibido_por: v === "__none__" ? "" : v})}>
+                    <SelectTrigger><SelectValue placeholder="¿Quién lo recibió?" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Sin especificar</SelectItem>
+                      {RECEPTORES_EFECTIVO.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div>
                 <Label>Observaciones</Label>
                 <Input value={formData.observaciones} onChange={(e) => setFormData({...formData, observaciones: e.target.value})} />
@@ -349,6 +368,18 @@ export function CobrosContent() {
                   <SelectTrigger><SelectValue placeholder="Seleccionar cuenta" /></SelectTrigger>
                   <SelectContent>
                     {CUENTAS_DESTINO.map(cuenta => <SelectItem key={cuenta} value={cuenta}>{cuenta}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {editFormData.metodo_pago === "efectivo" && (
+              <div>
+                <Label>Recibido por</Label>
+                <Select value={editFormData.recibido_por || "__none__"} onValueChange={(v) => setEditFormData({...editFormData, recibido_por: v === "__none__" ? "" : v})}>
+                  <SelectTrigger><SelectValue placeholder="¿Quién lo recibió?" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sin especificar</SelectItem>
+                    {RECEPTORES_EFECTIVO.map(r => <SelectItem key={r} value={r}>{r}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
