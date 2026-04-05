@@ -115,7 +115,7 @@ export function CobrosContent() {
 
       await mutate()
       setIsDialogOpen(false)
-      setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", monto: "", metodo_pago: "efectivo", cuenta_destino: "", observaciones: "", verificado_agroaves: false })
+      setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", monto: "", metodo_pago: "efectivo", cuenta_destino: "", recibido_por: "", observaciones: "", verificado_agroaves: false })
     } catch (error) {
       toast({ title: "Error", description: "No se pudo registrar el cobro", variant: "destructive" })
     }
