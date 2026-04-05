@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Plus, Wallet, Banknote, Smartphone, CreditCard, Loader2 } from "lucide-react"
+import { Plus, Wallet, Banknote, CreditCard, Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -49,7 +49,7 @@ interface PagoTarjeta {
 }
 
 const TARJETAS_CAJA = ["Visa (empresa)", "Visa (personal Francisco)", "Visa (Damián)", "Master", "Tarjeta MP"]
-const CUENTAS_ORIGEN = ["Cuenta Francisco", "Cuenta Diego", "MercadoPago"]
+const CUENTAS_ORIGEN = ["Cuenta Francisco", "Cuenta Diego"]
 
 // ─── Bolsillo card ────────────────────────────────────────────────────────────
 
@@ -155,12 +155,6 @@ export function CajaContent() {
     const pagosDiego = pagos.filter(p => p.metodo_pago === "Cuenta Diego").reduce((s, p) => s + Number(p.monto), 0)
     const pagosTarjetaDiego = pagosTarjeta.filter(p => p.cuenta_origen === "Cuenta Diego").reduce((s, p) => s + Number(p.monto), 0)
 
-    // MercadoPago
-    const cobrosMP = cobros.filter(c => c.metodo_pago === "transferencia" && c.cuenta_destino === "MercadoPago").reduce((s, c) => s + Number(c.monto), 0)
-    const gastosMP = gastos.filter(g => g.medio_pago === "MercadoPago").reduce((s, g) => s + Number(g.monto), 0)
-    const pagosMP = pagos.filter(p => p.metodo_pago === "MercadoPago").reduce((s, p) => s + Number(p.monto), 0)
-    const pagosTarjetaMP = pagosTarjeta.filter(p => p.cuenta_origen === "MercadoPago").reduce((s, p) => s + Number(p.monto), 0)
-
     // Deuda tarjetas (gastos con tarjeta menos lo ya pagado)
     const deudaPorTarjeta = TARJETAS_CAJA.map(tarjeta => {
       const gastado = gastos.filter(g => g.medio_pago === "Tarjeta Credito" && g.tarjeta === tarjeta).reduce((s, g) => s + Number(g.monto), 0)
@@ -174,10 +168,9 @@ export function CajaContent() {
       efectivo: { saldo: cobrosEfectivo - gastosEfectivo - pagosEfectivo, cobros: cobrosEfectivo, gastos: gastosEfectivo, pagos: pagosEfectivo },
       francisco: { saldo: cobrosFrancisco - gastosFrancisco - pagosFrancisco - pagosTarjetaFrancisco, cobros: cobrosFrancisco, gastos: gastosFrancisco, pagos: pagosFrancisco, tarjetas: pagosTarjetaFrancisco },
       diego: { saldo: cobrosDiego - gastosDiego - pagosDiego - pagosTarjetaDiego, cobros: cobrosDiego, gastos: gastosDiego, pagos: pagosDiego, tarjetas: pagosTarjetaDiego },
-      mp: { saldo: cobrosMP - gastosMP - pagosMP - pagosTarjetaMP, cobros: cobrosMP, gastos: gastosMP, pagos: pagosMP, tarjetas: pagosTarjetaMP },
       deudaPorTarjeta,
       totalDeudaTarjetas,
-      totalDisponible: (cobrosEfectivo - gastosEfectivo - pagosEfectivo) + (cobrosFrancisco - gastosFrancisco - pagosFrancisco - pagosTarjetaFrancisco) + (cobrosDiego - gastosDiego - pagosDiego - pagosTarjetaDiego) + (cobrosMP - gastosMP - pagosMP - pagosTarjetaMP),
+      totalDisponible: (cobrosEfectivo - gastosEfectivo - pagosEfectivo) + (cobrosFrancisco - gastosFrancisco - pagosFrancisco - pagosTarjetaFrancisco) + (cobrosDiego - gastosDiego - pagosDiego - pagosTarjetaDiego),
     }
   }, [cobros, gastos, pagos, pagosTarjeta])
 
@@ -198,7 +191,7 @@ export function CajaContent() {
               <div>
                 <p className="text-sm text-muted-foreground">Total disponible</p>
                 <p className="text-3xl font-bold">{formatCurrency(saldos.totalDisponible)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Efectivo + Francisco + Diego + MP (sin contar deuda tarjetas)</p>
+                <p className="text-xs text-muted-foreground mt-1">Efectivo + Cuenta Francisco + Cuenta Diego (sin contar deuda tarjetas)</p>
               </div>
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Deuda tarjetas pendiente</p>
@@ -247,18 +240,6 @@ export function CajaContent() {
                 { label: "Gastos cuenta", value: saldos.diego.gastos, sign: "-" },
                 { label: "Pagos a proveedores", value: saldos.diego.pagos, sign: "-" },
                 { label: "Pago de tarjetas", value: saldos.diego.tarjetas, sign: "-" },
-              ]}
-            />
-            <BolsilloCard
-              label="MercadoPago"
-              icon={Smartphone}
-              color="text-cyan-600"
-              saldo={saldos.mp.saldo}
-              detalle={[
-                { label: "Cobros recibidos", value: saldos.mp.cobros, sign: "+" },
-                { label: "Gastos MP", value: saldos.mp.gastos, sign: "-" },
-                { label: "Pagos a proveedores", value: saldos.mp.pagos, sign: "-" },
-                { label: "Pago tarjeta MP", value: saldos.mp.tarjetas, sign: "-" },
               ]}
             />
           </div>
