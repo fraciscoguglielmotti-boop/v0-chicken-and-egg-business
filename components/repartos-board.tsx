@@ -375,10 +375,7 @@ export function RepartosBoard({ pedidos, vehiculos }: RepartosBoardProps) {
         const bg = bgPalette[paletteIdx % bgPalette.length]
         paletteIdx++
 
-        // Ordenar clientes alfabéticamente dentro del grupo
-        const pedsOrdenados = [...peds].sort((a, b) => a.cliente.localeCompare(b.cliente, "es"))
-
-        pedsOrdenados.forEach(p => {
+        peds.forEach(p => {
           acumulado += p.cantidad
           body.push([
             { content: p.cliente, styles: { fillColor: bg } },
