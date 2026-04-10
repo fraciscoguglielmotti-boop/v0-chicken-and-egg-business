@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ChevronDown, ChevronUp, TrendingUp, ShoppingCart, DollarSign, Package, FileDown } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ChevronDown, ChevronUp, TrendingUp, ShoppingCart, DollarSign, Package, FileDown, AlertTriangle } from "lucide-react"
 
 interface Venta {
   id: string
@@ -18,6 +19,13 @@ interface Venta {
   cantidad: number
   precio_unitario: number
   vendedor?: string
+}
+
+interface Compra {
+  id: string
+  fecha: string
+  producto: string
+  cantidad: number
 }
 
 interface DiaResumen {
@@ -30,6 +38,7 @@ interface DiaResumen {
 
 export function ResumenVentasContent() {
   const { data: ventas = [], isLoading } = useSupabase<Venta>("ventas")
+  const { data: compras = [] } = useSupabase<Compra>("compras")
 
   const hoy = new Date()
   const primerDiaMes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-01`
@@ -110,6 +119,51 @@ export function ResumenVentasContent() {
   const promediodiario = totalesGlobales.diasConVentas > 0
     ? totalesGlobales.totalVentas / totalesGlobales.diasConVentas
     : 0
+
+  // Comparativo compras vs ventas por día y producto
+  const comparativoPorDia = useMemo(() => {
+    // Estructura: dia -> producto -> { comprado, vendido }
+    const mapa = new Map<string, Map<string, { comprado: number; vendido: number }>>()
+
+    const asegurar = (dia: string, producto: string) => {
+      if (!mapa.has(dia)) mapa.set(dia, new Map())
+      if (!mapa.get(dia)!.has(producto)) mapa.get(dia)!.set(producto, { comprado: 0, vendido: 0 })
+      return mapa.get(dia)!.get(producto)!
+    }
+
+    compras.forEach(c => {
+      const dia = c.fecha.slice(0, 10)
+      if ((!desde || dia >= desde) && (!hasta || dia <= hasta)) {
+        asegurar(dia, c.producto).comprado += c.cantidad
+      }
+    })
+
+    ventas.forEach(v => {
+      const dia = v.fecha.slice(0, 10)
+      const prod = v.producto_nombre
+      if (prod && (!desde || dia >= desde) && (!hasta || dia <= hasta)) {
+        asegurar(dia, prod).vendido += v.cantidad
+      }
+    })
+
+    // Aplanar en filas, ordenadas por fecha desc y producto asc
+    const filas: { dia: string; producto: string; comprado: number; vendido: number; dif: number }[] = []
+    Array.from(mapa.entries())
+      .sort(([a], [b]) => b.localeCompare(a))
+      .forEach(([dia, productos]) => {
+        Array.from(productos.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .forEach(([producto, vals]) => {
+            filas.push({ dia, producto, ...vals, dif: vals.comprado - vals.vendido })
+          })
+      })
+
+    return filas
+  }, [compras, ventas, desde, hasta])
+
+  const totalDifComp = comparativoPorDia.reduce((s, r) => s + r.comprado, 0)
+  const totalDifVent = comparativoPorDia.reduce((s, r) => s + r.vendido, 0)
+  const diasConDif = new Set(comparativoPorDia.filter(r => r.dif !== 0).map(r => r.dia)).size
 
   const handleExportarPDF = async (dia: DiaResumen) => {
     const jsPDF = (await import("jspdf")).jsPDF
@@ -261,7 +315,7 @@ export function ResumenVentasContent() {
 
   return (
     <div className="space-y-6">
-      {/* Filtros */}
+      {/* Filtros — fuera de tabs para que apliquen a ambos */}
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <Label>Desde</Label>
@@ -272,6 +326,21 @@ export function ResumenVentasContent() {
           <Input type="date" value={hasta} onChange={e => setHasta(e.target.value)} className="w-auto" />
         </div>
       </div>
+
+      <Tabs defaultValue="resumen">
+        <TabsList>
+          <TabsTrigger value="resumen">Resumen de ventas</TabsTrigger>
+          <TabsTrigger value="compras-vs-ventas" className="relative">
+            Compras vs Ventas
+            {diasConDif > 0 && (
+              <span className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
+                {diasConDif}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="resumen" className="space-y-6 mt-4">
 
       {/* KPIs del período */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -410,6 +479,89 @@ export function ResumenVentasContent() {
           )
         })}
       </div>
+
+        </TabsContent>
+
+        {/* ── COMPRAS VS VENTAS ─────────────────────────────────────────────── */}
+        <TabsContent value="compras-vs-ventas" className="mt-4 space-y-4">
+
+          {/* Totales del período */}
+          <div className="grid grid-cols-3 gap-3">
+            <Card className="p-4">
+              <p className="text-xs text-muted-foreground">Total comprado</p>
+              <p className="text-2xl font-bold text-green-700">{totalDifComp} caj.</p>
+            </Card>
+            <Card className="p-4">
+              <p className="text-xs text-muted-foreground">Total vendido</p>
+              <p className="text-2xl font-bold text-blue-600">{totalDifVent} caj.</p>
+            </Card>
+            <Card className={`p-4 ${totalDifComp - totalDifVent !== 0 ? "border-amber-400 bg-amber-50 dark:bg-amber-950/20" : ""}`}>
+              <p className="text-xs text-muted-foreground">Diferencia acumulada</p>
+              <p className={`text-2xl font-bold ${totalDifComp - totalDifVent !== 0 ? "text-amber-600" : "text-muted-foreground"}`}>
+                {totalDifComp - totalDifVent > 0 ? "+" : ""}{totalDifComp - totalDifVent} caj.
+              </p>
+            </Card>
+          </div>
+
+          {/* Tabla */}
+          {comparativoPorDia.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">Sin datos en el período seleccionado.</p>
+          ) : (
+            <div className="rounded-lg border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="p-3 text-left font-semibold">Fecha</th>
+                    <th className="p-3 text-left font-semibold">Producto</th>
+                    <th className="p-3 text-right font-semibold text-green-700">Comprado</th>
+                    <th className="p-3 text-right font-semibold text-blue-600">Vendido</th>
+                    <th className="p-3 text-right font-semibold">Diferencia</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {comparativoPorDia.map((r, i) => (
+                    <tr
+                      key={i}
+                      className={`border-t ${
+                        r.dif > 0 ? "bg-amber-50 dark:bg-amber-950/20" :
+                        r.dif < 0 ? "bg-red-50 dark:bg-red-950/20" :
+                        "hover:bg-muted/20"
+                      }`}
+                    >
+                      <td className="p-3 font-medium">
+                        {formatDate(new Date(r.dia + "T12:00:00"))}
+                      </td>
+                      <td className="p-3">{r.producto}</td>
+                      <td className="p-3 text-right font-medium text-green-700">
+                        {r.comprado > 0 ? r.comprado : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="p-3 text-right font-medium text-blue-600">
+                        {r.vendido > 0 ? r.vendido : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="p-3 text-right">
+                        {r.dif === 0 ? (
+                          <span className="text-muted-foreground text-xs">ok</span>
+                        ) : (
+                          <span className={`font-bold flex items-center justify-end gap-1 ${r.dif > 0 ? "text-amber-600" : "text-red-600"}`}>
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            {r.dif > 0 ? "+" : ""}{r.dif}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            <span className="text-amber-600 font-medium">Amarillo</span>: se compró más de lo que se vendió ese día (stock sobrante).{" "}
+            <span className="text-red-600 font-medium">Rojo</span>: se vendió más de lo que se compró (posible error de carga).
+          </p>
+        </TabsContent>
+
+      </Tabs>
     </div>
   )
 }
