@@ -196,11 +196,11 @@ export async function GET(req: NextRequest) {
         { data: cAyer },
         { data: gHoy },
       ] = await Promise.all([
-        supabase.from("ventas").select("cliente_nombre,producto_nombre,cantidad,precio_unitario").eq("fecha", d.today),
-        supabase.from("ventas").select("cantidad,precio_unitario").eq("fecha", d.yesterday),
-        supabase.from("cobros").select("monto").eq("fecha", d.today),
-        supabase.from("cobros").select("monto").eq("fecha", d.yesterday),
-        supabase.from("gastos").select("monto").eq("fecha", d.today),
+        supabase.from("ventas").select("cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", d.today).lt("fecha", toDateStr(addDays(d.now, 1))),
+        supabase.from("ventas").select("cantidad,precio_unitario").gte("fecha", d.yesterday).lt("fecha", d.today),
+        supabase.from("cobros").select("monto").gte("fecha", d.today).lt("fecha", toDateStr(addDays(d.now, 1))),
+        supabase.from("cobros").select("monto").gte("fecha", d.yesterday).lt("fecha", d.today),
+        supabase.from("gastos").select("monto").gte("fecha", d.today).lt("fecha", toDateStr(addDays(d.now, 1))),
       ])
 
       const totalVHoy = sumVentas(vHoy ?? [])
