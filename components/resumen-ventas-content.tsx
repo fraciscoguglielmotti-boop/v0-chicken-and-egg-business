@@ -7,7 +7,8 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { ChevronDown, ChevronUp, TrendingUp, ShoppingCart, DollarSign, Package } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { ChevronDown, ChevronUp, TrendingUp, ShoppingCart, DollarSign, Package, FileDown } from "lucide-react"
 
 interface Venta {
   id: string
@@ -110,6 +111,154 @@ export function ResumenVentasContent() {
     ? totalesGlobales.totalVentas / totalesGlobales.diasConVentas
     : 0
 
+  const handleExportarPDF = async (dia: DiaResumen) => {
+    const jsPDF = (await import("jspdf")).jsPDF
+    const autoTable = (await import("jspdf-autotable")).default
+    const doc = new jsPDF()
+
+    const fechaLabel = new Date(dia.fecha + "T12:00:00").toLocaleDateString("es-AR", {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+    })
+    const fechaCapitalizada = fechaLabel.charAt(0).toUpperCase() + fechaLabel.slice(1)
+
+    // ── Encabezado ──────────────────────────────────────────────────────────
+    doc.setFontSize(20)
+    doc.setFont("helvetica", "bold")
+    doc.setTextColor(20, 20, 20)
+    doc.text("AviGest — Resumen de ventas", 14, 18)
+
+    doc.setFontSize(12)
+    doc.setFont("helvetica", "normal")
+    doc.setTextColor(90, 90, 90)
+    doc.text(fechaCapitalizada, 14, 26)
+
+    // Línea separadora
+    doc.setDrawColor(200, 200, 200)
+    doc.setLineWidth(0.3)
+    doc.line(14, 30, 196, 30)
+
+    // ── Bloque de KPIs ──────────────────────────────────────────────────────
+    const totalCajones = dia.productosMas.reduce((s, p) => s + p.cantidad, 0)
+    doc.setFontSize(9)
+    doc.setTextColor(100, 100, 100)
+    doc.setFont("helvetica", "normal")
+
+    const kpis = [
+      { label: "Total facturado", value: formatCurrency(dia.totalVentas) },
+      { label: "Cajones vendidos", value: `${totalCajones}` },
+      { label: "Operaciones", value: `${dia.cantidadOperaciones}` },
+    ]
+    let kx = 14
+    kpis.forEach(k => {
+      doc.setFont("helvetica", "normal")
+      doc.setTextColor(110, 110, 110)
+      doc.text(k.label, kx, 38)
+      doc.setFont("helvetica", "bold")
+      doc.setTextColor(20, 20, 20)
+      doc.setFontSize(13)
+      doc.text(k.value, kx, 45)
+      doc.setFontSize(9)
+      kx += 62
+    })
+
+    let y = 54
+
+    // ── Tabla 1: Resumen por producto ────────────────────────────────────────
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(9)
+    doc.setTextColor(80, 80, 80)
+    doc.text("RESUMEN POR PRODUCTO", 14, y)
+    y += 3
+
+    const bodyProductos: any[] = dia.productosMas.map(p => [
+      p.nombre,
+      { content: p.cantidad.toString(), styles: { halign: "center" } },
+      { content: formatCurrency(p.total / p.cantidad), styles: { halign: "right" } },
+      { content: formatCurrency(p.total), styles: { halign: "right", fontStyle: "bold" } },
+    ])
+    bodyProductos.push([
+      { content: "TOTAL", styles: { fontStyle: "bold", fillColor: [235, 235, 235] } },
+      { content: totalCajones.toString(), styles: { halign: "center", fontStyle: "bold", fillColor: [235, 235, 235] } },
+      { content: "", styles: { fillColor: [235, 235, 235] } },
+      { content: formatCurrency(dia.totalVentas), styles: { halign: "right", fontStyle: "bold", fillColor: [235, 235, 235] } },
+    ])
+
+    autoTable(doc, {
+      startY: y,
+      head: [["Producto", "Cajones", "Precio unit.", "Total"]],
+      body: bodyProductos,
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [30, 30, 30], textColor: 255, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
+      columnStyles: {
+        0: { cellWidth: 80 },
+        1: { halign: "center", cellWidth: 28 },
+        2: { halign: "right", cellWidth: 38 },
+        3: { halign: "right", cellWidth: 38, fontStyle: "bold" },
+      },
+    })
+
+    y = (doc as any).lastAutoTable.finalY + 10
+
+    // ── Tabla 2: Detalle por cliente ─────────────────────────────────────────
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(9)
+    doc.setTextColor(80, 80, 80)
+    doc.text("DETALLE POR CLIENTE", 14, y)
+    y += 3
+
+    // Ordenar: primero por producto, luego por cliente A-Z
+    const ventasOrdenadas = [...dia.ventas].sort((a, b) => {
+      const prodCmp = (a.producto_nombre || "").localeCompare(b.producto_nombre || "", "es")
+      if (prodCmp !== 0) return prodCmp
+      return a.cliente_nombre.localeCompare(b.cliente_nombre, "es")
+    })
+
+    const bodyDetalle: any[] = ventasOrdenadas.map(v => [
+      v.cliente_nombre,
+      v.producto_nombre || "—",
+      { content: v.cantidad.toString(), styles: { halign: "center" } },
+      { content: formatCurrency(v.precio_unitario), styles: { halign: "right" } },
+      { content: formatCurrency(v.cantidad * v.precio_unitario), styles: { halign: "right", fontStyle: "bold" } },
+    ])
+    bodyDetalle.push([
+      { content: "TOTAL", styles: { fontStyle: "bold", fillColor: [235, 235, 235] } },
+      { content: "", styles: { fillColor: [235, 235, 235] } },
+      { content: totalCajones.toString(), styles: { halign: "center", fontStyle: "bold", fillColor: [235, 235, 235] } },
+      { content: "", styles: { fillColor: [235, 235, 235] } },
+      { content: formatCurrency(dia.totalVentas), styles: { halign: "right", fontStyle: "bold", fillColor: [235, 235, 235] } },
+    ])
+
+    autoTable(doc, {
+      startY: y,
+      head: [["Cliente", "Producto", "Cajones", "Precio unit.", "Total"]],
+      body: bodyDetalle,
+      styles: { fontSize: 9, cellPadding: 3 },
+      headStyles: { fillColor: [30, 30, 30], textColor: 255, fontStyle: "bold" },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
+      columnStyles: {
+        0: { cellWidth: 65 },
+        1: { cellWidth: 45 },
+        2: { halign: "center", cellWidth: 22 },
+        3: { halign: "right", cellWidth: 30 },
+        4: { halign: "right", cellWidth: 30, fontStyle: "bold" },
+      },
+    })
+
+    // ── Pie de página ───────────────────────────────────────────────────────
+    const pageCount = (doc as any).internal.getNumberOfPages()
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i)
+      doc.setFontSize(7)
+      doc.setTextColor(160, 160, 160)
+      doc.setFont("helvetica", "normal")
+      doc.text(`AviGest · ${fechaCapitalizada}`, 14, 290)
+      doc.text(`Pág. ${i} / ${pageCount}`, 190, 290, { align: "right" })
+    }
+
+    doc.save(`ventas-${dia.fecha}.pdf`)
+  }
+
   return (
     <div className="space-y-6">
       {/* Filtros */}
@@ -205,6 +354,15 @@ export function ResumenVentasContent() {
                 </div>
                 <div className="flex items-center gap-3 shrink-0 ml-4">
                   <span className="font-bold text-green-600">{formatCurrency(dia.totalVentas)}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                    title="Exportar PDF"
+                    onClick={e => { e.stopPropagation(); handleExportarPDF(dia) }}
+                  >
+                    <FileDown className="h-4 w-4" />
+                  </Button>
                   {abierto
                     ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
                     : <ChevronDown className="h-4 w-4 text-muted-foreground" />
