@@ -82,6 +82,9 @@ export function RepartosMinoristas({
   const [newOpen, setNewOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const dndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
+  )
   const [newForm, setNewForm] = useState({
     fecha: todayISO(),
     nombre: "",
@@ -456,11 +459,7 @@ export function RepartosMinoristas({
                 </div>
               ) : (
                 <DndContext
-                  sensors={useSensors(
-                    useSensor(PointerSensor, {
-                      activationConstraint: { distance: 5 },
-                    })
-                  )}
+                  sensors={dndSensors}
                   collisionDetection={closestCenter}
                   onDragEnd={handleDragEnd}
                 >
