@@ -17,6 +17,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
+import { useConfirm } from "@/components/confirm-dialog"
 import { ClienteMinorista, nextCustomerId } from "./types"
 
 interface Props {
@@ -36,10 +37,12 @@ const empty = {
 
 export function ClientesMinoristas({ clientes, mutate }: Props) {
   const { toast } = useToast()
+  const { confirm, ConfirmDialog } = useConfirm()
   const [search, setSearch] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ClienteMinorista | null>(null)
   const [form, setForm] = useState(empty)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
@@ -80,6 +83,8 @@ export function ClientesMinoristas({ clientes, mutate }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
+    setIsSubmitting(true)
     try {
       const lat = form.lat ? Number(form.lat) : null
       const lng = form.lng ? Number(form.lng) : null
@@ -111,11 +116,19 @@ export function ClientesMinoristas({ clientes, mutate }: Props) {
         description: err.message || "No se pudo guardar",
         variant: "destructive",
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const handleDelete = async (c: ClienteMinorista) => {
-    if (!confirm(`Eliminar cliente ${c.nombre} ${c.apellido}?`)) return
+    const ok = await confirm({
+      title: `Eliminar cliente ${c.nombre} ${c.apellido}?`,
+      description: "Esta acción no se puede deshacer.",
+      destructive: true,
+      confirmLabel: "Eliminar",
+    })
+    if (!ok) return
     try {
       await deleteRow("clientes_minoristas", c.id)
       await mutate()
@@ -309,14 +322,18 @@ export function ClientesMinoristas({ clientes, mutate }: Props) {
                 type="button"
                 variant="outline"
                 onClick={() => setDialogOpen(false)}
+                disabled={isSubmitting}
               >
                 Cancelar
               </Button>
-              <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Guardando…" : editing ? "Guardar" : "Crear"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog />
     </div>
   )
 }

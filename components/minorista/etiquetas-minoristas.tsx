@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, todayISO } from "@/lib/utils"
 import jsPDF from "jspdf"
 import {
   ClienteMinorista,
@@ -33,7 +33,7 @@ interface Props {
 
 export function EtiquetasMinoristas({ pedidos, items, clientes, repartos }: Props) {
   const { toast } = useToast()
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10))
+  const [fecha, setFecha] = useState(todayISO())
   const [repartoId, setRepartoId] = useState<string>("all")
   const [selected, setSelected] = useState<Set<string>>(new Set())
 

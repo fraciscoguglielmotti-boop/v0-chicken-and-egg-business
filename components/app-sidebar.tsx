@@ -193,20 +193,28 @@ export function AppSidebar({ open, onClose }: AppSidebarProps) {
 
   // Load persisted state from localStorage
   useEffect(() => {
+    const allIds = ALL_SECTIONS.map((s) => s.id)
     try {
       const savedOrder = localStorage.getItem(STORAGE_KEY_ORDER)
       if (savedOrder) {
-        const parsed: string[] = JSON.parse(savedOrder)
-        // Only use saved order if it contains the same section IDs
-        const allIds = ALL_SECTIONS.map((s) => s.id)
-        const valid = parsed.length === allIds.length && allIds.every((id) => parsed.includes(id))
-        if (valid) setSectionOrder(parsed)
+        const parsed: unknown = JSON.parse(savedOrder)
+        if (Array.isArray(parsed)) {
+          // Keep known ids in saved order; append new sections not yet persisted.
+          const kept = parsed.filter((id): id is string => allIds.includes(id as string))
+          const missing = allIds.filter((id) => !kept.includes(id))
+          setSectionOrder([...kept, ...missing])
+        }
       }
     } catch {}
     try {
       const savedCollapsed = localStorage.getItem(STORAGE_KEY_COLLAPSED)
       if (savedCollapsed) {
-        setCollapsedSections(new Set(JSON.parse(savedCollapsed)))
+        const parsed: unknown = JSON.parse(savedCollapsed)
+        if (Array.isArray(parsed)) {
+          setCollapsedSections(
+            new Set(parsed.filter((v): v is string => typeof v === "string"))
+          )
+        }
       }
     } catch {}
   }, [])

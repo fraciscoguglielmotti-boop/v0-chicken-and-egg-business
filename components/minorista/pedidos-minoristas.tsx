@@ -34,8 +34,9 @@ import {
 } from "@/components/ui/dialog"
 import { Card, CardContent } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, todayISO } from "@/lib/utils"
 import { insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
+import { useConfirm } from "@/components/confirm-dialog"
 import { createClient } from "@/lib/supabase/client"
 import {
   ClienteMinorista,
@@ -84,14 +85,16 @@ export function PedidosMinoristas({
   mutateItems,
 }: Props) {
   const { toast } = useToast()
+  const { confirm, ConfirmDialog } = useConfirm()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<PedidoMinorista | null>(null)
   const [search, setSearch] = useState("")
   const [filterEstado, setFilterEstado] = useState<string>("todos")
   const [filterFecha, setFilterFecha] = useState<string>("")
 
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [clienteId, setClienteId] = useState<string>("")
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10))
+  const [fecha, setFecha] = useState(todayISO())
   const [formaPago, setFormaPago] = useState<"efectivo" | "mercadopago">("efectivo")
   const [mpLink, setMpLink] = useState("")
   const [notas, setNotas] = useState("")
@@ -131,7 +134,7 @@ export function PedidosMinoristas({
 
   const resetForm = () => {
     setClienteId("")
-    setFecha(new Date().toISOString().slice(0, 10))
+    setFecha(todayISO())
     setFormaPago("efectivo")
     setMpLink("")
     setNotas("")
@@ -218,6 +221,7 @@ export function PedidosMinoristas({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
     if (!clienteId) {
       toast({
         title: "Falta cliente",
@@ -234,6 +238,7 @@ export function PedidosMinoristas({
       })
       return
     }
+    setIsSubmitting(true)
     try {
       const payload = {
         cliente_id: clienteId,
@@ -285,11 +290,19 @@ export function PedidosMinoristas({
       setOpen(false)
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const handleDelete = async (p: PedidoMinorista) => {
-    if (!confirm(`Eliminar pedido ${p.numero}?`)) return
+    const ok = await confirm({
+      title: `Eliminar pedido ${p.numero}?`,
+      description: "Se borrarán también sus items.",
+      destructive: true,
+      confirmLabel: "Eliminar",
+    })
+    if (!ok) return
     try {
       await deleteRow("pedidos_minoristas", p.id)
       await Promise.all([mutatePedidos(), mutateItems()])
@@ -642,7 +655,7 @@ export function PedidosMinoristas({
                 <Label>Forma de pago</Label>
                 <Select
                   value={formaPago}
-                  onValueChange={(v: any) => setFormaPago(v)}
+                  onValueChange={(v) => setFormaPago(v as "efectivo" | "mercadopago")}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -695,14 +708,26 @@ export function PedidosMinoristas({
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+                disabled={isSubmitting}
+              >
                 Cancelar
               </Button>
-              <Button type="submit">{editing ? "Guardar" : "Crear pedido"}</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting
+                  ? "Guardando…"
+                  : editing
+                  ? "Guardar"
+                  : "Crear pedido"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog />
     </div>
   )
 }

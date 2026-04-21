@@ -108,11 +108,20 @@ export function CajaContent() {
 
   const handlePagarTarjeta = async (e: React.FormEvent) => {
     e.preventDefault()
+    const montoNum = Number(form.monto)
+    if (!form.tarjeta || !form.cuenta_origen) {
+      toast({ title: "Completá tarjeta y cuenta origen", variant: "destructive" })
+      return
+    }
+    if (!Number.isFinite(montoNum) || montoNum <= 0) {
+      toast({ title: "Monto inválido", description: "Ingresá un número mayor a 0", variant: "destructive" })
+      return
+    }
     try {
       await insertRow("pagos_tarjeta", {
         fecha: form.fecha,
         tarjeta: form.tarjeta,
-        monto: parseFloat(form.monto),
+        monto: montoNum,
         cuenta_origen: form.cuenta_origen,
         observaciones: form.observaciones || null,
       })

@@ -112,12 +112,24 @@ export function DataTable<T extends { id: string }>({
           render: (item: T) => (
             <div className="flex gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
               {onEdit && (
-                <Button variant="ghost" size="icon" onClick={() => onEdit(item)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onEdit(item)}
+                  aria-label="Editar"
+                  title="Editar"
+                >
                   <Pencil className="h-4 w-4" />
                 </Button>
               )}
               {onDelete && (
-                <Button variant="ghost" size="icon" onClick={() => setPendingDeleteId(item.id)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setPendingDeleteId(item.id)}
+                  aria-label="Eliminar"
+                  title="Eliminar"
+                >
                   <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
               )}

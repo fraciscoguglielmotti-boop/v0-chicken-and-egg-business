@@ -47,8 +47,9 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useToast } from "@/hooks/use-toast"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, todayISO } from "@/lib/utils"
 import { insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
+import { useConfirm } from "@/components/confirm-dialog"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 import {
@@ -77,10 +78,12 @@ export function RepartosMinoristas({
   mutatePedidos,
 }: Props) {
   const { toast } = useToast()
+  const { confirm, ConfirmDialog } = useConfirm()
   const [newOpen, setNewOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [newForm, setNewForm] = useState({
-    fecha: new Date().toISOString().slice(0, 10),
+    fecha: todayISO(),
     nombre: "",
     repartidor: "",
   })
@@ -133,6 +136,8 @@ export function RepartosMinoristas({
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
+    setIsSubmitting(true)
     try {
       const inserted = await insertRow("repartos_minoristas", {
         fecha: newForm.fecha,
@@ -145,12 +150,14 @@ export function RepartosMinoristas({
       setNewOpen(false)
       setSelectedId(inserted.id)
       setNewForm({
-        fecha: new Date().toISOString().slice(0, 10),
+        fecha: todayISO(),
         nombre: "",
         repartidor: "",
       })
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -213,7 +220,13 @@ export function RepartosMinoristas({
 
   const handleDeleteReparto = async () => {
     if (!repartoSelected) return
-    if (!confirm(`Eliminar reparto ${repartoSelected.nombre}?`)) return
+    const ok = await confirm({
+      title: `Eliminar reparto ${repartoSelected.nombre}?`,
+      description: "Los pedidos quedarán sin asignar.",
+      destructive: true,
+      confirmLabel: "Eliminar",
+    })
+    if (!ok) return
     try {
       await deleteRow("repartos_minoristas", repartoSelected.id)
       await mutateRepartos()
@@ -562,14 +575,22 @@ export function RepartosMinoristas({
               />
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setNewOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setNewOpen(false)}
+                disabled={isSubmitting}
+              >
                 Cancelar
               </Button>
-              <Button type="submit">Crear reparto</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Creando…" : "Crear reparto"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog />
     </div>
   )
 }

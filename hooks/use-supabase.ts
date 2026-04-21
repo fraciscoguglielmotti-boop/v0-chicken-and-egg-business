@@ -1,17 +1,40 @@
 import useSWR from "swr"
 import { createClient } from "@/lib/supabase/client"
 
+export interface UseSupabaseOptions {
+  /** Max rows to fetch. Defaults to 1000 (Supabase default). */
+  limit?: number
+  /** Column to order by. Defaults to "created_at". */
+  orderBy?: string
+  /** Ascending order. Defaults to false (newest first). */
+  ascending?: boolean
+  /** Extra equality filters, e.g. { activo: true }. */
+  filters?: Record<string, any>
+}
+
 // Generic fetcher for SWR
-async function fetcher<T>(table: string): Promise<T[]> {
+async function fetcher<T>(table: string, opts: UseSupabaseOptions = {}): Promise<T[]> {
   const supabase = createClient()
-  const { data, error } = await supabase.from(table).select("*").order("created_at", { ascending: false })
+  const orderCol = opts.orderBy ?? "created_at"
+  const ascending = opts.ascending ?? false
+  let query = supabase.from(table).select("*").order(orderCol, { ascending })
+  if (opts.filters) {
+    for (const [k, v] of Object.entries(opts.filters)) {
+      query = query.eq(k, v)
+    }
+  }
+  if (typeof opts.limit === "number") {
+    query = query.limit(opts.limit)
+  }
+  const { data, error } = await query
   if (error) throw error
   return (data as T[]) || []
 }
 
 // Hook to fetch data from a Supabase table
-export function useSupabase<T = any>(table: string) {
-  const { data, error, isLoading, mutate } = useSWR<T[]>(`supabase:${table}`, () => fetcher<T>(table))
+export function useSupabase<T = any>(table: string, opts: UseSupabaseOptions = {}) {
+  const key = `supabase:${table}:${JSON.stringify(opts)}`
+  const { data, error, isLoading, mutate } = useSWR<T[]>(key, () => fetcher<T>(table, opts))
 
   return {
     data: data || [],

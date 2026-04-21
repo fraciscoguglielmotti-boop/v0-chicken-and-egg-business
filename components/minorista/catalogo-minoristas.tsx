@@ -26,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
+import { useConfirm } from "@/components/confirm-dialog"
 import { formatCurrency } from "@/lib/utils"
 import { ProductoMinorista, PromoMinorista } from "./types"
 
@@ -80,9 +81,11 @@ function ProductosTab({
   mutate: () => Promise<any>
 }) {
   const { toast } = useToast()
+  const { confirm, ConfirmDialog } = useConfirm()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<ProductoMinorista | null>(null)
   const [form, setForm] = useState(emptyProducto)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const openNew = () => {
     setEditing(null)
@@ -104,6 +107,8 @@ function ProductosTab({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
+    setIsSubmitting(true)
     try {
       const payload = {
         nombre: form.nombre.trim(),
@@ -127,11 +132,18 @@ function ProductosTab({
         description: err.message,
         variant: "destructive",
       })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const handleDelete = async (p: ProductoMinorista) => {
-    if (!confirm(`Eliminar ${p.nombre}?`)) return
+    const ok = await confirm({
+      title: `Eliminar ${p.nombre}?`,
+      destructive: true,
+      confirmLabel: "Eliminar",
+    })
+    if (!ok) return
     try {
       await deleteRow("productos_minoristas", p.id)
       await mutate()
@@ -265,14 +277,22 @@ function ProductosTab({
               <Label>Activo (visible para pedidos)</Label>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+                disabled={isSubmitting}
+              >
                 Cancelar
               </Button>
-              <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Guardando…" : editing ? "Guardar" : "Crear"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog />
     </div>
   )
 }
@@ -295,9 +315,11 @@ function PromosTab({
   mutate: () => Promise<any>
 }) {
   const { toast } = useToast()
+  const { confirm, ConfirmDialog } = useConfirm()
   const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState<PromoMinorista | null>(null)
   const [form, setForm] = useState(emptyPromo)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const openNew = () => {
     setEditing(null)
@@ -319,6 +341,8 @@ function PromosTab({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
+    setIsSubmitting(true)
     try {
       const payload = {
         nombre: form.nombre.trim(),
@@ -338,11 +362,18 @@ function PromosTab({
       setOpen(false)
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const handleDelete = async (p: PromoMinorista) => {
-    if (!confirm(`Eliminar promo ${p.nombre}?`)) return
+    const ok = await confirm({
+      title: `Eliminar promo ${p.nombre}?`,
+      destructive: true,
+      confirmLabel: "Eliminar",
+    })
+    if (!ok) return
     try {
       await deleteRow("promos_minoristas", p.id)
       await mutate()
@@ -435,7 +466,9 @@ function PromosTab({
               <Label>Tipo *</Label>
               <Select
                 value={form.tipo}
-                onValueChange={(v: any) => setForm({ ...form, tipo: v })}
+                onValueChange={(v) =>
+                  setForm({ ...form, tipo: v as "precio_fijo" | "descuento_pct" })
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -469,14 +502,22 @@ function PromosTab({
               <Label>Activa</Label>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+                disabled={isSubmitting}
+              >
                 Cancelar
               </Button>
-              <Button type="submit">{editing ? "Guardar" : "Crear"}</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Guardando…" : editing ? "Guardar" : "Crear"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog />
     </div>
   )
 }

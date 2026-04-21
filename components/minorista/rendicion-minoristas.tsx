@@ -19,6 +19,7 @@ import { StatCard } from "@/components/stat-card"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency } from "@/lib/utils"
 import { insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
+import { useConfirm } from "@/components/confirm-dialog"
 import {
   ClienteMinorista,
   PedidoMinorista,
@@ -42,10 +43,12 @@ export function RendicionMinoristas({
   mutateRendiciones,
 }: Props) {
   const { toast } = useToast()
+  const { confirm, ConfirmDialog } = useConfirm()
   const [repartoId, setRepartoId] = useState<string>("")
   const [efectivo, setEfectivo] = useState("0")
   const [mp, setMp] = useState("0")
   const [notas, setNotas] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const clientesById = useMemo(() => {
     const m = new Map<string, ClienteMinorista>()
@@ -88,21 +91,34 @@ export function RendicionMinoristas({
 
   const cobradoTotal = (Number(efectivo) || 0) + (Number(mp) || 0)
   const diferencia = cobradoTotal - esperadoTotal
+  const coincide = Math.abs(diferencia) < 0.01
 
   useEffect(() => {
     if (rendicionDelReparto) {
       setEfectivo(String(rendicionDelReparto.efectivo_cobrado || 0))
       setMp(String(rendicionDelReparto.mp_cobrado || 0))
       setNotas(rendicionDelReparto.notas || "")
-    } else if (repartoSelected) {
-      setEfectivo(String(esperadoEfectivo.toFixed(2)))
-      setMp(String(esperadoMP.toFixed(2)))
-      setNotas("")
+      return
     }
-  }, [rendicionDelReparto?.id, repartoSelected?.id])
+    if (!repartoSelected) return
+    const entregadosLocal = (repartoSelected.orden_pedidos || [])
+      .map((id) => pedidos.find((p) => p.id === id))
+      .filter((p): p is PedidoMinorista => !!p && p.estado === "entregado")
+    const efLocal = entregadosLocal
+      .filter((p) => p.forma_pago === "efectivo")
+      .reduce((s, p) => s + (p.total || 0), 0)
+    const mpLocal = entregadosLocal
+      .filter((p) => p.forma_pago === "mercadopago")
+      .reduce((s, p) => s + (p.total || 0), 0)
+    setEfectivo(efLocal.toFixed(2))
+    setMp(mpLocal.toFixed(2))
+    setNotas("")
+  }, [rendicionDelReparto?.id, repartoSelected?.id, pedidos])
 
   const handleGuardar = async () => {
     if (!repartoSelected) return
+    if (isSubmitting) return
+    setIsSubmitting(true)
     try {
       const payload = {
         reparto_id: repartoSelected.id,
@@ -125,12 +141,19 @@ export function RendicionMinoristas({
       await mutateRendiciones()
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const handleDelete = async () => {
     if (!rendicionDelReparto) return
-    if (!confirm("¿Borrar rendición?")) return
+    const ok = await confirm({
+      title: "Borrar rendición?",
+      destructive: true,
+      confirmLabel: "Borrar",
+    })
+    if (!ok) return
     try {
       await deleteRow("rendiciones_minoristas", rendicionDelReparto.id)
       await mutateRendiciones()
@@ -190,12 +213,12 @@ export function RendicionMinoristas({
               title="Cobrado"
               value={formatCurrency(cobradoTotal)}
               subtitle={
-                diferencia === 0
+                coincide
                   ? "Coincide con esperado"
                   : `Diferencia: ${diferencia >= 0 ? "+" : ""}${formatCurrency(diferencia)}`
               }
               icon={Wallet}
-              variant={diferencia === 0 ? "default" : diferencia > 0 ? "success" : "destructive"}
+              variant={coincide ? "default" : diferencia > 0 ? "success" : "destructive"}
             />
           </div>
 
@@ -251,7 +274,7 @@ export function RendicionMinoristas({
                 <span className="text-sm font-medium">Diferencia</span>
                 <span
                   className={`text-lg font-bold ${
-                    diferencia === 0
+                    coincide
                       ? "text-foreground"
                       : diferencia > 0
                       ? "text-emerald-600"
@@ -268,13 +291,16 @@ export function RendicionMinoristas({
                     variant="ghost"
                     className="text-rose-600"
                     onClick={handleDelete}
+                    disabled={isSubmitting}
                   >
                     <Trash2 className="h-4 w-4 mr-1.5" /> Borrar
                   </Button>
                 )}
-                <Button onClick={handleGuardar}>
+                <Button onClick={handleGuardar} disabled={isSubmitting}>
                   <Save className="h-4 w-4 mr-1.5" />
-                  {rendicionDelReparto ? "Actualizar" : "Guardar"} rendición
+                  {isSubmitting
+                    ? "Guardando…"
+                    : `${rendicionDelReparto ? "Actualizar" : "Guardar"} rendición`}
                 </Button>
               </div>
             </CardContent>
@@ -326,6 +352,7 @@ export function RendicionMinoristas({
           </div>
         </>
       )}
+      <ConfirmDialog />
     </div>
   )
 }

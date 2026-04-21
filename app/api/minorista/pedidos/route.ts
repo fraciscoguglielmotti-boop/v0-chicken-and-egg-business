@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
+import { logAndSanitize } from "@/lib/api-errors"
 
 export const maxDuration = 30
 
@@ -59,17 +60,22 @@ async function nextCustomerId(supabase: ReturnType<typeof getSupabase>): Promise
  *   total?: number                // opcional, si no se calcula de items
  * }
  *
- * Seguridad simple: header X-Webhook-Secret debe coincidir con
- * MINORISTA_WEBHOOK_SECRET (env). Si la variable no está, no se verifica.
+ * Seguridad: header X-Webhook-Secret debe coincidir con
+ * MINORISTA_WEBHOOK_SECRET (env). Si la variable NO está configurada, se
+ * rechazan todas las requests — el endpoint queda desactivado hasta setearla.
  */
 export async function POST(request: Request) {
   try {
     const expected = process.env.MINORISTA_WEBHOOK_SECRET
-    if (expected) {
-      const provided = request.headers.get("x-webhook-secret")
-      if (provided !== expected) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-      }
+    if (!expected) {
+      return NextResponse.json(
+        { error: "Webhook no configurado (falta MINORISTA_WEBHOOK_SECRET)" },
+        { status: 503 }
+      )
+    }
+    const provided = request.headers.get("x-webhook-secret")
+    if (provided !== expected) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const body = await request.json()
@@ -189,11 +195,8 @@ export async function POST(request: Request) {
       total,
     })
   } catch (err: any) {
-    console.error("[minorista/pedidos] error:", err)
-    return NextResponse.json(
-      { error: err.message || "Error procesando pedido" },
-      { status: 500 }
-    )
+    const msg = logAndSanitize("minorista/pedidos", err, "Error procesando pedido")
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
 
