@@ -29,6 +29,7 @@ import {
   MessagesSquare,
   ChevronDown,
   GripVertical,
+  Store,
 } from "lucide-react"
 import {
   DndContext,
@@ -54,6 +55,7 @@ const ALL_SECTIONS = [
     label: "Principal",
     items: [
       { name: "Dashboard", href: "/", icon: LayoutDashboard },
+      { name: "Minorista", href: "/minorista", icon: Store },
       { name: "Ventas", href: "/ventas", icon: ShoppingCart },
       { name: "Resumen de Ventas", href: "/resumen-ventas", icon: CalendarDays },
       { name: "Toma de Pedidos", href: "/pedidos", icon: ClipboardList },
