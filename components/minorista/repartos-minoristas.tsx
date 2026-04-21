@@ -97,6 +97,12 @@ export function RepartosMinoristas({
     return m
   }, [clientes])
 
+  const pedidosById = useMemo(() => {
+    const m = new Map<string, PedidoMinorista>()
+    pedidos.forEach((p) => m.set(p.id, p))
+    return m
+  }, [pedidos])
+
   const itemsByPedido = useMemo(() => {
     const m = new Map<string, ItemPedidoMinorista[]>()
     items.forEach((it) => {
@@ -128,9 +134,9 @@ export function RepartosMinoristas({
   const pedidosDelReparto = useMemo(() => {
     if (!repartoSelected) return []
     return (repartoSelected.orden_pedidos || [])
-      .map((id) => pedidos.find((p) => p.id === id))
+      .map((id) => pedidosById.get(id))
       .filter(Boolean) as PedidoMinorista[]
-  }, [repartoSelected, pedidos])
+  }, [repartoSelected, pedidosById])
 
   const totalReparto = useMemo(
     () => pedidosDelReparto.reduce((s, p) => s + (p.total || 0), 0),

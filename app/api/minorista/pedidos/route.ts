@@ -132,7 +132,7 @@ export async function POST(request: Request) {
     }
 
     // 2. Crear pedido
-    const items = Array.isArray(body?.items) ? body.items : []
+    const items: any[] = Array.isArray(body?.items) ? body.items : []
     if (items.length === 0) {
       return NextResponse.json(
         { error: "items es requerido (array con al menos 1 item)" },
@@ -140,13 +140,34 @@ export async function POST(request: Request) {
       )
     }
 
-    const subtotal = items.reduce(
-      (s: number, it: any) =>
-        s + (Number(it.cantidad) || 0) * (Number(it.precio_unitario) || 0),
+    interface SanitizedItem {
+      nombre: string
+      cantidad: number
+      precio_unitario: number
+    }
+    const sanitizedItems: SanitizedItem[] = items.map((it: any) => {
+      const cant = Number(it.cantidad)
+      const precio = Number(it.precio_unitario)
+      return {
+        nombre: String(it.nombre || ""),
+        cantidad: Number.isFinite(cant) && cant > 0 ? cant : 0,
+        precio_unitario: Number.isFinite(precio) && precio >= 0 ? precio : 0,
+      }
+    })
+
+    if (!sanitizedItems.some((it) => it.nombre && it.cantidad > 0)) {
+      return NextResponse.json(
+        { error: "items debe contener al menos un item con cantidad > 0 y precio_unitario >= 0" },
+        { status: 400 }
+      )
+    }
+
+    const subtotal = sanitizedItems.reduce(
+      (s, it) => s + it.cantidad * it.precio_unitario,
       0
     )
-    const total =
-      body.total != null && !isNaN(Number(body.total)) ? Number(body.total) : subtotal
+    const totalRaw = body.total != null ? Number(body.total) : subtotal
+    const total = Number.isFinite(totalRaw) && totalRaw >= 0 ? totalRaw : subtotal
 
     const numero = await nextPedidoNumero(supabase)
     const fecha = body.fecha || new Date().toISOString().slice(0, 10)
@@ -169,15 +190,15 @@ export async function POST(request: Request) {
     if (pedidoErr) throw pedidoErr
 
     // 3. Crear items
-    const itemRows = items
-      .filter((it: any) => it.nombre && Number(it.cantidad) > 0)
-      .map((it: any) => ({
+    const itemRows = sanitizedItems
+      .filter((it) => it.nombre && String(it.nombre).trim() && it.cantidad > 0)
+      .map((it) => ({
         pedido_id: pedido.id,
         producto_id: null,
         nombre_producto: String(it.nombre).trim(),
-        cantidad: Number(it.cantidad),
-        precio_unitario: Number(it.precio_unitario) || 0,
-        subtotal: Number(it.cantidad) * (Number(it.precio_unitario) || 0),
+        cantidad: it.cantidad,
+        precio_unitario: it.precio_unitario,
+        subtotal: it.cantidad * it.precio_unitario,
       }))
 
     if (itemRows.length > 0) {

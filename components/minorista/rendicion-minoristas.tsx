@@ -56,6 +56,12 @@ export function RendicionMinoristas({
     return m
   }, [clientes])
 
+  const pedidosById = useMemo(() => {
+    const m = new Map<string, PedidoMinorista>()
+    pedidos.forEach((p) => m.set(p.id, p))
+    return m
+  }, [pedidos])
+
   const rendicionDelReparto = useMemo(
     () => rendiciones.find((r) => r.reparto_id === repartoId) || null,
     [rendiciones, repartoId]
@@ -69,9 +75,9 @@ export function RendicionMinoristas({
   const pedidosDelReparto = useMemo(() => {
     if (!repartoSelected) return []
     return (repartoSelected.orden_pedidos || [])
-      .map((id) => pedidos.find((p) => p.id === id))
+      .map((id) => pedidosById.get(id))
       .filter(Boolean) as PedidoMinorista[]
-  }, [repartoSelected, pedidos])
+  }, [repartoSelected, pedidosById])
 
   const entregados = pedidosDelReparto.filter((p) => p.estado === "entregado")
   const noEntregados = pedidosDelReparto.filter(
@@ -102,7 +108,7 @@ export function RendicionMinoristas({
     }
     if (!repartoSelected) return
     const entregadosLocal = (repartoSelected.orden_pedidos || [])
-      .map((id) => pedidos.find((p) => p.id === id))
+      .map((id) => pedidosById.get(id))
       .filter((p): p is PedidoMinorista => !!p && p.estado === "entregado")
     const efLocal = entregadosLocal
       .filter((p) => p.forma_pago === "efectivo")
@@ -113,7 +119,7 @@ export function RendicionMinoristas({
     setEfectivo(efLocal.toFixed(2))
     setMp(mpLocal.toFixed(2))
     setNotas("")
-  }, [rendicionDelReparto?.id, repartoSelected?.id, pedidos])
+  }, [rendicionDelReparto?.id, repartoSelected?.id, pedidosById])
 
   const handleGuardar = async () => {
     if (!repartoSelected) return

@@ -191,6 +191,12 @@ function HoyTab({
     return m
   }, [clientes])
 
+  const pedidosById = useMemo(() => {
+    const m = new Map<string, PedidoMinorista>()
+    pedidos.forEach((p) => m.set(p.id, p))
+    return m
+  }, [pedidos])
+
   const itemsByPedido = useMemo(() => {
     const m = new Map<string, ItemPedidoMinorista[]>()
     items.forEach((it) => {
@@ -258,9 +264,7 @@ function HoyTab({
                 {repartosHoy.map((r) => {
                   const ped = (r.orden_pedidos || []).length
                   const tot = (r.orden_pedidos || [])
-                    .map((id) => pedidos.find((p) => p.id === id))
-                    .filter(Boolean)
-                    .reduce((s, p) => s + (p!.total || 0), 0)
+                    .reduce((s, id) => s + (pedidosById.get(id)?.total || 0), 0)
                   return (
                     <div
                       key={r.id}
