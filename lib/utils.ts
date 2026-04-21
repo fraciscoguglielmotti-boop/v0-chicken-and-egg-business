@@ -97,6 +97,14 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
+/**
+ * Fecha de hoy en formato `yyyy-MM-dd` — para defaults de inputs/fechas en
+ * payloads de Supabase.  Reemplaza el patrón `new Date().toISOString().slice(0, 10)`.
+ */
+export function todayISO(): string {
+  return formatDateInput(new Date())
+}
+
 // Date for input fields (yyyy-MM-dd)
 export function formatDateInput(date: Date | string | number): string {
   try {
