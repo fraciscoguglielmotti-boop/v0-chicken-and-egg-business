@@ -1,14 +1,15 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import useSWR from "swr"
 import { Package, TrendingUp, TrendingDown, AlertTriangle } from "lucide-react"
-import { useSupabase } from "@/hooks/use-supabase"
 import { formatDate } from "@/lib/utils"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
+import { Skeleton } from "@/components/ui/skeleton"
 
 interface Producto {
   id: string
@@ -29,10 +30,28 @@ interface Venta {
   fecha: string
 }
 
+interface StockData {
+  productos: Producto[]
+  compras: Compra[]
+  ventas: Venta[]
+}
+
+const fetcher = async (url: string): Promise<StockData> => {
+  const res = await fetch(url)
+  if (!res.ok) {
+    const err = await res.json().catch(() => null)
+    throw new Error(err?.error ?? "Error al cargar stock")
+  }
+  return res.json()
+}
+
 export function StockContent() {
-  const { data: productos = [] } = useSupabase<Producto>("productos")
-  const { data: compras = [] } = useSupabase<Compra>("compras")
-  const { data: ventas = [] } = useSupabase<Venta>("ventas")
+  const { data, isLoading, error } = useSWR<StockData>("/api/stock/data", fetcher, {
+    revalidateOnFocus: false,
+  })
+  const productos = data?.productos ?? []
+  const compras = data?.compras ?? []
+  const ventas = data?.ventas ?? []
 
   const [filtroProducto, setFiltroProducto] = useState<string>("todos")
 
@@ -128,6 +147,31 @@ export function StockContent() {
       })
       .reverse()
   }, [movimientos, filtroProducto])
+
+  if (error) {
+    return (
+      <Card className="p-6 border-destructive/50 bg-destructive/5">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold">No se pudo cargar el stock</p>
+            <p className="text-xs text-muted-foreground mt-1">{error.message}</p>
+          </div>
+        </div>
+      </Card>
+    )
+  }
+
+  if (isLoading || !data) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-64" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-36 w-full" />)}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
