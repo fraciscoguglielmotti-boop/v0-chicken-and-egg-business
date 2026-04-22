@@ -217,7 +217,8 @@ export async function GET(req: NextRequest) {
 
       const tasaCobranzaDia = totalVHoy > 0 ? round1((totalCHoy / totalVHoy) * 100) : 0
       const pendienteDia = Math.round(totalVHoy - totalCHoy)
-      const ticketPromedioDia = (vHoy?.length ?? 0) > 0 ? Math.round(totalVHoy / (vHoy?.length ?? 1)) : 0
+      const clientesHoy = new Set((vHoy ?? []).map((v) => v.cliente_nombre).filter(Boolean)).size
+      const ticketPromedioDia = clientesHoy > 0 ? Math.round(totalVHoy / clientesHoy) : 0
 
       const { data: ventasRecientes } = await supabase
         .from("ventas")
@@ -302,8 +303,10 @@ export async function GET(req: NextRequest) {
         cursor.setUTCDate(cursor.getUTCDate() + 1)
       }
 
-      const margenBruto = totalVSem > 0 ? round1(((totalVSem - totalCompSem) / totalVSem) * 100) : 0
       const tasaCobranza = totalVSem > 0 ? round1((totalCSem / totalVSem) * 100) : 0
+      const clientesActivos = new Set((vSem ?? []).map((v) => v.cliente_nombre).filter(Boolean)).size
+      const pendiente = Math.round(totalVSem - totalCSem)
+      const ticketPromedioPorCliente = clientesActivos > 0 ? Math.round(totalVSem / clientesActivos) : 0
 
       const startFmt = new Date(d.weekStart + "T12:00:00Z").toLocaleDateString("es-AR", { day: "numeric", month: "long", timeZone: "UTC" })
       const endFmt = new Date(d.weekEnd + "T12:00:00Z").toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
@@ -312,16 +315,15 @@ export async function GET(req: NextRequest) {
         semana: `Semana del ${startFmt} al ${endFmt}`,
         ventas: { semana: Math.round(totalVSem), anterior: Math.round(totalVAnt), delta: round1(pct(totalVSem, totalVAnt)) },
         cobros: { semana: Math.round(totalCSem), anterior: Math.round(totalCAnt), delta: round1(pct(totalCSem, totalCAnt)) },
-        margenBruto,
+        cajonesSemana: Math.round(sumCantidad(vSem ?? [])),
+        cajonesAntSemana: Math.round(sumCantidad(vAntSem ?? [])),
+        clientesActivos,
+        pendiente,
+        ticketPromedioPorCliente,
         tasaCobranza,
         ventasPorDia,
         topClientes: topClientes(vSem ?? [], 5),
-        productosMasVendidos: topProductos(vSem ?? [], 10),
         desglose: topProductos(vSem ?? [], 10),
-        cajonesSemana: Math.round(sumCantidad(vSem ?? [])),
-        cajonesAntSemana: Math.round(sumCantidad(vAntSem ?? [])),
-        cuentasVencidas: 0,
-        montoVencido: 0,
       })
     }
 
@@ -376,7 +378,8 @@ export async function GET(req: NextRequest) {
       const margenNeto = totalVMes > 0 ? round1((resultadoNeto / totalVMes) * 100) : 0
       const margenBruto = totalVMes > 0 ? round1(((totalVMes - totalCompMes) / totalVMes) * 100) : 0
       const tasaCobranza = totalVMes > 0 ? round1((totalCMes / totalVMes) * 100) : 0
-      const ticketPromedio = (vMes?.length ?? 0) > 0 ? Math.round(totalVMes / (vMes?.length ?? 1)) : 0
+      const clientesMesCount = new Set((vMes ?? []).map((v) => v.cliente_nombre).filter(Boolean)).size
+      const ticketPromedio = clientesMesCount > 0 ? Math.round(totalVMes / clientesMesCount) : 0
       const crecimientoMensual = round1(pct(totalVMes, totalVMesAnt))
 
       // Evolución 6 meses

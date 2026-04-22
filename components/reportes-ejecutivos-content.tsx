@@ -24,6 +24,7 @@ import {
   ArrowDownRight,
   FileDown,
   Loader2,
+  Clock,
 } from "lucide-react"
 import {
   BarChart,
@@ -70,16 +71,15 @@ interface DatosSemanales {
   semana: string
   ventas: { semana: number; anterior: number; delta: number }
   cobros: { semana: number; anterior: number; delta: number }
-  margenBruto: number
+  cajonesSemana: number
+  cajonesAntSemana: number
+  clientesActivos: number
+  pendiente: number
+  ticketPromedioPorCliente: number
   tasaCobranza: number
   ventasPorDia: { dia: string; ventas: number; cobros: number }[]
   topClientes: { nombre: string; monto: number }[]
-  productosMasVendidos: DesgloseProd[]
   desglose: DesgloseProd[]
-  cajonesSemana: number
-  cajonesAntSemana: number
-  cuentasVencidas: number
-  montoVencido: number
 }
 
 interface DatosMensuales {
@@ -395,6 +395,9 @@ function PdfTemplateDiario({ data }: { data: DatosDiarios }) {
 
 function PdfTemplateSemanal({ data }: { data: DatosSemanales }) {
   const today = new Date().toLocaleDateString("es-AR", { year: "numeric", month: "long", day: "numeric" })
+  const cajonesAntDelta = data.cajonesAntSemana > 0
+    ? Math.round(((data.cajonesSemana - data.cajonesAntSemana) / data.cajonesAntSemana) * 100)
+    : 0
   return (
     <div style={S.page}>
       <div style={S.header}>
@@ -413,22 +416,37 @@ function PdfTemplateSemanal({ data }: { data: DatosSemanales }) {
         {[
           { label: "Ventas Totales", value: formatCurrency(data.ventas.semana), delta: data.ventas.delta },
           { label: "Cobros Totales", value: formatCurrency(data.cobros.semana), delta: data.cobros.delta },
-          { label: "Cajones Vendidos", value: `${data.cajonesSemana ?? 0} caj.`, delta: data.cajonesSemana && data.cajonesAntSemana ? Math.round(((data.cajonesSemana - data.cajonesAntSemana) / (data.cajonesAntSemana || 1)) * 100) : 0 },
+          { label: "Pendiente de Cobro", value: formatCurrency(data.pendiente), delta: null },
         ].map((k) => (
           <div key={k.label} style={S.kpiBox}>
             <div style={S.kpiLabel}>{k.label}</div>
             <div style={S.kpiValue}>{k.value}</div>
-            <div style={S.kpiDelta(k.delta >= 0)}>{k.delta >= 0 ? "▲" : "▼"} {Math.abs(k.delta)}% vs semana ant.</div>
+            {k.delta !== null && (
+              <div style={S.kpiDelta(k.delta >= 0)}>{k.delta >= 0 ? "▲" : "▼"} {Math.abs(k.delta)}% vs semana ant.</div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ ...S.kpiGrid, marginTop: "12px" }}>
+        {[
+          { label: "Cajones Vendidos", value: `${data.cajonesSemana} caj.`, delta: cajonesAntDelta },
+          { label: "Clientes Activos", value: `${data.clientesActivos} clientes`, delta: null },
+          { label: "Ticket Prom. por Cliente", value: formatCurrency(data.ticketPromedioPorCliente), delta: null },
+        ].map((k) => (
+          <div key={k.label} style={S.kpiBox}>
+            <div style={S.kpiLabel}>{k.label}</div>
+            <div style={S.kpiValue}>{k.value}</div>
+            {k.delta !== null && (
+              <div style={S.kpiDelta(k.delta >= 0)}>{k.delta >= 0 ? "▲" : "▼"} {Math.abs(k.delta)}% vs semana ant.</div>
+            )}
           </div>
         ))}
       </div>
 
-      <div style={S.sectionTitle}>Indicadores Financieros</div>
+      <div style={S.sectionTitle}>Indicadores de Cobro</div>
       {[
-        { label: "Tasa de cobranza", value: `${data.tasaCobranza}%` },
-        { label: "Margen bruto estimado", value: `${data.margenBruto}%` },
-        { label: "Ticket promedio semanal", value: formatCurrency(data.ventas.semana > 0 ? Math.round(data.ventas.semana / Math.max(data.cajonesSemana ?? 1, 1)) : 0) },
-        ...(data.cuentasVencidas > 0 ? [{ label: `Cuentas vencidas (${data.cuentasVencidas})`, value: formatCurrency(data.montoVencido) }] : []),
+        { label: "Tasa de cobranza (semana)", value: `${data.tasaCobranza}%` },
+        { label: "Pendiente de cobro", value: formatCurrency(data.pendiente) },
       ].map((r) => (
         <div key={r.label} style={S.indRow}>
           <span style={S.indLabel}>{r.label}</span>
@@ -747,6 +765,10 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange
 // ─── Reporte Semanal ──────────────────────────────────────────────────────────
 
 function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaChange }: { data: DatosSemanales | null; isLoading: boolean; pdfRef: React.RefObject<HTMLDivElement | null>; printRef: React.RefObject<HTMLDivElement | null>; semana: string; onSemanaChange: (v: string) => void }) {
+  const cajonesAntDelta = data && data.cajonesAntSemana > 0
+    ? Math.round(((data.cajonesSemana - data.cajonesAntSemana) / data.cajonesAntSemana) * 10) / 10
+    : undefined
+
   return (
     <div className="space-y-6">
       <ReportHeader titulo="Reporte Semanal" subtitulo={data?.semana ?? "—"} tipo="semanal" datos={data} pdfRef={pdfRef} printRef={printRef} />
@@ -759,20 +781,43 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
       <div style={{ position: "absolute", top: 0, left: "-9999px", overflow: "visible" }}>
         <div ref={printRef}>{data && <PdfTemplateSemanal data={data} />}</div>
       </div>
+
       <div ref={pdfRef} className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {isLoading || !data ? [0, 1, 2, 3].map((i) => <MetricCardSkeleton key={i} />) : (
+        {/* Row 1: Dinero */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          {isLoading || !data ? [0, 1, 2].map((i) => <MetricCardSkeleton key={i} />) : (
             <>
               <MetricCard title="Ventas de la Semana" value={data.ventas.semana} delta={data.ventas.delta} deltaLabel="vs semana ant." icon={ShoppingCart} />
               <MetricCard title="Cobros de la Semana" value={data.cobros.semana} delta={data.cobros.delta} deltaLabel="vs semana ant." icon={Receipt} />
-              <MetricCard title="Cajones Vendidos" value={`${(data.cajonesSemana ?? 0).toLocaleString("es-AR")} caj.`} icon={Package} />
-              <MetricCard title="Tasa de Cobranza" value={`${data.tasaCobranza}%`} icon={CheckCircle2} />
+              <MetricCard title="Pendiente de Cobro" value={data.pendiente} icon={Clock} />
             </>
           )}
         </div>
 
+        {/* Row 2: Operaciones */}
+        <div className="grid gap-4 sm:grid-cols-3">
+          {isLoading || !data ? [0, 1, 2].map((i) => <MetricCardSkeleton key={i} />) : (
+            <>
+              <MetricCard title="Cajones Vendidos" value={`${data.cajonesSemana.toLocaleString("es-AR")} caj.`} delta={cajonesAntDelta} deltaLabel="vs semana ant." icon={Package} />
+              <MetricCard title="Clientes Activos" value={`${data.clientesActivos}`} icon={Users} />
+              <MetricCard title="Ticket Prom. por Cliente" value={data.ticketPromedioPorCliente} icon={DollarSign} />
+            </>
+          )}
+        </div>
+
+        {/* Gráfico diario */}
         <Card>
-          <CardHeader><CardTitle className="text-sm font-medium">Ventas vs Cobros por Día</CardTitle></CardHeader>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Ventas vs Cobros por Día</CardTitle>
+            {!isLoading && data && (
+              <p className="text-xs text-muted-foreground">
+                Tasa de cobranza semanal:{" "}
+                <span className={`font-semibold ${data.tasaCobranza >= 80 ? "text-green-600" : data.tasaCobranza >= 50 ? "text-amber-600" : "text-red-600"}`}>
+                  {data.tasaCobranza}%
+                </span>
+              </p>
+            )}
+          </CardHeader>
           <CardContent>
             {isLoading || !data ? <Skeleton className="h-[220px] w-full" /> : (
               <ResponsiveContainer width="100%" height={220}>
@@ -789,54 +834,32 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
           </CardContent>
         </Card>
 
-        {isLoading ? <Skeleton className="h-40 w-full" /> : data && <DesgloseCard desglose={data.desglose} />}
-
+        {/* Desglose + Top Clientes */}
         <div className="grid gap-4 lg:grid-cols-2">
+          {isLoading ? <Skeleton className="h-48 w-full" /> : data && <DesgloseCard desglose={data.desglose} />}
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Users className="h-4 w-4 text-muted-foreground" />Top 5 Clientes de la Semana
+                <Users className="h-4 w-4 text-muted-foreground" />Top 5 Clientes
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {isLoading || !data ? [0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-6 w-full" />) :
-                data.topClientes.length === 0 ? <p className="text-sm text-muted-foreground">Sin datos esta semana.</p> :
-                data.topClientes.map((c, i) => (
-                  <div key={c.nombre} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">{i + 1}</span>
-                      <span className="text-sm">{c.nombre}</span>
+                data.topClientes.length === 0
+                  ? <p className="text-sm text-muted-foreground">Sin ventas registradas esta semana.</p>
+                  : data.topClientes.map((c, i) => (
+                    <div key={c.nombre} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary shrink-0">{i + 1}</span>
+                        <span className="text-sm truncate">{c.nombre}</span>
+                      </div>
+                      <span className="text-sm font-semibold shrink-0 ml-2">{formatCurrency(c.monto)}</span>
                     </div>
-                    <span className="text-sm font-semibold">{formatCurrency(c.monto)}</span>
-                  </div>
-                ))
+                  ))
               }
             </CardContent>
           </Card>
-
-          <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />Margen Bruto
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoading || !data ? <Skeleton className="h-8 w-24" /> : <div className="text-2xl font-bold">{data.margenBruto}%</div>}
-              </CardContent>
-            </Card>
-            {(!isLoading && data && data.cuentasVencidas > 0) && (
-              <Card className="border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/20">
-                <CardContent className="flex items-center justify-between pt-4">
-                  <div className="flex items-center gap-3">
-                    <AlertTriangle className="h-5 w-5 text-red-600" />
-                    <p className="text-sm font-medium text-red-700 dark:text-red-400">{data.cuentasVencidas} cuentas vencidas</p>
-                  </div>
-                  <span className="text-lg font-bold text-red-700 dark:text-red-400">{formatCurrency(data.montoVencido)}</span>
-                </CardContent>
-              </Card>
-            )}
-          </div>
         </div>
       </div>
     </div>
