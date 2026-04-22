@@ -31,6 +31,8 @@ import {
   GripVertical,
   Factory,
   Store,
+  PieChart,
+  Scale,
 } from "lucide-react"
 import {
   DndContext,
@@ -89,6 +91,9 @@ const ALL_SECTIONS = [
       { name: "Caja", href: "/caja", icon: Wallet },
       { name: "MercadoPago", href: "/mercadopago", icon: Landmark },
       { name: "EERR", href: "/eerr", icon: Calculator },
+      { name: "Presupuestos", href: "/presupuestos", icon: Target },
+      { name: "Contabilidad", href: "/contabilidad", icon: Scale },
+      { name: "Rentabilidad", href: "/rentabilidad", icon: PieChart },
       { name: "Flujo de Fondos", href: "/flujo", icon: TrendingUp },
       { name: "KPIs Ejecutivos", href: "/kpis", icon: LineChart },
       { name: "Reportes Ejecutivos", href: "/reportes-ejecutivos", icon: BookOpen },

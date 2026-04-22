@@ -106,6 +106,7 @@ export function VentasContent() {
     const cliente = clientes.find(c => c.nombre === clienteNombre)
     return calcVencimiento(fecha, cliente)
   }
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [editingVenta, setEditingVenta] = useState<Venta | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editFormData, setEditFormData] = useState({
@@ -122,8 +123,10 @@ export function VentasContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
     const lineasValidas = formData.lineas.filter(l => l.producto && l.cantidad && l.precio_unitario)
     if (lineasValidas.length === 0) return
+    setIsSubmitting(true)
     try {
       await Promise.all(lineasValidas.map(l =>
         insertRow("ventas", {
@@ -147,6 +150,8 @@ export function VentasContent() {
       })
     } catch (err: any) {
       toast({ title: "Error al guardar", description: err?.message ?? "Error desconocido", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -412,8 +417,8 @@ export function VentasContent() {
               </div>
 
               <DialogFooter>
-                <Button type="submit" disabled={!formData.cliente_nombre || formData.lineas.every(l => !l.producto)}>
-                  Guardar {formData.lineas.filter(l => l.producto).length > 1 ? `(${formData.lineas.filter(l => l.producto).length} ventas)` : ""}
+                <Button type="submit" disabled={isSubmitting || !formData.cliente_nombre || formData.lineas.every(l => !l.producto)}>
+                  {isSubmitting ? "Guardando…" : `Guardar ${formData.lineas.filter(l => l.producto).length > 1 ? `(${formData.lineas.filter(l => l.producto).length} ventas)` : ""}`}
                 </Button>
               </DialogFooter>
             </form>

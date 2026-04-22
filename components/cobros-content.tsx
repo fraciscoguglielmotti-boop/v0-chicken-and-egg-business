@@ -68,6 +68,7 @@ export function CobrosContent() {
     observaciones: "",
     verificado_agroaves: false
   })
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [editingCobro, setEditingCobro] = useState<Cobro | null>(null)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editFormData, setEditFormData] = useState({
@@ -82,6 +83,8 @@ export function CobrosContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (isSubmitting) return
+    setIsSubmitting(true)
     try {
       await insertRow("cobros", {
         fecha: formData.fecha,
@@ -118,6 +121,8 @@ export function CobrosContent() {
       setFormData({ fecha: new Date().toISOString().split('T')[0], cliente_nombre: "", monto: "", metodo_pago: "efectivo", cuenta_destino: "", recibido_por: "", observaciones: "", verificado_agroaves: false })
     } catch (error) {
       toast({ title: "Error", description: "No se pudo registrar el cobro", variant: "destructive" })
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -311,7 +316,7 @@ export function CobrosContent() {
                 </div>
               )}
               <DialogFooter>
-                <Button type="submit">Guardar</Button>
+                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Guardando…" : "Guardar"}</Button>
               </DialogFooter>
             </form>
           </DialogContent>

@@ -105,6 +105,7 @@ export function CuentasContent() {
 
   const [cobrarCliente, setCobrarCliente] = useState<string | null>(null)
   const [cobrarForm, setCobrarForm] = useState({ monto: "", metodo_pago: "efectivo", cuenta_destino: "", fecha: new Date().toISOString().split('T')[0] })
+  const [isCobrarSubmitting, setIsCobrarSubmitting] = useState(false)
   const [mostrarInactivos, setMostrarInactivos] = useState(false)
   const [vistaLista, setVistaLista] = useState(false)
   const [sortCol, setSortCol] = useState<"nombre" | "totalVentas" | "totalCobros" | "saldo">("saldo")
@@ -350,7 +351,8 @@ export function CuentasContent() {
 
   const handleCobrarSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!cobrarCliente) return
+    if (!cobrarCliente || isCobrarSubmitting) return
+    setIsCobrarSubmitting(true)
     try {
       await insertRow("cobros", {
         fecha: cobrarForm.fecha,
@@ -366,6 +368,8 @@ export function CuentasContent() {
       toast({ title: "Cobro registrado", description: `Cobro a ${cobrarCliente} guardado correctamente.` })
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" })
+    } finally {
+      setIsCobrarSubmitting(false)
     }
   }
 
@@ -1021,8 +1025,8 @@ export function CuentasContent() {
               </div>
             )}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setCobrarCliente(null)}>Cancelar</Button>
-              <Button type="submit">Registrar Cobro</Button>
+              <Button type="button" variant="outline" onClick={() => setCobrarCliente(null)} disabled={isCobrarSubmitting}>Cancelar</Button>
+              <Button type="submit" disabled={isCobrarSubmitting}>{isCobrarSubmitting ? "Guardando…" : "Registrar Cobro"}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
