@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { ChevronDown, ChevronRight, Download, Calendar, Check, Receipt, LayoutList, AlignJustify, FileSpreadsheet, EyeOff, Eye, UserX } from "lucide-react"
 import { useSupabase, insertRow, updateRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { LoadingTable } from "@/components/loading-states"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -86,7 +87,7 @@ type MovimientoProveedor = {
 }
 
 export function CuentasContent() {
-  const { data: clientes = [], mutate: mutateClientes } = useSupabase<Cliente>("clientes")
+  const { data: clientes = [], isLoading, mutate: mutateClientes } = useSupabase<Cliente>("clientes")
   const { data: proveedores = [] } = useSupabase<Proveedor>("proveedores")
   const { data: ventas = [] } = useSupabase<Venta>("ventas")
   const { data: cobros = [], mutate: mutateCobros } = useSupabase<Cobro>("cobros")
@@ -520,6 +521,8 @@ export function CuentasContent() {
     a.click()
     URL.revokeObjectURL(url)
   }
+
+  if (isLoading) return <LoadingTable />
 
   return (
     <div className="space-y-6">

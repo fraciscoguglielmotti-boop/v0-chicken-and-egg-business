@@ -12,6 +12,7 @@ import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supaba
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { LoadingTable } from "@/components/loading-states"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ImportarTarjeta } from "./importar-tarjeta"
 
@@ -196,6 +197,8 @@ export function GastosContent() {
       pagado: true,
     })
   }
+
+  if (isLoading) return <LoadingTable />
 
   const filteredGastos = gastos
     .filter((g) => {

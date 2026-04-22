@@ -2,7 +2,7 @@ import useSWR from "swr"
 import { createClient } from "@/lib/supabase/client"
 
 export interface UseSupabaseOptions {
-  /** Max rows to fetch. Defaults to 1000 (Supabase default). */
+  /** Max rows to fetch. Defaults to 500. */
   limit?: number
   /** Column to order by. Defaults to "created_at". */
   orderBy?: string
@@ -10,6 +10,18 @@ export interface UseSupabaseOptions {
   ascending?: boolean
   /** Extra equality filters, e.g. { activo: true }. */
   filters?: Record<string, any>
+}
+
+const DEFAULT_LIMIT = 500
+
+// Stable serialization: sort keys so {b:1,a:2} and {a:2,b:1} produce same key
+function stableStringify(obj: unknown): string {
+  if (obj === null || typeof obj !== "object" || Array.isArray(obj)) return JSON.stringify(obj)
+  const sorted = Object.keys(obj as object).sort().reduce<Record<string, unknown>>((acc, k) => {
+    acc[k] = (obj as Record<string, unknown>)[k]
+    return acc
+  }, {})
+  return JSON.stringify(sorted)
 }
 
 // Generic fetcher for SWR
@@ -23,9 +35,7 @@ async function fetcher<T>(table: string, opts: UseSupabaseOptions = {}): Promise
       query = query.eq(k, v)
     }
   }
-  if (typeof opts.limit === "number") {
-    query = query.limit(opts.limit)
-  }
+  query = query.limit(opts.limit ?? DEFAULT_LIMIT)
   const { data, error } = await query
   if (error) throw error
   return (data as T[]) || []
@@ -33,7 +43,7 @@ async function fetcher<T>(table: string, opts: UseSupabaseOptions = {}): Promise
 
 // Hook to fetch data from a Supabase table
 export function useSupabase<T = any>(table: string, opts: UseSupabaseOptions = {}) {
-  const key = `supabase:${table}:${JSON.stringify(opts)}`
+  const key = `supabase:${table}:${stableStringify(opts)}`
   const { data, error, isLoading, mutate } = useSWR<T[]>(key, () => fetcher<T>(table, opts))
 
   return {

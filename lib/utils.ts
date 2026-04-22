@@ -105,6 +105,33 @@ export function todayISO(): string {
   return formatDateInput(new Date())
 }
 
+/**
+ * Parsea un string `yyyy-MM-dd` de Supabase como fecha local (sin corrimiento
+ * de día por UTC). Equivalente seguro a `new Date(str)` que en JS parsea como
+ * UTC medianoche y puede mostrar el día anterior en UTC-3.
+ *
+ * Usar en cualquier lugar donde se construya un `Date` a partir de un campo
+ * `fecha` de la DB para mostrar al usuario (NO para enviar a Supabase).
+ */
+export function parseLocalDate(str: string): Date {
+  return parseDate(str) // parseDate ya usa UTC noon (12:00), evitando el corrimiento
+}
+
+/**
+ * Compara si dos strings de fecha `yyyy-MM-dd` son del mismo mes.
+ */
+export function isSameMonth(a: string, b: string): boolean {
+  return a.slice(0, 7) === b.slice(0, 7)
+}
+
+/**
+ * Devuelve el prefijo `yyyy-MM` de un string de fecha.
+ */
+export function monthPrefix(date: string | Date): string {
+  if (date instanceof Date) return formatDateInput(date).slice(0, 7)
+  return String(date).slice(0, 7)
+}
+
 // Date for input fields (yyyy-MM-dd)
 export function formatDateInput(date: Date | string | number): string {
   try {

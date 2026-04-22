@@ -12,6 +12,7 @@ import { CurrencyDisplay } from "./currency-display"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { formatDate, formatMonto, parseMonto } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { LoadingTable } from "@/components/loading-states"
 
 interface Pago {
   id: string
@@ -114,6 +115,8 @@ export function PagosContent() {
       toast({ title: "Error al eliminar", description: err.message, variant: "destructive" })
     }
   }
+
+  if (isLoading) return <LoadingTable />
 
   const metodosUnicos = [...new Set(pagos.map(p => p.metodo_pago).filter(Boolean))] as string[]
 

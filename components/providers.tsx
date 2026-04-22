@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import { SWRConfig } from "swr"
 import { useToast } from "@/hooks/use-toast"
+import { OfflineIndicator } from "@/components/offline-indicator"
 
 function GlobalErrorListener() {
   const { toast } = useToast()
@@ -32,6 +33,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       }}
     >
       <GlobalErrorListener />
+      <OfflineIndicator />
       {children}
     </SWRConfig>
   )

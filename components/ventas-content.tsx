@@ -13,6 +13,7 @@ import { CurrencyDisplay } from "./currency-display"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { formatDate } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { LoadingTable } from "@/components/loading-states"
 
 interface Venta {
   id: string
@@ -230,6 +231,8 @@ export function VentasContent() {
   }
 
   const hoy = new Date().toISOString().split('T')[0]
+
+  if (isLoading) return <LoadingTable />
 
   const columns = [
     { key: "fecha", header: "Fecha", render: (v: Venta) => formatDate(new Date(v.fecha)) },

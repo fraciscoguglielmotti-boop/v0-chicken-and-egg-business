@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useSupabase, insertRow, deleteRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { LoadingCards } from "@/components/loading-states"
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -102,7 +103,7 @@ function BolsilloCard({ label, icon: Icon, color, saldo, detalle }: {
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export function CajaContent() {
-  const { data: cobros = [] } = useSupabase<Cobro>("cobros")
+  const { data: cobros = [], isLoading } = useSupabase<Cobro>("cobros")
   const { data: gastos = [] } = useSupabase<Gasto>("gastos")
   const { data: pagos = [] } = useSupabase<Pago>("pagos")
   const { data: pagosTarjeta = [], mutate: mutatePagosTarjeta } = useSupabase<PagoTarjeta>("pagos_tarjeta")
@@ -251,6 +252,8 @@ export function CajaContent() {
       totalDisponible: totalEfectivo + (cobrosFrancisco - gastosFrancisco - pagosFrancisco - pagosTarjetaFrancisco) + (cobrosDiego - gastosDiego - pagosDiego - pagosTarjetaDiego),
     }
   }, [cobros, gastos, pagos, pagosTarjeta])
+
+  if (isLoading) return <LoadingCards />
 
   return (
     <div className="space-y-6">

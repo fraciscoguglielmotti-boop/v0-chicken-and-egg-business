@@ -14,6 +14,8 @@ import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supaba
 import { formatDate, formatMonto, parseMonto } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { LoadingTable } from "@/components/loading-states"
+import { PROVEEDOR_AGROAVES, CUENTAS_DESTINO_COBROS, RECEPTORES_EFECTIVO } from "@/lib/config"
 
 interface Cobro {
   id: string
@@ -37,9 +39,9 @@ interface Proveedor {
   nombre: string
 }
 
-const CUENTAS_DESTINO = ["Agroaves", "Francisco", "Diego"]
+const CUENTAS_DESTINO = CUENTAS_DESTINO_COBROS
 const METODOS_PAGO = ["efectivo", "transferencia", "mercadopago", "cheque"]
-const RECEPTORES_EFECTIVO = ["Damián", "Francisco", "Diego"]
+// RECEPTORES_EFECTIVO viene de lib/config
 
 export function CobrosContent() {
   const { data: cobros = [], isLoading, mutate } = useSupabase<Cobro>("cobros")
@@ -97,10 +99,10 @@ export function CobrosContent() {
         verificado_agroaves: formData.verificado_agroaves
       })
 
-      if ((formData.metodo_pago === "transferencia" || formData.metodo_pago === "mercadopago") && formData.cuenta_destino?.toLowerCase() === "agroaves") {
+      if ((formData.metodo_pago === "transferencia" || formData.metodo_pago === "mercadopago") && formData.cuenta_destino?.toLowerCase() === PROVEEDOR_AGROAVES.toLowerCase()) {
         const proveedorAgroaves = proveedores.find(p =>
-          p.nombre.toLowerCase().includes('agroaves') ||
-          p.nombre.toLowerCase().includes('agro aves')
+          p.nombre.toLowerCase().includes(PROVEEDOR_AGROAVES.toLowerCase()) ||
+          p.nombre.toLowerCase().includes(PROVEEDOR_AGROAVES.toLowerCase().replace(/\s+/g, " "))
         )
         if (proveedorAgroaves) {
           await insertRow("pagos", {
@@ -178,6 +180,8 @@ export function CobrosContent() {
     .filter((c) => !fechaHasta || c.fecha <= fechaHasta)
     .filter((c) => !filtroCuenta || filtroCuenta === "__todos__" || c.cuenta_destino === filtroCuenta)
     .filter((c) => !filtroMetodo || filtroMetodo === "__todos__" || c.metodo_pago === filtroMetodo)
+
+  if (isLoading) return <LoadingTable />
 
   const columns = [
     { key: "fecha", header: "Fecha", render: (c: Cobro) => formatDate(new Date(c.fecha)) },
@@ -306,7 +310,7 @@ export function CobrosContent() {
                 <Label>Observaciones</Label>
                 <Input value={formData.observaciones} onChange={(e) => setFormData({...formData, observaciones: e.target.value})} />
               </div>
-              {(formData.metodo_pago === "transferencia" || formData.metodo_pago === "mercadopago") && formData.cuenta_destino?.toLowerCase() === "agroaves" && (
+              {(formData.metodo_pago === "transferencia" || formData.metodo_pago === "mercadopago") && formData.cuenta_destino?.toLowerCase() === PROVEEDOR_AGROAVES.toLowerCase() && (
                 <div className="rounded-lg bg-muted p-3">
                   <div className="flex items-center gap-2">
                     <Checkbox id="verificado_agroaves" checked={formData.verificado_agroaves} onCheckedChange={(checked) => setFormData({...formData, verificado_agroaves: checked as boolean})} />

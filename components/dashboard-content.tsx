@@ -10,6 +10,7 @@ import { DataTable } from "./data-table"
 import { useSupabase } from "@/hooks/use-supabase"
 import { CurrencyDisplay } from "./currency-display"
 import { formatDate } from "@/lib/utils"
+import { LoadingStats } from "@/components/loading-states"
 
 interface Venta {
   id: string
@@ -196,6 +197,8 @@ export function DashboardContent() {
     { key: "monto", header: "Monto", render: (c: Cobro) => <CurrencyDisplay amount={Number(c.monto)} className="font-semibold text-primary" /> },
     { key: "metodo_pago", header: "Metodo", render: (c: Cobro) => <span className="capitalize">{c.metodo_pago}</span> },
   ]
+
+  if (isLoading) return <LoadingStats />
 
   return (
     <div className="space-y-8">

@@ -14,6 +14,7 @@ import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supaba
 import { formatDate } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { LoadingTable } from "@/components/loading-states"
 
 interface Compra {
   id: string
@@ -176,6 +177,8 @@ export function ComprasContent() {
     .filter((c) => !filtroProveedor || filtroProveedor === "__todos__" || c.proveedor_nombre === filtroProveedor)
     .filter((c) => !filtroProducto || filtroProducto === "__todos__" || c.producto === filtroProducto)
     .filter((c) => !filtroEstado || filtroEstado === "__todos__" || c.estado === filtroEstado)
+
+  if (isLoading) return <LoadingTable />
 
   const columns = [
     { key: "numero_lote", header: "Lote", render: (c: Compra) => c.numero_lote ? <Badge variant="outline" className="font-mono text-xs">{c.numero_lote}</Badge> : <span className="text-muted-foreground text-xs">—</span> },

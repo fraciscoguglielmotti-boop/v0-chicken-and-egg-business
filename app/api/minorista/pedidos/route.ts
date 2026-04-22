@@ -12,25 +12,25 @@ function getSupabase() {
 }
 
 async function nextPedidoNumero(supabase: ReturnType<typeof getSupabase>): Promise<string> {
-  const { data } = await supabase
-    .from("pedidos_minoristas")
-    .select("numero")
-  const nums = (data || [])
+  const { data, error } = await supabase.rpc("next_pedido_numero")
+  if (!error && data) return data as string
+  // Fallback si el RPC aún no fue migrado: SELECT MAX (menos seguro ante concurrencia)
+  const { data: rows } = await supabase.from("pedidos_minoristas").select("numero")
+  const nums = (rows || [])
     .map((r: any) => parseInt(String(r.numero || "").replace(/\D/g, ""), 10))
     .filter((n) => !isNaN(n))
-  const next = (nums.length ? Math.max(...nums) : 0) + 1
-  return `PED-${String(next).padStart(4, "0")}`
+  return `PED-${String(((nums.length ? Math.max(...nums) : 0) + 1)).padStart(4, "0")}`
 }
 
 async function nextCustomerId(supabase: ReturnType<typeof getSupabase>): Promise<string> {
-  const { data } = await supabase
-    .from("clientes_minoristas")
-    .select("customer_id")
-  const nums = (data || [])
+  const { data, error } = await supabase.rpc("next_customer_id")
+  if (!error && data) return data as string
+  // Fallback si el RPC aún no fue migrado
+  const { data: rows } = await supabase.from("clientes_minoristas").select("customer_id")
+  const nums = (rows || [])
     .map((r: any) => parseInt(String(r.customer_id || "").replace(/\D/g, ""), 10))
     .filter((n) => !isNaN(n))
-  const next = (nums.length ? Math.max(...nums) : 0) + 1
-  return `MIN-${String(next).padStart(4, "0")}`
+  return `MIN-${String(((nums.length ? Math.max(...nums) : 0) + 1)).padStart(4, "0")}`
 }
 
 /**
