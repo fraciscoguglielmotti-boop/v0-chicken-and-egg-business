@@ -296,8 +296,9 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ ok: true, id: data?.id })
-  } catch (error) {
+  } catch (error: any) {
     console.error("[send-email]", error)
-    return NextResponse.json({ error: "Error al enviar el email" }, { status: 500 })
+    const msg = error?.message ?? error?.toString() ?? "Error al enviar el email"
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
