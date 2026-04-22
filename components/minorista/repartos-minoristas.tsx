@@ -259,9 +259,11 @@ export function RepartosMinoristas({
 
   const generarPDF = () => {
     if (!repartoSelected) return
-    const doc = new jsPDF({ unit: "mm", format: "a4" })
+    const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" })
     const margin = 15
+    const pageW = 297
 
+    // Header izquierda
     doc.setFontSize(14)
     doc.setFont("helvetica", "bold")
     doc.text("HOJA DE RUTA", margin, 18)
@@ -270,13 +272,17 @@ export function RepartosMinoristas({
     doc.setFont("helvetica", "normal")
     doc.text(`Reparto: ${repartoSelected.nombre}`, margin, 26)
     doc.text(`Fecha: ${repartoSelected.fecha}`, margin, 31)
+
+    // Header derecha
+    const rightX = pageW - margin
     if (repartoSelected.repartidor) {
-      doc.text(`Repartidor: ${repartoSelected.repartidor}`, margin, 36)
+      doc.text(`Repartidor: ${repartoSelected.repartidor}`, rightX, 26, { align: "right" })
     }
     doc.text(
       `Pedidos: ${pedidosDelReparto.length}    Total: ${formatCurrency(totalReparto)}`,
-      margin,
-      41
+      rightX,
+      31,
+      { align: "right" }
     )
 
     const rows = pedidosDelReparto.map((p, idx) => {
@@ -296,27 +302,27 @@ export function RepartosMinoristas({
     })
 
     autoTable(doc, {
-      startY: 48,
+      startY: 38,
       head: [["#", "Cliente", "Dirección", "Pedido", "Total", "Pago"]],
       body: rows,
-      styles: { fontSize: 9, cellPadding: 2, valign: "top" },
+      styles: { fontSize: 9, cellPadding: 2.5, valign: "top" },
       headStyles: { fillColor: [71, 85, 105] },
       columnStyles: {
-        0: { cellWidth: 8 },
-        1: { cellWidth: 35 },
-        2: { cellWidth: 55 },
-        3: { cellWidth: 50 },
-        4: { cellWidth: 22, halign: "right" },
-        5: { cellWidth: 12, halign: "center" },
+        0: { cellWidth: 10 },
+        1: { cellWidth: 55 },
+        2: { cellWidth: 85 },
+        3: { cellWidth: 72 },
+        4: { cellWidth: 28, halign: "right" },
+        5: { cellWidth: 17, halign: "center" },
       },
     })
 
-    const finalY = (doc as any).lastAutoTable?.finalY || 200
+    const finalY = (doc as any).lastAutoTable?.finalY || 180
     doc.setFontSize(9)
     doc.text(
       `Total a cobrar: ${formatCurrency(totalReparto)}`,
       margin,
-      finalY + 10
+      finalY + 8
     )
 
     doc.save(`hoja-ruta-${repartoSelected.fecha}-${repartoSelected.nombre.replace(/\s+/g, "_")}.pdf`)
