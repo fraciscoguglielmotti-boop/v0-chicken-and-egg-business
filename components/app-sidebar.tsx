@@ -31,6 +31,7 @@ import {
   GripVertical,
   Factory,
   Store,
+  WifiOff,
 } from "lucide-react"
 import {
   DndContext,
@@ -65,6 +66,7 @@ const ALL_SECTIONS = [
       { name: "Compras", href: "/compras", icon: Package },
       { name: "Pagos", href: "/pagos", icon: DollarSign },
       { name: "Prep. Facturas", href: "/facturas", icon: FileText },
+      { name: "Modo Offline (Agroaves)", href: "/offline", icon: WifiOff },
     ],
   },
   {
