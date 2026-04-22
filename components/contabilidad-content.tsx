@@ -1,147 +1,65 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import { ChevronDown, ChevronRight, TrendingUp, TrendingDown } from "lucide-react"
-import { useSupabase } from "@/hooks/use-supabase"
+import { useEffect, useState } from "react"
+import useSWR from "swr"
+import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Loader2 } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Skeleton } from "@/components/ui/skeleton"
 
-const CATEGORIAS_SUELDOS = ["Comisiones", "Sueldos", "Sueldo", "Comisión"]
-const CATEGORIAS_RETIROS = ["Gastos Personales Francisco", "Retiro de socio", "Retiros"]
-
-interface Venta { fecha: string; cantidad: number; precio_unitario: number; producto_nombre?: string }
-interface Compra { fecha: string; total: number; cantidad: number; precio_unitario: number; producto?: string }
-interface Gasto { fecha: string; monto: number; categoria: string; medio_pago?: string; fecha_pago?: string; descripcion?: string; pagado?: boolean }
-interface MovimientoMP { fecha: string; tipo: string; monto: number; descripcion?: string; categoria?: string }
-
-// Egresos de MP que no sean transferencias entre cuentas
-function esMPGasto(m: MovimientoMP): boolean {
-  const tipo = m.tipo?.toLowerCase()
-  const desc = m.descripcion?.toLowerCase() ?? ""
-  return tipo === "egreso" && !desc.startsWith("transferencia")
-}
-function mpAGasto(m: MovimientoMP): Gasto {
-  return { fecha: m.fecha, monto: m.monto, categoria: m.categoria || "Sin categoría (MP)", medio_pago: "MercadoPago", descripcion: m.descripcion }
+interface Gasto {
+  fecha: string
+  monto: number
+  categoria: string
+  medio_pago?: string
+  fecha_pago?: string
+  descripcion?: string
+  pagado?: boolean
 }
 
-// Para tarjeta de crédito con fecha_pago, el gasto impacta en el mes del pago (no del consumo)
-function mesContable(g: Gasto): string {
-  if (g.medio_pago === "Tarjeta Credito" && g.fecha_pago) return g.fecha_pago.slice(0, 7)
-  return g.fecha.slice(0, 7)
+interface EERRResult {
+  totalVentas: number
+  totalCMV: number
+  margenBruto: number
+  margenPct: number
+  totalGastosOp: number
+  desglose: Record<string, number>
+  movimientosPorCat: Record<string, Gasto[]>
+  gastosSueldos: Gasto[]
+  gastosRetiros: Gasto[]
+  totalSueldos: number
+  totalRetiros: number
+  resultadoOp: number
+  resultadoOpPct: number
+  resultadoFinal: number
+  resultadoFinalPct: number
 }
 
-// ── Motor FIFO ────────────────────────────────────────────────────────────────
-// Calcula el CMV de un mes aplicando el principio de devengamiento:
-// el costo se reconoce en el mes en que SE VENDE la mercadería,
-// no en el mes en que se compró.
-//
-// Algoritmo:
-//   1. Construye colas FIFO por producto con TODAS las compras históricas (orden cronológico)
-//   2. Recorre TODAS las ventas hasta el fin del mes objetivo, consumiendo de las colas
-//   3. Acumula CMV solo de las ventas que caen en el mes objetivo
-//
-// Si una venta consume unidades de dos lotes distintos (ej: 100 caj. a $1.000
-// y luego 50 caj. a $1.100), el costo se proratea correctamente.
-// Si el stock FIFO es insuficiente (compras no registradas), el resto
-// se valúa al costo promedio ponderado de todas las compras.
+interface EERRResponse {
+  month: string
+  prevMonth: string
+  current: EERRResult
+  previous: EERRResult
+}
 
-interface Lote { qty: number; costUnit: number }
-
-function calcCMV_FIFO(
-  todasCompras: Compra[],
-  todasVentas: Venta[],
-  monthPrefix: string   // "YYYY-MM"
-): number {
-  const norm = (s?: string) => (s ?? "").toLowerCase().trim()
-
-  // ── 1. Construir colas FIFO por producto ──────────────────────────────────
-  const queues = new Map<string, Lote[]>()
-
-  const sortedCompras = [...todasCompras].sort((a, b) => a.fecha.localeCompare(b.fecha))
-  for (const c of sortedCompras) {
-    if (!c.cantidad || c.cantidad <= 0) continue
-    const total = c.total > 0 ? c.total : c.cantidad * c.precio_unitario
-    const costUnit = total / c.cantidad
-    const prod = norm(c.producto) || "__sin_producto__"
-    if (!queues.has(prod)) queues.set(prod, [])
-    queues.get(prod)!.push({ qty: c.cantidad, costUnit })
-  }
-
-  // Último costo unitario por producto (fallback si el stock FIFO se agota)
-  const ultimoCostoUnit = new Map<string, number>()
-  for (const c of sortedCompras) {
-    if (!c.cantidad || c.cantidad <= 0) continue
-    const total = c.total > 0 ? c.total : c.cantidad * c.precio_unitario
-    const prod = norm(c.producto) || "__sin_producto__"
-    ultimoCostoUnit.set(prod, total / c.cantidad)
-  }
-  // Último costo global como último recurso
-  const ultimoCostoGlobal = sortedCompras.length > 0
-    ? (() => {
-        const last = sortedCompras[sortedCompras.length - 1]
-        const t = last.total > 0 ? last.total : last.cantidad * last.precio_unitario
-        return last.cantidad > 0 ? t / last.cantidad : 0
-      })()
-    : 0
-
-  // ── 2. Consumir stock según ventas, en orden cronológico ──────────────────
-  // Procesamos todas las ventas hasta el último día del mes objetivo
-  const endOfMonth = monthPrefix + "-31"
-  const sortedVentas = [...todasVentas]
-    .filter(v => v.fecha <= endOfMonth)
-    .sort((a, b) => a.fecha.localeCompare(b.fecha))
-
-  let cmv = 0
-
-  for (const v of sortedVentas) {
-    if (!v.cantidad || v.cantidad <= 0) continue
-
-    const prodVenta = norm(v.producto_nombre)
-
-    // Buscar cola exacta, luego por coincidencia parcial, luego fallback genérico
-    let queue = queues.get(prodVenta)
-    if (!queue) {
-      const entry = Array.from(queues.entries()).find(
-        ([k]) => k !== "__sin_producto__" && (k.includes(prodVenta) || prodVenta.includes(k))
-      )
-      queue = entry?.[1] ?? queues.get("__sin_producto__")
-    }
-
-    let remaining = v.cantidad
-    let ventaCost  = 0
-
-    if (queue) {
-      while (remaining > 0.0001 && queue.length > 0) {
-        const lot = queue[0]
-        const used = Math.min(remaining, lot.qty)
-        ventaCost  += used * lot.costUnit
-        lot.qty    -= used
-        remaining  -= used
-        if (lot.qty <= 0.0001) queue.shift()
-      }
-    }
-
-    // Si quedaron unidades sin cubrir (stock insuficiente), usar el último
-    // precio conocido del producto; si no hay, el último precio global
-    if (remaining > 0.0001) {
-      const fallback = ultimoCostoUnit.get(prodVenta)
-        ?? Array.from(ultimoCostoUnit.entries()).find(
-             ([k]) => k !== "__sin_producto__" && (k.includes(prodVenta) || prodVenta.includes(k))
-           )?.[1]
-        ?? ultimoCostoUnit.get("__sin_producto__")
-        ?? ultimoCostoGlobal
-      ventaCost += remaining * fallback
-    }
-
-    // Solo acumular si la venta es del mes objetivo
-    if (v.fecha.startsWith(monthPrefix)) {
-      cmv += ventaCost
-    }
-  }
-
-  return cmv
+const emptyEERR: EERRResult = {
+  totalVentas: 0,
+  totalCMV: 0,
+  margenBruto: 0,
+  margenPct: 0,
+  totalGastosOp: 0,
+  desglose: {},
+  movimientosPorCat: {},
+  gastosSueldos: [],
+  gastosRetiros: [],
+  totalSueldos: 0,
+  totalRetiros: 0,
+  resultadoOp: 0,
+  resultadoOpPct: 0,
+  resultadoFinal: 0,
+  resultadoFinalPct: 0,
 }
 
 function EERRRow({ label, value, indent = false }: { label: string; value: number; indent?: boolean }) {
@@ -179,63 +97,16 @@ function Delta({ actual, prev }: { actual: number; prev: number }) {
   )
 }
 
-// todasVentas y todasCompras = datos completos sin filtrar (el FIFO los necesita todos)
-function calcEERR(todasVentas: Venta[], todasCompras: Compra[], gastos: Gasto[], month: string) {
-  const ventasFiltradas = todasVentas.filter(v => v.fecha.startsWith(month))
-  const gastosFiltrados = gastos.filter(g => mesContable(g) === month)
-
-  const totalVentas = ventasFiltradas.reduce((s, v) => s + v.cantidad * v.precio_unitario, 0)
-  // CMV calculado por FIFO: el costo se imputa al mes de la venta, no al de la compra
-  const totalCMV = calcCMV_FIFO(todasCompras, todasVentas, month)
-  const margenBruto = totalVentas - totalCMV
-  const margenPct   = totalVentas > 0 ? (margenBruto / totalVentas) * 100 : 0
-
-  const esSueldo  = (g: Gasto) => CATEGORIAS_SUELDOS.some(cat => g.categoria?.toLowerCase() === cat.toLowerCase())
-  const esRetiro  = (g: Gasto) => CATEGORIAS_RETIROS.some(cat => g.categoria?.toLowerCase() === cat.toLowerCase())
-  const gastosOp      = gastosFiltrados.filter(g => !esSueldo(g) && !esRetiro(g))
-  const gastosSueldos = gastosFiltrados.filter(esSueldo)
-  const gastosRetiros = gastosFiltrados.filter(esRetiro)
-
-  const totalGastosOp = gastosOp.reduce((s, g) => s + g.monto, 0)
-  const totalSueldos  = gastosSueldos.reduce((s, g) => s + g.monto, 0)
-  const totalRetiros  = gastosRetiros.reduce((s, g) => s + g.monto, 0)
-
-  const desglose: Record<string, number> = {}
-  const movimientosPorCat: Record<string, Gasto[]> = {}
-  gastosOp.forEach(g => {
-    const cat = g.categoria || "Sin categoría"
-    desglose[cat] = (desglose[cat] || 0) + g.monto
-    if (!movimientosPorCat[cat]) movimientosPorCat[cat] = []
-    movimientosPorCat[cat].push(g)
-  })
-
-  const resultadoOp      = margenBruto - totalGastosOp
-  const resultadoOpPct   = totalVentas > 0 ? (resultadoOp / totalVentas) * 100 : 0
-  const resultadoFinal   = resultadoOp - totalSueldos - totalRetiros
-  const resultadoFinalPct = totalVentas > 0 ? (resultadoFinal / totalVentas) * 100 : 0
-
-  return { totalVentas, totalCMV, margenBruto, margenPct, totalGastosOp, desglose, movimientosPorCat, gastosSueldos, gastosRetiros, totalSueldos, totalRetiros, resultadoOp, resultadoOpPct, resultadoFinal, resultadoFinalPct }
-}
-
-function prevMonthStr(month: string) {
-  const [y, m] = month.split('-').map(Number)
-  if (m === 1) return `${y - 1}-12`
-  return `${y}-${String(m - 1).padStart(2, '0')}`
+async function eerrFetcher(url: string): Promise<EERRResponse> {
+  const res = await fetch(url)
+  if (!res.ok) {
+    const msg = await res.json().catch(() => ({ error: "Error" }))
+    throw new Error(msg?.error ?? "Error calculando EERR")
+  }
+  return res.json()
 }
 
 export function ContabilidadContent() {
-  const { data: ventas = [] }        = useSupabase<Venta>("ventas")
-  const { data: compras = [] }       = useSupabase<Compra>("compras")
-  const { data: gastos = [] }        = useSupabase<Gasto>("gastos")
-  const { data: movimientosMp = [] } = useSupabase<MovimientoMP>("movimientos_mp")
-
-  // Unifica gastos de la tabla gastos + egresos categorizados de MP
-  // Solo gastos pagados — los pendientes (pagado=false) no impactan en el EERR todavía
-  const gastosUnificados = useMemo(() => [
-    ...gastos.filter(g => g.pagado !== false),
-    ...movimientosMp.filter(esMPGasto).map(mpAGasto),
-  ], [gastos, movimientosMp])
-
   // Abrir en el mes anterior: el mes en curso está incompleto, no tiene sentido
   // analizarlo hasta que termine
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -248,179 +119,215 @@ export function ContabilidadContent() {
   const [sueldosExpanded, setSueldosExpanded] = useState(false)
   const [retirosExpanded, setRetirosExpanded] = useState(false)
 
-  const { eerr, prev } = useMemo(() => ({
-    eerr: calcEERR(ventas, compras, gastosUnificados, selectedMonth),
-    prev: calcEERR(ventas, compras, gastosUnificados, prevMonthStr(selectedMonth)),
-  }), [ventas, compras, gastosUnificados, selectedMonth])
+  const { data, error, isLoading } = useSWR<EERRResponse>(
+    `/api/eerr/data?month=${selectedMonth}`,
+    eerrFetcher,
+    { revalidateOnFocus: false }
+  )
+
+  const eerr = data?.current ?? emptyEERR
+  const prev = data?.previous ?? emptyEERR
 
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
         <Label>Período</Label>
-        <Input type="month" value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="w-auto mt-1" />
+        <Input
+          type="month"
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+          className="w-auto mt-1"
+        />
       </div>
 
+      {error && (
+        <Card className="p-6 border-destructive/50 bg-destructive/5">
+          <p className="text-sm text-destructive">
+            Error al cargar el EERR: {error instanceof Error ? error.message : "Error desconocido"}
+          </p>
+        </Card>
+      )}
+
       <Card className="p-6">
-        <h3 className="font-semibold text-base mb-5">Estado de Resultados</h3>
-
-        <div className="space-y-0">
-          <EERRRow label="(+) Ventas" value={eerr.totalVentas} />
-          <EERRRow label="(−) Costo de mercadería vendida (FIFO)" value={eerr.totalCMV} />
-          <EERRTotal label="= Margen Bruto" value={eerr.margenBruto} pct={eerr.margenPct} />
-
-          <button
-            onClick={() => setGastosExpanded(!gastosExpanded)}
-            className="flex items-center justify-between w-full py-2.5 border-b border-border/40 text-left hover:bg-muted/30 rounded transition-colors"
-          >
-            <span className="flex items-center gap-1 text-sm text-muted-foreground">
-              {gastosExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              (−) Gastos Operativos
-            </span>
-            <span className="text-sm font-medium tabular-nums">{formatCurrency(eerr.totalGastosOp)}</span>
-          </button>
-
-          {gastosExpanded && (
-            <div className="pl-4 ml-2 border-l-2 border-border/30 mb-1">
-              {Object.entries(eerr.desglose).sort((a, b) => b[1] - a[1]).map(([cat, total]) => {
-                const movs = eerr.movimientosPorCat[cat] ?? []
-                const catOpen = expandedCat === cat
-                return (
-                  <div key={cat}>
-                    <button
-                      className="flex items-center justify-between w-full py-1.5 text-xs hover:bg-muted/30 rounded px-1 transition-colors"
-                      onClick={() => setExpandedCat(catOpen ? null : cat)}
-                    >
-                      <span className="flex items-center gap-1 text-muted-foreground">
-                        {catOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                        {cat}
-                        <span className="text-muted-foreground/50">({movs.length})</span>
-                      </span>
-                      <span className="tabular-nums text-muted-foreground">{formatCurrency(total)}</span>
-                    </button>
-                    {catOpen && (
-                      <div className="ml-4 mb-1 border-l border-border/20 pl-3">
-                        {movs.sort((a, b) => b.fecha.localeCompare(a.fecha)).map((g, i) => (
-                          <div key={i} className="flex items-center justify-between py-1 text-xs border-b border-border/10 last:border-0">
-                            <div className="flex flex-col min-w-0">
-                              <span className="text-muted-foreground/70 tabular-nums">{g.fecha.slice(0, 10)}</span>
-                              {g.descripcion && <span className="text-muted-foreground truncate max-w-[200px]">{g.descripcion}</span>}
-                              {g.medio_pago && <span className="text-muted-foreground/50">{g.medio_pago}</span>}
-                            </div>
-                            <span className="tabular-nums text-muted-foreground ml-4 shrink-0">{formatCurrency(g.monto)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-              {Object.keys(eerr.desglose).length === 0 && (
-                <p className="py-2 text-xs text-muted-foreground italic">Sin gastos operativos en este período</p>
-              )}
-            </div>
-          )}
-
-          <EERRTotal label="= Resultado Operativo" value={eerr.resultadoOp} pct={eerr.resultadoOpPct} />
-
-          {/* Sueldos expandible */}
-          <button
-            onClick={() => setSueldosExpanded(v => !v)}
-            className="flex items-center justify-between w-full py-2.5 border-b border-border/40 text-left hover:bg-muted/30 rounded transition-colors"
-          >
-            <span className="flex items-center gap-1 text-sm text-muted-foreground">
-              {sueldosExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              (−) Sueldos y Comisiones
-            </span>
-            <span className="text-sm font-medium tabular-nums">{formatCurrency(eerr.totalSueldos)}</span>
-          </button>
-          {sueldosExpanded && (
-            <div className="pl-4 ml-2 border-l-2 border-border/30 mb-1">
-              {eerr.gastosSueldos.sort((a, b) => b.fecha.localeCompare(a.fecha)).map((g, i) => (
-                <div key={i} className="flex items-center justify-between py-1.5 text-xs border-b border-border/10 last:border-0">
-                  <div className="flex flex-col">
-                    <span className="text-muted-foreground/70">{g.fecha.slice(0, 10)}</span>
-                    <span className="text-muted-foreground">{g.descripcion || g.categoria}</span>
-                    {g.medio_pago && <span className="text-muted-foreground/50">{g.medio_pago}</span>}
-                  </div>
-                  <span className="tabular-nums text-muted-foreground">{formatCurrency(g.monto)}</span>
-                </div>
-              ))}
-              {eerr.gastosSueldos.length === 0 && <p className="py-2 text-xs text-muted-foreground italic">Sin movimientos</p>}
-            </div>
-          )}
-
-          {/* Retiros expandible */}
-          {eerr.totalRetiros > 0 && (
-            <>
-              <button
-                onClick={() => setRetirosExpanded(v => !v)}
-                className="flex items-center justify-between w-full py-2.5 border-b border-border/40 text-left hover:bg-muted/30 rounded transition-colors"
-              >
-                <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                  {retirosExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                  (−) Retiros personales
-                </span>
-                <span className="text-sm font-medium tabular-nums">{formatCurrency(eerr.totalRetiros)}</span>
-              </button>
-              {retirosExpanded && (
-                <div className="pl-4 ml-2 border-l-2 border-border/30 mb-1">
-                  {eerr.gastosRetiros.sort((a, b) => b.fecha.localeCompare(a.fecha)).map((g, i) => (
-                    <div key={i} className="flex items-center justify-between py-1.5 text-xs border-b border-border/10 last:border-0">
-                      <div className="flex flex-col">
-                        <span className="text-muted-foreground/70">{g.fecha.slice(0, 10)}</span>
-                        <span className="text-muted-foreground">{g.descripcion || g.categoria}</span>
-                      </div>
-                      <span className="tabular-nums text-muted-foreground">{formatCurrency(g.monto)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          <EERRTotal label="= Resultado del Período" value={eerr.resultadoFinal} pct={eerr.resultadoFinalPct} />
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-semibold text-base">Estado de Resultados</h3>
+          {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
         </div>
+
+        {isLoading && !data ? (
+          <div className="space-y-3">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-9 w-full" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-0">
+            <EERRRow label="(+) Ventas" value={eerr.totalVentas} />
+            <EERRRow label="(−) Costo de mercadería vendida (FIFO)" value={eerr.totalCMV} />
+            <EERRTotal label="= Margen Bruto" value={eerr.margenBruto} pct={eerr.margenPct} />
+
+            <button
+              onClick={() => setGastosExpanded(!gastosExpanded)}
+              className="flex items-center justify-between w-full py-2.5 border-b border-border/40 text-left hover:bg-muted/30 rounded transition-colors"
+            >
+              <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                {gastosExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                (−) Gastos Operativos
+              </span>
+              <span className="text-sm font-medium tabular-nums">{formatCurrency(eerr.totalGastosOp)}</span>
+            </button>
+
+            {gastosExpanded && (
+              <div className="pl-4 ml-2 border-l-2 border-border/30 mb-1">
+                {Object.entries(eerr.desglose).sort((a, b) => b[1] - a[1]).map(([cat, total]) => {
+                  const movs = eerr.movimientosPorCat[cat] ?? []
+                  const catOpen = expandedCat === cat
+                  return (
+                    <div key={cat}>
+                      <button
+                        className="flex items-center justify-between w-full py-1.5 text-xs hover:bg-muted/30 rounded px-1 transition-colors"
+                        onClick={() => setExpandedCat(catOpen ? null : cat)}
+                      >
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          {catOpen ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                          {cat}
+                          <span className="text-muted-foreground/50">({movs.length})</span>
+                        </span>
+                        <span className="tabular-nums text-muted-foreground">{formatCurrency(total)}</span>
+                      </button>
+                      {catOpen && (
+                        <div className="ml-4 mb-1 border-l border-border/20 pl-3">
+                          {movs.slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).map((g, i) => (
+                            <div key={i} className="flex items-center justify-between py-1 text-xs border-b border-border/10 last:border-0">
+                              <div className="flex flex-col min-w-0">
+                                <span className="text-muted-foreground/70 tabular-nums">{g.fecha.slice(0, 10)}</span>
+                                {g.descripcion && <span className="text-muted-foreground truncate max-w-[200px]">{g.descripcion}</span>}
+                                {g.medio_pago && <span className="text-muted-foreground/50">{g.medio_pago}</span>}
+                              </div>
+                              <span className="tabular-nums text-muted-foreground ml-4 shrink-0">{formatCurrency(g.monto)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {Object.keys(eerr.desglose).length === 0 && (
+                  <p className="py-2 text-xs text-muted-foreground italic">Sin gastos operativos en este período</p>
+                )}
+              </div>
+            )}
+
+            <EERRTotal label="= Resultado Operativo" value={eerr.resultadoOp} pct={eerr.resultadoOpPct} />
+
+            {/* Sueldos expandible */}
+            <button
+              onClick={() => setSueldosExpanded((v) => !v)}
+              className="flex items-center justify-between w-full py-2.5 border-b border-border/40 text-left hover:bg-muted/30 rounded transition-colors"
+            >
+              <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                {sueldosExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                (−) Sueldos y Comisiones
+              </span>
+              <span className="text-sm font-medium tabular-nums">{formatCurrency(eerr.totalSueldos)}</span>
+            </button>
+            {sueldosExpanded && (
+              <div className="pl-4 ml-2 border-l-2 border-border/30 mb-1">
+                {eerr.gastosSueldos.slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).map((g, i) => (
+                  <div key={i} className="flex items-center justify-between py-1.5 text-xs border-b border-border/10 last:border-0">
+                    <div className="flex flex-col">
+                      <span className="text-muted-foreground/70">{g.fecha.slice(0, 10)}</span>
+                      <span className="text-muted-foreground">{g.descripcion || g.categoria}</span>
+                      {g.medio_pago && <span className="text-muted-foreground/50">{g.medio_pago}</span>}
+                    </div>
+                    <span className="tabular-nums text-muted-foreground">{formatCurrency(g.monto)}</span>
+                  </div>
+                ))}
+                {eerr.gastosSueldos.length === 0 && <p className="py-2 text-xs text-muted-foreground italic">Sin movimientos</p>}
+              </div>
+            )}
+
+            {/* Retiros expandible */}
+            {eerr.totalRetiros > 0 && (
+              <>
+                <button
+                  onClick={() => setRetirosExpanded((v) => !v)}
+                  className="flex items-center justify-between w-full py-2.5 border-b border-border/40 text-left hover:bg-muted/30 rounded transition-colors"
+                >
+                  <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                    {retirosExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                    (−) Retiros personales
+                  </span>
+                  <span className="text-sm font-medium tabular-nums">{formatCurrency(eerr.totalRetiros)}</span>
+                </button>
+                {retirosExpanded && (
+                  <div className="pl-4 ml-2 border-l-2 border-border/30 mb-1">
+                    {eerr.gastosRetiros.slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).map((g, i) => (
+                      <div key={i} className="flex items-center justify-between py-1.5 text-xs border-b border-border/10 last:border-0">
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground/70">{g.fecha.slice(0, 10)}</span>
+                          <span className="text-muted-foreground">{g.descripcion || g.categoria}</span>
+                        </div>
+                        <span className="tabular-nums text-muted-foreground">{formatCurrency(g.monto)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            <EERRTotal label="= Resultado del Período" value={eerr.resultadoFinal} pct={eerr.resultadoFinalPct} />
+          </div>
+        )}
       </Card>
 
       {/* Comparativa mes anterior */}
       <Card className="p-6">
         <h3 className="font-semibold text-base mb-4">Comparativa vs mes anterior</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-2 font-normal text-muted-foreground">Concepto</th>
-                <th className="text-right py-2 font-normal text-muted-foreground">Mes actual</th>
-                <th className="text-right py-2 font-normal text-muted-foreground">Mes anterior</th>
-                <th className="text-right py-2 font-normal text-muted-foreground">Variación</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                { label: "Ventas",              actual: eerr.totalVentas,     prev: prev.totalVentas },
-                { label: "CMV",                 actual: eerr.totalCMV,        prev: prev.totalCMV },
-                { label: "Margen Bruto",        actual: eerr.margenBruto,     prev: prev.margenBruto },
-                { label: "Gastos Operativos",   actual: eerr.totalGastosOp,   prev: prev.totalGastosOp },
-                { label: "Resultado Operativo", actual: eerr.resultadoOp,     prev: prev.resultadoOp },
-                { label: "Sueldos",             actual: eerr.totalSueldos,    prev: prev.totalSueldos },
-                { label: "Retiros personales",  actual: eerr.totalRetiros,    prev: prev.totalRetiros },
-              ].map(row => (
-                <tr key={row.label} className="border-b">
-                  <td className="py-2.5 text-muted-foreground">{row.label}</td>
-                  <td className="py-2.5 text-right font-medium tabular-nums">{formatCurrency(row.actual)}</td>
-                  <td className="py-2.5 text-right tabular-nums text-muted-foreground">{formatCurrency(row.prev)}</td>
-                  <td className="py-2.5 text-right"><Delta actual={row.actual} prev={row.prev} /></td>
+        {isLoading && !data ? (
+          <div className="space-y-2">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-8 w-full" />
+            ))}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b">
+                  <th className="text-left py-2 font-normal text-muted-foreground">Concepto</th>
+                  <th className="text-right py-2 font-normal text-muted-foreground">Mes actual</th>
+                  <th className="text-right py-2 font-normal text-muted-foreground">Mes anterior</th>
+                  <th className="text-right py-2 font-normal text-muted-foreground">Variación</th>
                 </tr>
-              ))}
-              <tr className="border-t-2 font-semibold">
-                <td className="py-2.5">Resultado Final</td>
-                <td className={`py-2.5 text-right tabular-nums ${eerr.resultadoFinal >= 0 ? "text-green-600" : "text-red-600"}`}>{formatCurrency(eerr.resultadoFinal)}</td>
-                <td className={`py-2.5 text-right tabular-nums ${prev.resultadoFinal >= 0 ? "text-green-600" : "text-red-600"}`}>{formatCurrency(prev.resultadoFinal)}</td>
-                <td className="py-2.5 text-right"><Delta actual={eerr.resultadoFinal} prev={prev.resultadoFinal} /></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {[
+                  { label: "Ventas", actual: eerr.totalVentas, prev: prev.totalVentas },
+                  { label: "CMV", actual: eerr.totalCMV, prev: prev.totalCMV },
+                  { label: "Margen Bruto", actual: eerr.margenBruto, prev: prev.margenBruto },
+                  { label: "Gastos Operativos", actual: eerr.totalGastosOp, prev: prev.totalGastosOp },
+                  { label: "Resultado Operativo", actual: eerr.resultadoOp, prev: prev.resultadoOp },
+                  { label: "Sueldos", actual: eerr.totalSueldos, prev: prev.totalSueldos },
+                  { label: "Retiros personales", actual: eerr.totalRetiros, prev: prev.totalRetiros },
+                ].map((row) => (
+                  <tr key={row.label} className="border-b">
+                    <td className="py-2.5 text-muted-foreground">{row.label}</td>
+                    <td className="py-2.5 text-right font-medium tabular-nums">{formatCurrency(row.actual)}</td>
+                    <td className="py-2.5 text-right tabular-nums text-muted-foreground">{formatCurrency(row.prev)}</td>
+                    <td className="py-2.5 text-right"><Delta actual={row.actual} prev={row.prev} /></td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 font-semibold">
+                  <td className="py-2.5">Resultado Final</td>
+                  <td className={`py-2.5 text-right tabular-nums ${eerr.resultadoFinal >= 0 ? "text-green-600" : "text-red-600"}`}>{formatCurrency(eerr.resultadoFinal)}</td>
+                  <td className={`py-2.5 text-right tabular-nums ${prev.resultadoFinal >= 0 ? "text-green-600" : "text-red-600"}`}>{formatCurrency(prev.resultadoFinal)}</td>
+                  <td className="py-2.5 text-right"><Delta actual={eerr.resultadoFinal} prev={prev.resultadoFinal} /></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
   )
