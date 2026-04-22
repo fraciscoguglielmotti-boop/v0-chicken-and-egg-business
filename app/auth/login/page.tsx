@@ -29,6 +29,13 @@ export default function LoginPage() {
 
       if (signInError) throw signInError
 
+      // Fire login alert (non-blocking — never interrupts the login flow)
+      fetch("/api/auth/login-alert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, timestamp: new Date().toISOString() }),
+      }).catch(() => {})
+
       router.push("/")
       router.refresh()
     } catch (err: any) {

@@ -79,7 +79,7 @@ function buildEmailDiario(datos: any): string {
 }
 
 function buildEmailSemanal(datos: any): string {
-  const { semana, ventas, cobros, margenBruto, tasaCobranza, topClientes, productosMasVendidos } = datos
+  const { semana, ventas, cobros, cajonesSemana, clientesActivos, pendiente, ticketPromedioPorCliente, tasaCobranza, topClientes, desglose } = datos
   return `
 <!DOCTYPE html>
 <html lang="es">
@@ -106,18 +106,36 @@ function buildEmailSemanal(datos: any): string {
         </td>
         <td width="8"></td>
         <td style="background:#fefce8;border-radius:8px;text-align:center;">
-          <div style="font-size:12px;color:#6b7280;">Margen Bruto</div>
-          <div style="font-size:18px;font-weight:bold;">${margenBruto}%</div>
+          <div style="font-size:12px;color:#6b7280;">Pendiente</div>
+          <div style="font-size:18px;font-weight:bold;">${formatCurrency(pendiente)}</div>
         </td>
         <td width="8"></td>
         <td style="background:#fdf4ff;border-radius:8px;text-align:center;">
           <div style="font-size:12px;color:#6b7280;">Tasa Cobranza</div>
           <div style="font-size:18px;font-weight:bold;">${tasaCobranza}%</div>
+          ${tasaCobranza > 100 ? `<div style="font-size:9px;color:#d97706;">Incl. cobros ant.</div>` : ""}
         </td>
       </tr>
     </table>
 
-    ${topClientes.length > 0 ? `
+    <table width="100%" cellpadding="8" cellspacing="0" style="margin-bottom:20px;background:#f9fafb;border-radius:6px;">
+      <tr>
+        <td style="text-align:center;border-right:1px solid #e5e7eb;font-size:12px;">
+          <div style="color:#6b7280;font-size:11px;">Cajones Vendidos</div>
+          <div style="font-weight:bold;">${cajonesSemana}</div>
+        </td>
+        <td style="text-align:center;border-right:1px solid #e5e7eb;font-size:12px;">
+          <div style="color:#6b7280;font-size:11px;">Clientes Activos</div>
+          <div style="font-weight:bold;">${clientesActivos}</div>
+        </td>
+        <td style="text-align:center;font-size:12px;">
+          <div style="color:#6b7280;font-size:11px;">Ticket Prom./Cliente</div>
+          <div style="font-weight:bold;">${formatCurrency(ticketPromedioPorCliente)}</div>
+        </td>
+      </tr>
+    </table>
+
+    ${topClientes?.length > 0 ? `
     <h3 style="font-size:14px;margin:0 0 10px;color:#374151;">Top 5 Clientes</h3>
     <table width="100%" cellpadding="7" cellspacing="0" style="margin-bottom:20px;border-collapse:collapse;">
       ${topClientes.map((c: any, i: number) => `
@@ -128,10 +146,10 @@ function buildEmailSemanal(datos: any): string {
       `).join("")}
     </table>` : ""}
 
-    ${productosMasVendidos.length > 0 ? `
-    <h3 style="font-size:14px;margin:0 0 10px;color:#374151;">Productos más Vendidos</h3>
+    ${desglose?.length > 0 ? `
+    <h3 style="font-size:14px;margin:0 0 10px;color:#374151;">Desglose por Producto</h3>
     <table width="100%" cellpadding="7" cellspacing="0" style="border-collapse:collapse;">
-      ${productosMasVendidos.map((p: any) => `
+      ${desglose.map((p: any) => `
         <tr style="border-bottom:1px solid #f3f4f6;">
           <td style="font-size:13px;">${p.producto}</td>
           <td style="text-align:center;font-size:12px;color:#6b7280;">${p.unidades.toLocaleString("es-AR")} u.</td>

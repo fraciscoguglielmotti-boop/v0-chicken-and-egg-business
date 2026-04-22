@@ -128,8 +128,8 @@ function ChartTooltip({ active, payload, label }: any) {
 
 // ─── Componentes reutilizables ────────────────────────────────────────────────
 
-function MetricCard({ title, value, delta, deltaLabel, icon: Icon }: {
-  title: string; value: string | number; delta?: number; deltaLabel?: string; icon: React.ElementType
+function MetricCard({ title, value, delta, deltaLabel, icon: Icon, note }: {
+  title: string; value: string | number; delta?: number; deltaLabel?: string; icon: React.ElementType; note?: string
 }) {
   const positivo = delta !== undefined && delta >= 0
   return (
@@ -148,6 +148,7 @@ function MetricCard({ title, value, delta, deltaLabel, icon: Icon }: {
             <span>{positivo ? "+" : ""}{delta.toFixed(1)}% {deltaLabel}</span>
           </div>
         )}
+        {note && <p className="mt-1 text-xs text-amber-600">{note}</p>}
       </CardContent>
     </Card>
   )
@@ -353,6 +354,9 @@ function PdfTemplateDiario({ data }: { data: DatosDiarios }) {
           <span style={S.indValue}>{r.value}</span>
         </div>
       ))}
+      {data.tasaCobranza > 100 && (
+        <div style={{ fontSize: "9px", color: "#d97706", marginTop: "4px" }}>* Tasa &gt;100%: incluye cobros de meses anteriores</div>
+      )}
 
       {data.desglose?.length > 0 && (
         <>
@@ -453,6 +457,9 @@ function PdfTemplateSemanal({ data }: { data: DatosSemanales }) {
           <span style={S.indValue}>{r.value}</span>
         </div>
       ))}
+      {data.tasaCobranza > 100 && (
+        <div style={{ fontSize: "9px", color: "#d97706", marginTop: "4px" }}>* Tasa &gt;100%: incluye cobros de meses anteriores</div>
+      )}
 
       {data.desglose?.length > 0 && (
         <>
@@ -548,7 +555,7 @@ function PdfTemplateMensual({ data }: { data: DatosMensuales }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 24px" }}>
           {[
             { label: "Margen bruto", value: `${data.kpis.margenBruto}%` },
-            { label: "Tasa de cobranza", value: `${data.kpis.tasaCobranza}%` },
+            { label: data.kpis.tasaCobranza > 100 ? "Tasa de cobranza *" : "Tasa de cobranza", value: `${data.kpis.tasaCobranza}%` },
             { label: "Margen neto", value: `${data.kpis.margenNeto}%` },
             { label: "Ticket promedio", value: formatCurrency(data.kpis.ticketPromedio) },
             { label: "Crecimiento mensual", value: `${data.kpis.crecimientoMensual >= 0 ? "+" : ""}${data.kpis.crecimientoMensual}%` },
@@ -561,6 +568,9 @@ function PdfTemplateMensual({ data }: { data: DatosMensuales }) {
               <span style={{ fontWeight: "600", color: "#111827" }}>{r.value}</span>
             </div>
           ))}
+          {data.kpis.tasaCobranza > 100 && (
+            <div style={{ fontSize: "9px", color: "#d97706", marginTop: "4px" }}>* Tasa &gt;100%: incluye cobros de meses anteriores</div>
+          )}
         </div>
       </div>
 
@@ -694,7 +704,7 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange
         <div className="grid gap-4 sm:grid-cols-3">
           {isLoading || !data ? [0, 1, 2].map((i) => <MetricCardSkeleton key={i} />) : (
             <>
-              <MetricCard title="Tasa de Cobranza" value={`${data.tasaCobranza}%`} icon={CheckCircle2} />
+              <MetricCard title="Tasa de Cobranza" value={`${data.tasaCobranza}%`} icon={CheckCircle2} note={data.tasaCobranza > 100 ? "Incluye cobros de meses anteriores" : undefined} />
               <MetricCard title="Pendiente de Cobro" value={data.pendiente} icon={AlertTriangle} />
               <MetricCard title="Ticket Promedio" value={data.ticketPromedio} icon={DollarSign} />
             </>
@@ -815,6 +825,7 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
                 <span className={`font-semibold ${data.tasaCobranza >= 80 ? "text-green-600" : data.tasaCobranza >= 50 ? "text-amber-600" : "text-red-600"}`}>
                   {data.tasaCobranza}%
                 </span>
+                {data.tasaCobranza > 100 && <span className="text-amber-600"> · Incluye cobros de meses anteriores</span>}
               </p>
             )}
           </CardHeader>
@@ -922,11 +933,11 @@ function ReporteMensual({ data, isLoading, pdfRef, printRef, mes, onMesChange }:
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[
-              { label: "Ticket Promedio", value: formatCurrency(data.kpis.ticketPromedio), trend: undefined },
-              { label: "Tasa de Cobranza", value: `${data.kpis.tasaCobranza}%`, trend: undefined },
-              { label: "Margen Bruto", value: `${data.kpis.margenBruto}%`, trend: undefined },
-              { label: "Margen Neto", value: `${data.kpis.margenNeto}%`, trend: undefined },
-              { label: "Crecimiento Mensual", value: `${data.kpis.crecimientoMensual >= 0 ? "+" : ""}${data.kpis.crecimientoMensual}%`, trend: data.kpis.crecimientoMensual },
+              { label: "Ticket Promedio", value: formatCurrency(data.kpis.ticketPromedio), trend: undefined, note: undefined as string | undefined },
+              { label: "Tasa de Cobranza", value: `${data.kpis.tasaCobranza}%`, trend: undefined, note: data.kpis.tasaCobranza > 100 ? "Incluye cobros de meses anteriores" : undefined },
+              { label: "Margen Bruto", value: `${data.kpis.margenBruto}%`, trend: undefined, note: undefined },
+              { label: "Margen Neto", value: `${data.kpis.margenNeto}%`, trend: undefined, note: undefined },
+              { label: "Crecimiento Mensual", value: `${data.kpis.crecimientoMensual >= 0 ? "+" : ""}${data.kpis.crecimientoMensual}%`, trend: data.kpis.crecimientoMensual, note: undefined },
             ].map((kpi) => (
               <Card key={kpi.label}>
                 <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">{kpi.label}</CardTitle></CardHeader>
@@ -938,6 +949,7 @@ function ReporteMensual({ data, isLoading, pdfRef, printRef, mes, onMesChange }:
                       <span>{kpi.trend >= 0 ? "+" : ""}{kpi.trend.toFixed(1)}% vs mes anterior</span>
                     </div>
                   )}
+                  {kpi.note && <p className="mt-1 text-xs text-amber-600">{kpi.note}</p>}
                 </CardContent>
               </Card>
             ))}

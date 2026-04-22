@@ -32,6 +32,7 @@ import {
   Factory,
   Store,
   WifiOff,
+  Shield,
 } from "lucide-react"
 import {
   DndContext,
@@ -50,6 +51,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { usePermissions } from "@/hooks/use-permissions"
 
 const ALL_SECTIONS = [
   {
@@ -95,6 +97,13 @@ const ALL_SECTIONS = [
       { name: "Flujo de Fondos", href: "/flujo", icon: TrendingUp },
       { name: "KPIs Ejecutivos", href: "/kpis", icon: LineChart },
       { name: "Reportes Ejecutivos", href: "/reportes-ejecutivos", icon: BookOpen },
+    ],
+  },
+  {
+    id: "admin",
+    label: "Administración",
+    items: [
+      { name: "Permisos de Usuarios", href: "/admin/permisos", icon: Shield },
     ],
   },
 ]
@@ -189,6 +198,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ open, onClose }: AppSidebarProps) {
   const pathname = usePathname()
+  const { canAccess, isOwner, isLoading: permsLoading } = usePermissions()
 
   const [sectionOrder, setSectionOrder] = useState<string[]>(
     ALL_SECTIONS.map((s) => s.id)
@@ -253,7 +263,16 @@ export function AppSidebar({ open, onClose }: AppSidebarProps) {
 
   const orderedSections = sectionOrder
     .map((id) => ALL_SECTIONS.find((s) => s.id === id))
-    .filter(Boolean) as typeof ALL_SECTIONS
+    .filter(Boolean)
+    .map((section) => ({
+      ...section!,
+      // Hide admin section for non-owners; hide items the user can't access
+      items: section!.items.filter((item) => {
+        if (section!.id === "admin") return !permsLoading && isOwner
+        return canAccess(item.href)
+      }),
+    }))
+    .filter((section) => section.items.length > 0)
 
   return (
     <>
