@@ -91,6 +91,29 @@ interface DatosDiarios {
   clientesSinComprar: { nombre: string; diasSinComprar: number }[]
 }
 
+interface VentaClienteSemanalItem {
+  producto: string
+  cantidad: number
+  precioPromedio: number
+  costoUnitario: number
+  ingresos: number
+  ganancia: number
+  margen: number
+}
+
+interface ComparacionSemana {
+  label: string
+  inicio: string
+  fin: string
+  rango: string
+  actual: boolean
+  ventas: number
+  ganancia: number
+  margen: number
+  cajones: number
+  clientes: number
+}
+
 interface DatosSemanales {
   semana: string
   ventas: { semana: number; anterior: number; delta: number }
@@ -104,11 +127,12 @@ interface DatosSemanales {
   gananciaBruta: number
   margenBruto: number
   costosProducto: CostoProducto[]
-  ventasDetalle: { cliente: string; items: VentaClienteItem[] }[]
+  ventasDetalle: { cliente: string; items: VentaClienteSemanalItem[]; total: number; ganancia: number; margen: number }[]
   ventasPorDia: { dia: string; ventas: number; cobros: number }[]
   topClientes: { nombre: string; monto: number }[]
   desglose: DesgloseProd[]
   clientesSinComprar: { nombre: string; diasSinComprar: number }[]
+  comparacionSemanas: ComparacionSemana[]
 }
 
 interface DatosMensuales {
@@ -348,8 +372,8 @@ function PdfTemplateDiario({ data }: { data: DatosDiarios }) {
   const green: React.CSSProperties = { color: "#16a34a", fontWeight: 600 }
   const red: React.CSSProperties = { color: "#dc2626" }
   const pill = (margen: number): React.CSSProperties => ({
-    display: "inline-block", padding: "2px 8px", borderRadius: "9999px", fontSize: "10px", fontWeight: 700,
-    whiteSpace: "nowrap", minWidth: "44px", textAlign: "center",
+    display: "inline-block", padding: "3px 0", borderRadius: "4px", fontSize: "10px", fontWeight: 700,
+    whiteSpace: "nowrap", width: "52px", textAlign: "center",
     backgroundColor: margen >= 25 ? "#dcfce7" : margen >= 15 ? "#fef9c3" : "#fee2e2",
     color: margen >= 25 ? "#166534" : margen >= 15 ? "#854d0e" : "#991b1b",
   })
@@ -498,7 +522,7 @@ function PdfTemplateDiario({ data }: { data: DatosDiarios }) {
               return (
                 <div key={c.nombre} style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", border: "1px solid #e5e7eb", borderRadius: "4px", fontSize: "10px" }}>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: "6px" }}>{c.nombre}</span>
-                  <span style={{ ...color, padding: "1px 6px", borderRadius: "9999px", fontWeight: 700, fontSize: "9px", flexShrink: 0, backgroundColor: color.bg }}>{c.diasSinComprar}d</span>
+                  <span style={{ width: "32px", textAlign: "center", padding: "2px 0", borderRadius: "4px", fontWeight: 700, fontSize: "9px", flexShrink: 0, backgroundColor: color.bg, color: color.text }}>{c.diasSinComprar}d</span>
                 </div>
               )
             })}
@@ -543,8 +567,8 @@ function PdfTemplateSemanal({ data }: { data: DatosSemanales }) {
   const green: React.CSSProperties = { color: "#16a34a", fontWeight: 600 }
   const red: React.CSSProperties = { color: "#dc2626" }
   const pill = (margen: number): React.CSSProperties => ({
-    display: "inline-block", padding: "2px 8px", borderRadius: "9999px", fontSize: "10px", fontWeight: 700,
-    whiteSpace: "nowrap", minWidth: "44px", textAlign: "center",
+    display: "inline-block", padding: "3px 0", borderRadius: "4px", fontSize: "10px", fontWeight: 700,
+    whiteSpace: "nowrap", width: "52px", textAlign: "center",
     backgroundColor: margen >= 25 ? "#dcfce7" : margen >= 15 ? "#fef9c3" : "#fee2e2",
     color: margen >= 25 ? "#166534" : margen >= 15 ? "#854d0e" : "#991b1b",
   })
@@ -630,56 +654,91 @@ function PdfTemplateSemanal({ data }: { data: DatosSemanales }) {
         </>
       )}
 
-      {/* Detalle de ventas por cliente */}
+      {/* Resumen por cliente — un renglón por cliente-producto */}
       {(data.ventasDetalle?.length ?? 0) > 0 && (
         <>
-          <div style={S.sectionTitle}>Detalle de Ventas por Cliente</div>
+          <div style={S.sectionTitle}>Resumen por Cliente</div>
           <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "16px" }}>
             <thead>
               <tr>
                 <th style={{ ...th, textAlign: "left" }}>Cliente / Producto</th>
-                <th style={th}>Cant.</th>
-                <th style={th}>P. venta</th>
-                <th style={th}>P. costo</th>
-                <th style={th}>Ingreso</th>
+                <th style={th}>Cajones</th>
+                <th style={th}>P. prom.</th>
+                <th style={th}>Ingresos</th>
                 <th style={th}>Ganancia</th>
                 <th style={th}>Margen</th>
               </tr>
             </thead>
             <tbody>
               {data.ventasDetalle.map((cl) => {
-                const totalCl = cl.items.reduce((s, i) => s + i.cantidad * i.precioVenta, 0)
-                const ganCl = cl.items.reduce((s, i) => s + i.cantidad * (i.precioVenta - i.costoUnitario), 0)
-                const marCl = totalCl > 0 ? Math.round((ganCl / totalCl) * 1000) / 10 : 0
+                const cajonesCl = cl.items.reduce((s, i) => s + i.cantidad, 0)
                 return (
                   <Fragment key={cl.cliente}>
                     <tr style={{ backgroundColor: "#f8fafc" }}>
-                      <td colSpan={4} style={{ ...tdL, fontWeight: 700, fontSize: "12px" }}>{cl.cliente}</td>
-                      <td style={{ ...td, fontWeight: 700 }}>{formatCurrency(totalCl)}</td>
-                      <td style={{ ...td, ...green, fontWeight: 700 }}>{formatCurrency(ganCl)}</td>
-                      <td style={td}>{marCl}%</td>
+                      <td style={{ ...tdL, fontWeight: 700, fontSize: "12px" }}>{cl.cliente}</td>
+                      <td style={{ ...td, fontWeight: 700 }}>{cajonesCl}</td>
+                      <td style={{ ...td, color: "#6b7280" }}>—</td>
+                      <td style={{ ...td, fontWeight: 700 }}>{formatCurrency(cl.total)}</td>
+                      <td style={{ ...td, ...green, fontWeight: 700 }}>{formatCurrency(cl.ganancia)}</td>
+                      <td style={td}><span style={pill(cl.margen)}>{cl.margen}%</span></td>
                     </tr>
-                    {cl.items.map((it, j) => {
-                      const ing = it.cantidad * it.precioVenta
-                      const gan = it.cantidad * (it.precioVenta - it.costoUnitario)
-                      const mar = ing > 0 ? Math.round((gan / ing) * 1000) / 10 : 0
-                      return (
-                        <tr key={j}>
-                          <td style={{ ...tdL, paddingLeft: "14px", color: "#6b7280" }}>└ {it.producto}</td>
-                          <td style={td}>{it.cantidad}</td>
-                          <td style={td}>{formatCurrency(it.precioVenta)}</td>
-                          <td style={{ ...td, color: "#6b7280" }}>{formatCurrency(it.costoUnitario)}</td>
-                          <td style={td}>{formatCurrency(ing)}</td>
-                          <td style={{ ...td, ...green }}>{formatCurrency(gan)}</td>
-                          <td style={td}>{mar}%</td>
-                        </tr>
-                      )
-                    })}
+                    {cl.items.map((it) => (
+                      <tr key={it.producto}>
+                        <td style={{ ...tdL, paddingLeft: "14px", color: "#6b7280" }}>└ {it.producto}</td>
+                        <td style={td}>{it.cantidad}</td>
+                        <td style={td}>{formatCurrency(it.precioPromedio)}</td>
+                        <td style={td}>{formatCurrency(it.ingresos)}</td>
+                        <td style={{ ...td, ...green }}>{formatCurrency(it.ganancia)}</td>
+                        <td style={td}>{it.margen}%</td>
+                      </tr>
+                    ))}
                   </Fragment>
                 )
               })}
             </tbody>
           </table>
+        </>
+      )}
+
+      {/* Comparación con semanas pasadas */}
+      {(data.comparacionSemanas?.length ?? 0) > 0 && (
+        <>
+          <div style={S.sectionTitle}>Comparación con Semanas Anteriores</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "16px" }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, textAlign: "left" }}>Semana</th>
+                <th style={{ ...th, textAlign: "left" }}>Rango</th>
+                <th style={th}>Ventas</th>
+                <th style={th}>Ganancia</th>
+                <th style={th}>Margen</th>
+                <th style={th}>Cajones</th>
+                <th style={th}>Clientes</th>
+                <th style={th}>Δ vs actual</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.comparacionSemanas.map((w, idx) => {
+                const base = data.comparacionSemanas[0]?.ventas ?? 0
+                const delta = w.actual ? null : base > 0 ? Math.round(((w.ventas - base) / base) * 1000) / 10 : 0
+                return (
+                  <tr key={idx} style={w.actual ? { backgroundColor: "#f0fdf4", fontWeight: 700 } : undefined}>
+                    <td style={tdL}>{w.label}</td>
+                    <td style={{ ...tdL, color: "#6b7280" }}>{w.rango}</td>
+                    <td style={td}>{formatCurrency(w.ventas)}</td>
+                    <td style={{ ...td, ...green }}>{formatCurrency(w.ganancia)}</td>
+                    <td style={td}>{w.margen}%</td>
+                    <td style={td}>{w.cajones}</td>
+                    <td style={td}>{w.clientes}</td>
+                    <td style={{ ...td, color: delta === null ? "#6b7280" : delta >= 0 ? "#16a34a" : "#dc2626" }}>
+                      {delta === null ? "—" : `${delta >= 0 ? "+" : ""}${delta}%`}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <div style={{ fontSize: "9px", color: "#6b7280", marginBottom: "12px" }}>* Ganancia calculada con el último precio de compra conocido.</div>
         </>
       )}
 
@@ -693,7 +752,7 @@ function PdfTemplateSemanal({ data }: { data: DatosSemanales }) {
               return (
                 <div key={c.nombre} style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", border: "1px solid #e5e7eb", borderRadius: "4px", fontSize: "10px" }}>
                   <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: "6px" }}>{c.nombre}</span>
-                  <span style={{ padding: "1px 6px", borderRadius: "9999px", fontWeight: 700, fontSize: "9px", flexShrink: 0, backgroundColor: color.bg, color: color.text }}>{c.diasSinComprar}d</span>
+                  <span style={{ width: "32px", textAlign: "center", padding: "2px 0", borderRadius: "4px", fontWeight: 700, fontSize: "9px", flexShrink: 0, backgroundColor: color.bg, color: color.text }}>{c.diasSinComprar}d</span>
                 </div>
               )
             })}
@@ -965,7 +1024,7 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange
                         <td className="text-right py-2 px-3 text-red-600">{formatCurrency(p.costoTotal)}</td>
                         <td className="text-right py-2 px-3 font-semibold text-emerald-600">{formatCurrency(p.ganancia)}</td>
                         <td className="text-right py-2 px-3">
-                          <span className={`inline-block min-w-[42px] text-center px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap tabular-nums ${p.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : p.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{p.margen}%</span>
+                          <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${p.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : p.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{p.margen}%</span>
                         </td>
                       </tr>
                     ))}
@@ -978,7 +1037,7 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange
                       <td className="text-right py-2 px-3 text-red-600">{formatCurrency(data.costosProducto.reduce((s, p) => s + p.costoTotal, 0))}</td>
                       <td className="text-right py-2 px-3 text-emerald-600">{formatCurrency(data.gananciaBruta)}</td>
                       <td className="text-right py-2 px-3">
-                        <span className={`inline-block min-w-[42px] text-center px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap tabular-nums ${data.margenBruto >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : data.margenBruto >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{data.margenBruto}%</span>
+                        <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${data.margenBruto >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : data.margenBruto >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{data.margenBruto}%</span>
                       </td>
                     </tr>
                   </tbody>
@@ -1141,9 +1200,7 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange
                         {filtrados.map((c) => (
                           <div key={c.nombre} className="flex items-center justify-between gap-2 py-1.5 px-2.5 rounded-md border border-border bg-background text-xs">
                             <span className="flex-1 min-w-0 truncate">{c.nombre}</span>
-                            <span className={`shrink-0 inline-flex items-center justify-center h-5 px-2 rounded-full text-[10px] font-semibold tabular-nums whitespace-nowrap ${c.diasSinComprar >= 30 ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" : c.diasSinComprar >= 14 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"}`}>
-                              {c.diasSinComprar}d
-                            </span>
+                            <span className={`shrink-0 inline-flex items-center justify-center h-5 w-11 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${c.diasSinComprar >= 30 ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" : c.diasSinComprar >= 14 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"}`}>{c.diasSinComprar}d</span>
                           </div>
                         ))}
                       </div>
@@ -1242,9 +1299,7 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
                         <td className="py-2 text-right text-red-600">{formatCurrency(p.costoTotal)}</td>
                         <td className="py-2 text-right text-green-600 font-medium">{formatCurrency(p.ganancia)}</td>
                         <td className="py-2 text-right">
-                          <span className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-bold min-w-[42px] text-center whitespace-nowrap tabular-nums ${p.margen >= 25 ? "bg-green-100 text-green-800" : p.margen >= 15 ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800"}`}>
-                            {p.margen}%
-                          </span>
+                          <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${p.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : p.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{p.margen}%</span>
                         </td>
                       </tr>
                     ))}
@@ -1257,9 +1312,7 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
                       <td className="py-2 text-right text-red-600">{formatCurrency(data.costosProducto.reduce((s, p) => s + p.costoTotal, 0))}</td>
                       <td className="py-2 text-right text-green-600">{formatCurrency(data.gananciaBruta ?? 0)}</td>
                       <td className="py-2 text-right">
-                        <span className={`inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-bold min-w-[42px] text-center whitespace-nowrap tabular-nums ${(data.margenBruto ?? 0) >= 25 ? "bg-green-100 text-green-800" : (data.margenBruto ?? 0) >= 15 ? "bg-yellow-100 text-yellow-800" : "bg-red-100 text-red-800"}`}>
-                          {data.margenBruto ?? 0}%
-                        </span>
+                        <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${(data.margenBruto ?? 0) >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : (data.margenBruto ?? 0) >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{data.margenBruto ?? 0}%</span>
                       </td>
                     </tr>
                   </tbody>
@@ -1269,13 +1322,13 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
           </Card>
         )}
 
-        {/* Detalle de ventas por cliente */}
+        {/* Resumen por cliente — un renglón por cliente-producto (sin detalle por operación) */}
         {!isLoading && data && (data.ventasDetalle?.length ?? 0) > 0 && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
                 <Users className="h-4 w-4 text-muted-foreground" />
-                Detalle de Ventas por Cliente — Semana
+                Resumen por Cliente — Semana
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -1284,49 +1337,100 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
                   <thead>
                     <tr className="border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                       <th className="text-left pb-2">Cliente / Producto</th>
-                      <th className="text-right pb-2">Cant.</th>
-                      <th className="text-right pb-2">P. venta</th>
-                      <th className="text-right pb-2">P. costo</th>
-                      <th className="text-right pb-2">Ingreso</th>
+                      <th className="text-right pb-2">Cajones</th>
+                      <th className="text-right pb-2">P. prom.</th>
+                      <th className="text-right pb-2">Ingresos</th>
                       <th className="text-right pb-2">Ganancia</th>
                       <th className="text-right pb-2">Margen</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.ventasDetalle.map((cl) => {
-                      const totalCl = cl.items.reduce((s, i) => s + i.cantidad * i.precioVenta, 0)
-                      const ganCl = cl.items.reduce((s, i) => s + i.cantidad * (i.precioVenta - i.costoUnitario), 0)
-                      const marCl = totalCl > 0 ? Math.round((ganCl / totalCl) * 1000) / 10 : 0
+                      const cajonesCl = cl.items.reduce((s, i) => s + i.cantidad, 0)
                       return (
                         <Fragment key={cl.cliente}>
                           <tr className="bg-muted/30">
-                            <td colSpan={4} className="py-2 font-bold">{cl.cliente}</td>
-                            <td className="py-2 text-right font-bold">{formatCurrency(totalCl)}</td>
-                            <td className="py-2 text-right text-green-600 font-bold">{formatCurrency(ganCl)}</td>
-                            <td className="py-2 text-right">{marCl}%</td>
+                            <td className="py-2 font-bold">{cl.cliente}</td>
+                            <td className="py-2 text-right font-bold">{cajonesCl}</td>
+                            <td className="py-2 text-right text-muted-foreground">—</td>
+                            <td className="py-2 text-right font-bold">{formatCurrency(cl.total)}</td>
+                            <td className="py-2 text-right text-emerald-600 font-bold">{formatCurrency(cl.ganancia)}</td>
+                            <td className="py-2 text-right">
+                              <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${cl.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : cl.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{cl.margen}%</span>
+                            </td>
                           </tr>
-                          {cl.items.map((it, j) => {
-                            const ing = it.cantidad * it.precioVenta
-                            const gan = it.cantidad * (it.precioVenta - it.costoUnitario)
-                            const mar = ing > 0 ? Math.round((gan / ing) * 1000) / 10 : 0
-                            return (
-                              <tr key={j} className="border-b last:border-0">
-                                <td className="py-1.5 pl-6 text-muted-foreground">└ {it.producto}</td>
-                                <td className="py-1.5 text-right">{it.cantidad}</td>
-                                <td className="py-1.5 text-right">{formatCurrency(it.precioVenta)}</td>
-                                <td className="py-1.5 text-right text-muted-foreground">{formatCurrency(it.costoUnitario)}</td>
-                                <td className="py-1.5 text-right">{formatCurrency(ing)}</td>
-                                <td className="py-1.5 text-right text-green-600">{formatCurrency(gan)}</td>
-                                <td className="py-1.5 text-right">{mar}%</td>
-                              </tr>
-                            )
-                          })}
+                          {cl.items.map((it) => (
+                            <tr key={it.producto} className="border-b last:border-0">
+                              <td className="py-1.5 pl-6 text-muted-foreground">└ {it.producto}</td>
+                              <td className="py-1.5 text-right">{it.cantidad}</td>
+                              <td className="py-1.5 text-right">{formatCurrency(it.precioPromedio)}</td>
+                              <td className="py-1.5 text-right">{formatCurrency(it.ingresos)}</td>
+                              <td className="py-1.5 text-right text-emerald-600">{formatCurrency(it.ganancia)}</td>
+                              <td className="py-1.5 text-right">
+                                <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${it.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : it.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{it.margen}%</span>
+                              </td>
+                            </tr>
+                          ))}
                         </Fragment>
                       )
                     })}
                   </tbody>
                 </table>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Comparación con semanas pasadas */}
+        {!isLoading && data && (data.comparacionSemanas?.length ?? 0) > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <CalendarRange className="h-4 w-4 text-muted-foreground" />
+                Comparación con semanas anteriores
+              </CardTitle>
+              <CardDescription>Mismo rango de 7 días hace 1 / 4 / 8 / 12 semanas</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                      <th className="text-left pb-2">Semana</th>
+                      <th className="text-left pb-2">Rango</th>
+                      <th className="text-right pb-2">Ventas</th>
+                      <th className="text-right pb-2">Ganancia</th>
+                      <th className="text-right pb-2">Margen</th>
+                      <th className="text-right pb-2">Cajones</th>
+                      <th className="text-right pb-2">Clientes</th>
+                      <th className="text-right pb-2">Δ vs actual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.comparacionSemanas.map((w, idx) => {
+                      const base = data.comparacionSemanas[0]?.ventas ?? 0
+                      const delta = w.actual ? null : base > 0 ? Math.round(((w.ventas - base) / base) * 1000) / 10 : 0
+                      return (
+                        <tr key={idx} className={`border-b last:border-0 ${w.actual ? "bg-emerald-50 dark:bg-emerald-950/20 font-semibold" : ""}`}>
+                          <td className="py-2">{w.label}</td>
+                          <td className="py-2 text-muted-foreground">{w.rango}</td>
+                          <td className="py-2 text-right">{formatCurrency(w.ventas)}</td>
+                          <td className="py-2 text-right text-emerald-600">{formatCurrency(w.ganancia)}</td>
+                          <td className="py-2 text-right">
+                            <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${w.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : w.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{w.margen}%</span>
+                          </td>
+                          <td className="py-2 text-right">{w.cajones}</td>
+                          <td className="py-2 text-right">{w.clientes}</td>
+                          <td className={`py-2 text-right ${delta === null ? "text-muted-foreground" : delta >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                            {delta === null ? "—" : `${delta >= 0 ? "+" : ""}${delta}%`}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">* Ganancia calculada con el último precio de compra conocido para cada producto.</p>
             </CardContent>
           </Card>
         )}
@@ -1416,9 +1520,7 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
                     {clientesFiltrados.map((c) => (
                       <div key={c.nombre} className="flex items-center gap-2 rounded-md border px-3 py-2">
                         <span className="flex-1 min-w-0 truncate text-sm">{c.nombre}</span>
-                        <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold ${c.diasSinComprar >= 30 ? "bg-red-100 text-red-800" : c.diasSinComprar >= 14 ? "bg-yellow-100 text-yellow-800" : "bg-slate-100 text-slate-700"}`}>
-                          {c.diasSinComprar}d
-                        </span>
+                        <span className={`shrink-0 inline-flex items-center justify-center h-5 w-11 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${c.diasSinComprar >= 30 ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" : c.diasSinComprar >= 14 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"}`}>{c.diasSinComprar}d</span>
                       </div>
                     ))}
                   </div>

@@ -352,26 +352,43 @@ export async function GET(req: NextRequest) {
     if (tipo === "semanal") {
       const d60ago = toDateStr(addDays(d.now, -60))
 
+      // Weeks for comparison: 1, 4, 8, 12 semanas atrás (misma duración que la semana actual)
+      const weekStartD = new Date(d.weekStart + "T12:00:00Z")
+      const mkWeek = (weeksAgo: number) => ({
+        inicio: toDateStr(addDays(weekStartD, -7 * weeksAgo)),
+        fin: toDateStr(addDays(weekStartD, -7 * weeksAgo + 6)),
+      })
+      const w1 = mkWeek(1)
+      const w4 = mkWeek(4)
+      const w8 = mkWeek(8)
+      const w12 = mkWeek(12)
+
       const [
         { data: vSem },
-        { data: vAntSem },
+        { data: vW1 },
+        { data: vW4 },
+        { data: vW8 },
+        { data: vW12 },
         { data: cSem },
-        { data: cAntSem },
+        { data: cW1 },
         { data: comprasRecientes },
         { data: ventasRecientes },
       ] = await Promise.all([
         supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", d.weekStart).lte("fecha", d.weekEnd),
-        supabase.from("ventas").select("cantidad,precio_unitario").gte("fecha", d.lastWeekStart).lte("fecha", d.lastWeekEnd),
+        supabase.from("ventas").select("cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", w1.inicio).lte("fecha", w1.fin),
+        supabase.from("ventas").select("cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", w4.inicio).lte("fecha", w4.fin),
+        supabase.from("ventas").select("cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", w8.inicio).lte("fecha", w8.fin),
+        supabase.from("ventas").select("cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", w12.inicio).lte("fecha", w12.fin),
         supabase.from("cobros").select("fecha,monto").gte("fecha", d.weekStart).lte("fecha", d.weekEnd),
-        supabase.from("cobros").select("monto").gte("fecha", d.lastWeekStart).lte("fecha", d.lastWeekEnd),
+        supabase.from("cobros").select("monto").gte("fecha", w1.inicio).lte("fecha", w1.fin),
         supabase.from("compras").select("producto,cantidad,precio_unitario,total,fecha").gte("fecha", d60ago).lte("fecha", d.today),
         supabase.from("ventas").select("cliente_nombre,fecha").gte("fecha", d60ago).lte("fecha", d.today),
       ])
 
       const totalVSem = sumVentas(vSem ?? [])
-      const totalVAnt = sumVentas(vAntSem ?? [])
+      const totalVAnt = sumVentas(vW1 ?? [])
       const totalCSem = sumMonto(cSem ?? [])
-      const totalCAnt = sumMonto(cAntSem ?? [])
+      const totalCAnt = sumMonto(cW1 ?? [])
 
       // Ventas y cobros por día de la semana
       const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
@@ -455,35 +472,82 @@ export async function GET(req: NextRequest) {
       const gananciaBruta = costosProducto.reduce((s, p) => s + p.ganancia, 0)
       const margenBruto = totalVSem > 0 ? round1((gananciaBruta / totalVSem) * 100) : 0
 
-      // ── Detalle de ventas por cliente (semana) ─────────────────────────────
-      const clienteMap: Record<string, Map<string, { cantidad: number; precioVenta: number; costoUnitario: number }>> = {}
+      // ── Detalle por cliente (agrupado SOLO por producto — sin split por precio) ──
+      const clienteMap: Record<string, Map<string, { cantidad: number; ingresos: number; costoUnitario: number }>> = {}
       for (const v of vSem ?? []) {
-        const cliente = v.cliente_nombre || "Sin nombre"
-        const prod = v.producto_nombre || "Sin nombre"
+        const cliente = (v.cliente_nombre || "Sin nombre").trim() || "Sin nombre"
+        const prod = (v.producto_nombre || "Sin nombre").trim() || "Sin nombre"
+        const qty = v.cantidad ?? 0
         const pu = v.precio_unitario ?? 0
         const costoUnit = Math.round(getCosto(prod))
         if (!clienteMap[cliente]) clienteMap[cliente] = new Map()
-        const mapKey = `${prod}__${pu}`
-        const existing = clienteMap[cliente].get(mapKey)
+        const existing = clienteMap[cliente].get(prod)
         if (existing) {
-          existing.cantidad += (v.cantidad ?? 0)
+          existing.cantidad += qty
+          existing.ingresos += qty * pu
         } else {
-          clienteMap[cliente].set(mapKey, { cantidad: v.cantidad ?? 0, precioVenta: pu, costoUnitario: costoUnit })
+          clienteMap[cliente].set(prod, { cantidad: qty, ingresos: qty * pu, costoUnitario: costoUnit })
         }
       }
       const ventasDetalle = Object.entries(clienteMap)
         .map(([cliente, itemsMap]) => {
-          const items = Array.from(itemsMap.entries()).map(([key, v]) => ({
-            producto: key.split("__")[0],
-            cantidad: v.cantidad,
-            precioVenta: v.precioVenta,
-            costoUnitario: v.costoUnitario,
-          }))
-          const total = items.reduce((s, i) => s + i.cantidad * i.precioVenta, 0)
-          return { cliente, items, total }
+          const items = Array.from(itemsMap.entries()).map(([producto, v]) => {
+            const precioPromedio = v.cantidad > 0 ? Math.round(v.ingresos / v.cantidad) : 0
+            const costoTotal = v.cantidad * v.costoUnitario
+            const ganancia = Math.round(v.ingresos - costoTotal)
+            const margen = v.ingresos > 0 ? round1((ganancia / v.ingresos) * 100) : 0
+            return {
+              producto,
+              cantidad: Math.round(v.cantidad),
+              precioPromedio,
+              costoUnitario: v.costoUnitario,
+              ingresos: Math.round(v.ingresos),
+              ganancia,
+              margen,
+            }
+          }).sort((a, b) => b.ingresos - a.ingresos)
+          const total = items.reduce((s, i) => s + i.ingresos, 0)
+          const gananciaTotal = items.reduce((s, i) => s + i.ganancia, 0)
+          const margenTotal = total > 0 ? round1((gananciaTotal / total) * 100) : 0
+          return { cliente, items, total, ganancia: gananciaTotal, margen: margenTotal }
         })
         .sort((a, b) => b.total - a.total)
-        .map(({ cliente, items }) => ({ cliente, items }))
+
+      // ── Comparación con semanas pasadas ───────────────────────────────────
+      const fmtRange = (inicio: string, fin: string) => {
+        const i = new Date(inicio + "T12:00:00Z")
+        const f = new Date(fin + "T12:00:00Z")
+        const opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", timeZone: "UTC" }
+        return `${i.toLocaleDateString("es-AR", opts)} – ${f.toLocaleDateString("es-AR", opts)}`
+      }
+      const weekMetrics = (rows: { cliente_nombre?: string | null; cantidad?: number; precio_unitario?: number; producto_nombre?: string | null }[] | null) => {
+        const r = rows ?? []
+        let ventas = 0, cajones = 0, costoTotal = 0
+        const clientes = new Set<string>()
+        for (const v of r) {
+          const qty = v.cantidad ?? 0
+          const pu = v.precio_unitario ?? 0
+          ventas += qty * pu
+          cajones += qty
+          costoTotal += qty * getCosto(v.producto_nombre || "")
+          if (v.cliente_nombre) clientes.add(v.cliente_nombre.trim())
+        }
+        const ganancia = ventas - costoTotal
+        return {
+          ventas: Math.round(ventas),
+          ganancia: Math.round(ganancia),
+          margen: ventas > 0 ? round1((ganancia / ventas) * 100) : 0,
+          cajones: Math.round(cajones),
+          clientes: clientes.size,
+        }
+      }
+      const comparacionSemanas = [
+        { label: "Esta semana", inicio: d.weekStart, fin: d.weekEnd, rango: fmtRange(d.weekStart, d.weekEnd), actual: true, ...weekMetrics(vSem ?? []) },
+        { label: "Semana anterior", inicio: w1.inicio, fin: w1.fin, rango: fmtRange(w1.inicio, w1.fin), actual: false, ...weekMetrics(vW1 ?? []) },
+        { label: "Hace 1 mes", inicio: w4.inicio, fin: w4.fin, rango: fmtRange(w4.inicio, w4.fin), actual: false, ...weekMetrics(vW4 ?? []) },
+        { label: "Hace 2 meses", inicio: w8.inicio, fin: w8.fin, rango: fmtRange(w8.inicio, w8.fin), actual: false, ...weekMetrics(vW8 ?? []) },
+        { label: "Hace 3 meses", inicio: w12.inicio, fin: w12.fin, rango: fmtRange(w12.inicio, w12.fin), actual: false, ...weekMetrics(vW12 ?? []) },
+      ]
 
       // ── Clientes sin comprar esta semana (activos últimos 60 días) ─────────
       const clientesEstaSemanSet = new Set((vSem ?? []).map((v) => v.cliente_nombre).filter(Boolean))
@@ -507,7 +571,7 @@ export async function GET(req: NextRequest) {
         ventas: { semana: Math.round(totalVSem), anterior: Math.round(totalVAnt), delta: round1(pct(totalVSem, totalVAnt)) },
         cobros: { semana: Math.round(totalCSem), anterior: Math.round(totalCAnt), delta: round1(pct(totalCSem, totalCAnt)) },
         cajonesSemana: Math.round(sumCantidad(vSem ?? [])),
-        cajonesAntSemana: Math.round(sumCantidad(vAntSem ?? [])),
+        cajonesAntSemana: Math.round(sumCantidad(vW1 ?? [])),
         clientesActivos,
         pendiente,
         ticketPromedioPorCliente,
@@ -520,6 +584,7 @@ export async function GET(req: NextRequest) {
         topClientes: topClientes(vSem ?? [], 5),
         desglose: topProductos(vSem ?? [], 10),
         clientesSinComprar,
+        comparacionSemanas,
       })
     }
 
