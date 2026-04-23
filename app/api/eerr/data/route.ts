@@ -127,7 +127,8 @@ function calcCMV_FIFO(
       })()
     : 0
 
-  const endOfMonth = monthPrefix + "-31"
+  const [_y, _m] = monthPrefix.split("-").map(Number)
+  const endOfMonth = monthPrefix + "-" + String(new Date(_y, _m, 0).getDate()).padStart(2, "0")
   const sortedVentas = [...todasVentas]
     .filter((v) => v.fecha <= endOfMonth)
     .sort((a, b) => a.fecha.localeCompare(b.fecha))
@@ -252,7 +253,8 @@ export async function GET(req: NextRequest) {
     }
 
     const prev = prevMonthStr(month)
-    const endOfMonth = `${month}-31`
+    const [ey, em] = month.split("-").map(Number)
+    const endOfMonth = `${month}-${String(new Date(ey, em, 0).getDate()).padStart(2, "0")}`
     // Para FIFO necesitamos TODAS las compras y ventas hasta fin del mes objetivo
     // Para gastos, sólo los del mes actual y el anterior
 
