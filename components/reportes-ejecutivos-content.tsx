@@ -343,13 +343,14 @@ function PdfTemplateDiario({ data }: { data: DatosDiarios }) {
   const green: React.CSSProperties = { color: "#16a34a", fontWeight: 600 }
   const red: React.CSSProperties = { color: "#dc2626" }
   const pill = (margen: number): React.CSSProperties => ({
-    display: "inline-block", padding: "1px 6px", borderRadius: "9999px", fontSize: "10px", fontWeight: 700,
+    display: "inline-block", padding: "2px 8px", borderRadius: "9999px", fontSize: "10px", fontWeight: 700,
+    whiteSpace: "nowrap", minWidth: "44px", textAlign: "center",
     backgroundColor: margen >= 25 ? "#dcfce7" : margen >= 15 ? "#fef9c3" : "#fee2e2",
     color: margen >= 25 ? "#166534" : margen >= 15 ? "#854d0e" : "#991b1b",
   })
 
   return (
-    <div style={{ ...S.page, padding: "28px 36px" }}>
+    <div style={{ ...S.page, padding: "56px 56px" }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", borderBottom: "3px solid #16a34a", paddingBottom: "12px", marginBottom: "20px" }}>
         <div>
@@ -868,7 +869,7 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange
                         <td className="text-right py-2 px-3 text-red-600">{formatCurrency(p.costoTotal)}</td>
                         <td className="text-right py-2 px-3 font-semibold text-emerald-600">{formatCurrency(p.ganancia)}</td>
                         <td className="text-right py-2 px-3">
-                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${p.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : p.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{p.margen}%</span>
+                          <span className={`inline-block min-w-[42px] text-center px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap tabular-nums ${p.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : p.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{p.margen}%</span>
                         </td>
                       </tr>
                     ))}
@@ -881,7 +882,7 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange
                       <td className="text-right py-2 px-3 text-red-600">{formatCurrency(data.costosProducto.reduce((s, p) => s + p.costoTotal, 0))}</td>
                       <td className="text-right py-2 px-3 text-emerald-600">{formatCurrency(data.gananciaBruta)}</td>
                       <td className="text-right py-2 px-3">
-                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${data.margenBruto >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : data.margenBruto >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{data.margenBruto}%</span>
+                        <span className={`inline-block min-w-[42px] text-center px-1.5 py-0.5 rounded text-[10px] font-semibold whitespace-nowrap tabular-nums ${data.margenBruto >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : data.margenBruto >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{data.margenBruto}%</span>
                       </td>
                     </tr>
                   </tbody>
@@ -1040,13 +1041,13 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange
                   const filtrados = data.clientesSinComprar.filter(c => c.diasSinComprar >= diasFiltro)
                   return filtrados.length === 0
                     ? <p className="text-sm text-muted-foreground">Todos los clientes compraron en los últimos {diasFiltro} días.</p>
-                    : <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto">
+                    : <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
                         {filtrados.map((c) => (
-                          <div key={c.nombre} className="flex items-center justify-between py-1 px-2 rounded border border-border text-xs">
-                            <span className="truncate mr-1">{c.nombre}</span>
-                            <Badge variant="secondary" className={`text-[10px] h-5 shrink-0 ${c.diasSinComprar >= 30 ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" : c.diasSinComprar >= 14 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-slate-100 text-slate-700"}`}>
+                          <div key={c.nombre} className="flex items-center justify-between gap-2 py-1.5 px-2.5 rounded-md border border-border bg-background text-xs">
+                            <span className="flex-1 min-w-0 truncate">{c.nombre}</span>
+                            <span className={`shrink-0 inline-flex items-center justify-center h-5 px-2 rounded-full text-[10px] font-semibold tabular-nums whitespace-nowrap ${c.diasSinComprar >= 30 ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" : c.diasSinComprar >= 14 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"}`}>
                               {c.diasSinComprar}d
-                            </Badge>
+                            </span>
                           </div>
                         ))}
                       </div>

@@ -205,7 +205,7 @@ export async function GET(req: NextRequest) {
         supabase.from("cobros").select("monto").gte("fecha", d.today).lt("fecha", toDateStr(addDays(d.now, 1))),
         supabase.from("cobros").select("monto").gte("fecha", d.yesterday).lt("fecha", d.today),
         supabase.from("gastos").select("monto").gte("fecha", d.today).lt("fecha", toDateStr(addDays(d.now, 1))),
-        supabase.from("compras").select("producto,cantidad,precio_unitario,total").gte("fecha", d60ago).lte("fecha", d.today),
+        supabase.from("compras").select("producto,cantidad,precio_unitario,total,fecha").gte("fecha", d60ago).lte("fecha", d.today),
         supabase.from("ventas").select("cliente_nombre,fecha").gte("fecha", d60ago).lte("fecha", d.today),
       ])
 
@@ -226,22 +226,36 @@ export async function GET(req: NextRequest) {
       const clientesHoySet = new Set((vHoy ?? []).map((v) => v.cliente_nombre).filter(Boolean))
       const ticketPromedioDia = clientesHoySet.size > 0 ? Math.round(totalVHoy / clientesHoySet.size) : 0
 
-      // ── Costos por producto (promedio ponderado de compras recientes) ──────
-      const normP = (s: string) => (s ?? "").toLowerCase().trim()
-      const costoAcc: Record<string, { totalCosto: number; totalQty: number }> = {}
+      // ── Costos por producto (ÚLTIMO precio de compra) ─────────────────────
+      // Normaliza nombre: minúsculas, sin acentos, sin ° ni símbolos, sólo letras/números
+      const normP = (s: string) => (s ?? "")
+        .toLowerCase()
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]/g, "")
+      const costoPorProd: Record<string, number> = {}
+      const latestFecha: Record<string, string> = {}
       for (const c of comprasRecientes ?? []) {
         const key = normP(c.producto)
         if (!key) continue
-        const total = (c.total ?? 0) > 0 ? c.total : (c.cantidad ?? 0) * (c.precio_unitario ?? 0)
-        if (!costoAcc[key]) costoAcc[key] = { totalCosto: 0, totalQty: 0 }
-        costoAcc[key].totalCosto += total
-        costoAcc[key].totalQty += (c.cantidad ?? 0)
+        const fecha = c.fecha ?? ""
+        if (!latestFecha[key] || fecha > latestFecha[key]) {
+          const unitCost = ((c.total ?? 0) > 0 && (c.cantidad ?? 0) > 0)
+            ? c.total / c.cantidad
+            : (c.precio_unitario ?? 0)
+          costoPorProd[key] = unitCost
+          latestFecha[key] = fecha
+        }
       }
-      const costoPorProd: Record<string, number> = {}
-      for (const [key, acc] of Object.entries(costoAcc)) {
-        costoPorProd[key] = acc.totalQty > 0 ? acc.totalCosto / acc.totalQty : 0
+      // Matching: primero exacto, después fuzzy (contains en cualquier dirección)
+      const getCosto = (nombre: string) => {
+        const key = normP(nombre)
+        if (!key) return 0
+        if (costoPorProd[key] !== undefined) return costoPorProd[key]
+        for (const [k, v] of Object.entries(costoPorProd)) {
+          if (k.includes(key) || key.includes(k)) return v
+        }
+        return 0
       }
-      const getCosto = (nombre: string) => costoPorProd[normP(nombre)] ?? 0
 
       // ── Resumen de rentabilidad por producto ─────────────────────────────
       const prodMap: Record<string, { cajones: number; ingresos: number; costoTotal: number; precios: number[] }> = {}
