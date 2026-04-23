@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { Resend } from "resend"
+import nodemailer from "nodemailer"
 
-// Configurar estas variables de entorno:
-//   RESEND_API_KEY   → clave de API de Resend (https://resend.com)
-//   RESEND_FROM      → dirección remitente, ej: "Reportes <reportes@tudominio.com>"
-//   RESEND_TO        → tu casilla de email destino
+// Variables de entorno requeridas:
+//   GMAIL_USER          → tu dirección Gmail completa (ej: usuario@gmail.com)
+//   GMAIL_APP_PASSWORD  → "App Password" de 16 caracteres (Google Account → Seguridad → Contraseñas de aplicación)
+//   EMAIL_TO            → destino (ej: franmotti@hotmail.com)
+//   EMAIL_FROM          → opcional, default: "AviGest <{GMAIL_USER}>"
+
+export const runtime = "nodejs"
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 0 }).format(n)
@@ -266,29 +269,28 @@ export async function POST(req: NextRequest) {
   try {
     const { tipo, datos } = await req.json()
 
-    const apiKey = process.env.RESEND_API_KEY
-    const toEmail = process.env.RESEND_TO
-    const fromEmail = process.env.RESEND_FROM ?? "AviGest <onboarding@resend.dev>"
+    const gmailUser = process.env.GMAIL_USER
+    const gmailPass = (process.env.GMAIL_APP_PASSWORD ?? "").replace(/\s+/g, "")
+    const toEmail = process.env.EMAIL_TO ?? process.env.RESEND_TO
+    const fromEmail = process.env.EMAIL_FROM ?? (gmailUser ? `AviGest <${gmailUser}>` : "")
 
-    if (!apiKey) {
+    if (!gmailUser || !gmailPass) {
       return NextResponse.json(
-        { error: "RESEND_API_KEY no configurada. Agregá la variable de entorno en tu proyecto." },
+        { error: "GMAIL_USER y GMAIL_APP_PASSWORD deben estar configuradas en Vercel." },
         { status: 500 }
       )
     }
     if (!toEmail) {
       return NextResponse.json(
-        { error: "RESEND_TO no configurada. Agregá tu casilla de email destino como variable de entorno." },
+        { error: "EMAIL_TO no configurada (casilla de destino)." },
         { status: 500 }
       )
     }
 
-    const resend = new Resend(apiKey)
-
     const subjectMap: Record<string, string> = {
-      diario: `Reporte Diario — ${datos.fecha ?? new Date().toLocaleDateString("es-AR")}`,
-      semanal: `Reporte Semanal — ${datos.semana ?? ""}`,
-      mensual: `Reporte Mensual — ${datos.mes ?? ""}`,
+      diario: `Reporte Diario — ${datos?.fecha ?? new Date().toLocaleDateString("es-AR")}`,
+      semanal: `Reporte Semanal — ${datos?.semana ?? ""}`,
+      mensual: `Reporte Mensual — ${datos?.mes ?? ""}`,
     }
 
     const htmlMap: Record<string, string> = {
@@ -301,21 +303,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "tipo inválido" }, { status: 400 })
     }
 
-    console.log("[send-email] datos keys:", Object.keys(datos ?? {}))
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: gmailUser, pass: gmailPass },
+    })
 
-    const { data, error } = await resend.emails.send({
+    const info = await transporter.sendMail({
       from: fromEmail,
-      to: [toEmail],
+      to: toEmail,
       subject: subjectMap[tipo],
       html: htmlMap[tipo],
     })
 
-    if (error) {
-      console.error("[send-email] Resend error:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
-
-    return NextResponse.json({ ok: true, id: data?.id })
+    return NextResponse.json({ ok: true, id: info.messageId })
   } catch (error: any) {
     console.error("[send-email]", error)
     const msg = error?.message ?? error?.toString() ?? "Error al enviar el email"

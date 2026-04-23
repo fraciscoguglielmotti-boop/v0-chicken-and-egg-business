@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
-import { Resend } from "resend"
+import nodemailer from "nodemailer"
+
+export const runtime = "nodejs"
 
 export async function POST(req: NextRequest) {
   try {
     const { email, timestamp } = await req.json()
 
-    const apiKey = process.env.RESEND_API_KEY
-    const ownerEmail = process.env.RESEND_TO
-    const fromEmail = process.env.RESEND_FROM ?? "AviGest <onboarding@resend.dev>"
+    const gmailUser = process.env.GMAIL_USER
+    const gmailPass = (process.env.GMAIL_APP_PASSWORD ?? "").replace(/\s+/g, "")
+    const ownerEmail = process.env.EMAIL_TO ?? process.env.RESEND_TO
+    const fromEmail = process.env.EMAIL_FROM ?? (gmailUser ? `AviGest <${gmailUser}>` : "")
 
-    // Silently skip if email not configured — don't break the login flow
-    if (!apiKey || !ownerEmail) return NextResponse.json({ ok: false })
+    // Silently skip if not configured — don't break the login flow
+    if (!gmailUser || !gmailPass || !ownerEmail) return NextResponse.json({ ok: false })
 
-    const resend = new Resend(apiKey)
     const date = new Date(timestamp).toLocaleString("es-AR", {
       timeZone: "America/Argentina/Buenos_Aires",
       weekday: "long",
@@ -23,9 +25,14 @@ export async function POST(req: NextRequest) {
       minute: "2-digit",
     })
 
-    await resend.emails.send({
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user: gmailUser, pass: gmailPass },
+    })
+
+    await transporter.sendMail({
       from: fromEmail,
-      to: [ownerEmail],
+      to: ownerEmail,
       subject: `🔐 Nuevo acceso a AviGest — ${email}`,
       html: `
 <!DOCTYPE html>
@@ -49,7 +56,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true })
   } catch (err) {
-    // Never let a notification failure surface to the user
     console.error("[login-alert]", err)
     return NextResponse.json({ ok: false })
   }
