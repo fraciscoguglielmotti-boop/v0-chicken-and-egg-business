@@ -189,18 +189,24 @@ export async function GET(req: NextRequest) {
 
     // ── Diario ────────────────────────────────────────────────────────────────
     if (tipo === "diario") {
+      const d60ago = toDateStr(addDays(d.now, -60))
+
       const [
         { data: vHoy },
         { data: vAyer },
         { data: cHoy },
         { data: cAyer },
         { data: gHoy },
+        { data: comprasRecientes },
+        { data: ventasRecientes },
       ] = await Promise.all([
         supabase.from("ventas").select("cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", d.today).lt("fecha", toDateStr(addDays(d.now, 1))),
         supabase.from("ventas").select("cantidad,precio_unitario").gte("fecha", d.yesterday).lt("fecha", d.today),
         supabase.from("cobros").select("monto").gte("fecha", d.today).lt("fecha", toDateStr(addDays(d.now, 1))),
         supabase.from("cobros").select("monto").gte("fecha", d.yesterday).lt("fecha", d.today),
         supabase.from("gastos").select("monto").gte("fecha", d.today).lt("fecha", toDateStr(addDays(d.now, 1))),
+        supabase.from("compras").select("producto,cantidad,precio_unitario,total").gte("fecha", d60ago).lte("fecha", d.today),
+        supabase.from("ventas").select("cliente_nombre,fecha").gte("fecha", d60ago).lte("fecha", d.today),
       ])
 
       const totalVHoy = sumVentas(vHoy ?? [])
@@ -217,15 +223,82 @@ export async function GET(req: NextRequest) {
 
       const tasaCobranzaDia = totalVHoy > 0 ? round1((totalCHoy / totalVHoy) * 100) : 0
       const pendienteDia = Math.round(totalVHoy - totalCHoy)
-      const clientesHoy = new Set((vHoy ?? []).map((v) => v.cliente_nombre).filter(Boolean)).size
-      const ticketPromedioDia = clientesHoy > 0 ? Math.round(totalVHoy / clientesHoy) : 0
+      const clientesHoySet = new Set((vHoy ?? []).map((v) => v.cliente_nombre).filter(Boolean))
+      const ticketPromedioDia = clientesHoySet.size > 0 ? Math.round(totalVHoy / clientesHoySet.size) : 0
 
-      const { data: ventasRecientes } = await supabase
-        .from("ventas")
-        .select("cliente_nombre,fecha")
-        .gte("fecha", toDateStr(addDays(d.now, -60)))
-        .lte("fecha", d.today)
+      // ── Costos por producto (promedio ponderado de compras recientes) ──────
+      const normP = (s: string) => (s ?? "").toLowerCase().trim()
+      const costoAcc: Record<string, { totalCosto: number; totalQty: number }> = {}
+      for (const c of comprasRecientes ?? []) {
+        const key = normP(c.producto)
+        if (!key) continue
+        const total = (c.total ?? 0) > 0 ? c.total : (c.cantidad ?? 0) * (c.precio_unitario ?? 0)
+        if (!costoAcc[key]) costoAcc[key] = { totalCosto: 0, totalQty: 0 }
+        costoAcc[key].totalCosto += total
+        costoAcc[key].totalQty += (c.cantidad ?? 0)
+      }
+      const costoPorProd: Record<string, number> = {}
+      for (const [key, acc] of Object.entries(costoAcc)) {
+        costoPorProd[key] = acc.totalQty > 0 ? acc.totalCosto / acc.totalQty : 0
+      }
+      const getCosto = (nombre: string) => costoPorProd[normP(nombre)] ?? 0
 
+      // ── Resumen de rentabilidad por producto ─────────────────────────────
+      const prodMap: Record<string, { cajones: number; ingresos: number; costoTotal: number; precios: number[] }> = {}
+      for (const v of vHoy ?? []) {
+        const key = v.producto_nombre || "Sin nombre"
+        if (!prodMap[key]) prodMap[key] = { cajones: 0, ingresos: 0, costoTotal: 0, precios: [] }
+        const qty = v.cantidad ?? 0
+        const pu = v.precio_unitario ?? 0
+        prodMap[key].cajones += qty
+        prodMap[key].ingresos += qty * pu
+        prodMap[key].costoTotal += qty * getCosto(key)
+        if (pu > 0) prodMap[key].precios.push(pu)
+      }
+      const costosProducto = Object.entries(prodMap)
+        .sort((a, b) => b[1].ingresos - a[1].ingresos)
+        .map(([producto, pd]) => {
+          const costoUnitario = Math.round(getCosto(producto))
+          const precioPromedio = pd.precios.length > 0 ? Math.round(pd.precios.reduce((s, p) => s + p, 0) / pd.precios.length) : 0
+          const ganancia = Math.round(pd.ingresos - pd.costoTotal)
+          const margen = pd.ingresos > 0 ? round1((ganancia / pd.ingresos) * 100) : 0
+          return { producto, costoUnitario, precioPromedio, cajones: Math.round(pd.cajones), ingresos: Math.round(pd.ingresos), costoTotal: Math.round(pd.costoTotal), ganancia, margen }
+        })
+
+      const gananciaBruta = costosProducto.reduce((s, p) => s + p.ganancia, 0)
+      const margenBruto = totalVHoy > 0 ? round1((gananciaBruta / totalVHoy) * 100) : 0
+
+      // ── Detalle de ventas por cliente ────────────────────────────────────
+      const clienteMap: Record<string, Map<string, { cantidad: number; precioVenta: number; costoUnitario: number }>> = {}
+      for (const v of vHoy ?? []) {
+        const cliente = v.cliente_nombre || "Sin nombre"
+        const prod = v.producto_nombre || "Sin nombre"
+        const pu = v.precio_unitario ?? 0
+        const costoUnit = Math.round(getCosto(prod))
+        if (!clienteMap[cliente]) clienteMap[cliente] = new Map()
+        const mapKey = `${prod}__${pu}`
+        const existing = clienteMap[cliente].get(mapKey)
+        if (existing) {
+          existing.cantidad += (v.cantidad ?? 0)
+        } else {
+          clienteMap[cliente].set(mapKey, { cantidad: v.cantidad ?? 0, precioVenta: pu, costoUnitario: costoUnit })
+        }
+      }
+      const ventasDetalle = Object.entries(clienteMap)
+        .map(([cliente, itemsMap]) => {
+          const items = Array.from(itemsMap.entries()).map(([key, v]) => ({
+            producto: key.split("__")[0],
+            cantidad: v.cantidad,
+            precioVenta: v.precioVenta,
+            costoUnitario: v.costoUnitario,
+          }))
+          const total = items.reduce((s, i) => s + i.cantidad * i.precioVenta, 0)
+          return { cliente, items, total }
+        })
+        .sort((a, b) => b.total - a.total)
+        .map(({ cliente, items }) => ({ cliente, items }))
+
+      // ── Clientes sin comprar ─────────────────────────────────────────────
       const lastPurchase: Record<string, string> = {}
       for (const v of ventasRecientes ?? []) {
         if (!lastPurchase[v.cliente_nombre] || v.fecha > lastPurchase[v.cliente_nombre]) {
@@ -236,7 +309,7 @@ export async function GET(req: NextRequest) {
       const clientesSinComprar = Object.entries(lastPurchase)
         .filter(([, fecha]) => fecha <= sevenDaysAgo)
         .sort((a, b) => a[1].localeCompare(b[1]))
-        .slice(0, 10)
+        .slice(0, 20)
         .map(([nombre, ultima]) => ({
           nombre,
           diasSinComprar: Math.floor((d.now.getTime() - new Date(ultima + "T12:00:00Z").getTime()) / 86400000),
@@ -246,15 +319,15 @@ export async function GET(req: NextRequest) {
         fecha: fechaFmt.charAt(0).toUpperCase() + fechaFmt.slice(1),
         ventas: { hoy: Math.round(totalVHoy), ayer: Math.round(totalVAyer), delta: round1(pct(totalVHoy, totalVAyer)) },
         cobros: { hoy: Math.round(totalCHoy), ayer: Math.round(totalCAyer), delta: round1(pct(totalCHoy, totalCAyer)) },
-        cajones: {
-          hoy: cajonesHoy,
-          ayer: cajonesAyer,
-          delta: round1(pct(cajonesHoy, cajonesAyer)),
-        },
+        cajones: { hoy: cajonesHoy, ayer: cajonesAyer, delta: round1(pct(cajonesHoy, cajonesAyer)) },
         tasaCobranza: tasaCobranzaDia,
         pendiente: pendienteDia,
         ticketPromedio: ticketPromedioDia,
-        topClientes: topClientes(vHoy ?? [], 3),
+        gananciaBruta,
+        margenBruto,
+        costosProducto,
+        ventasDetalle,
+        topClientes: topClientes(vHoy ?? [], 5),
         desglose: topProductos(vHoy ?? [], 10),
         gastos: Math.round(sumMonto(gHoy ?? [])),
         clientesSinComprar,

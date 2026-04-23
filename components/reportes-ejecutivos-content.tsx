@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, useCallback } from "react"
+import { Fragment, useEffect, useRef, useState, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -25,6 +25,8 @@ import {
   FileDown,
   Loader2,
   Clock,
+  Target,
+  Award,
 } from "lucide-react"
 import {
   BarChart,
@@ -53,6 +55,24 @@ interface DesgloseProd {
   ingresos: number
 }
 
+interface CostoProducto {
+  producto: string
+  costoUnitario: number
+  precioPromedio: number
+  cajones: number
+  ingresos: number
+  costoTotal: number
+  ganancia: number
+  margen: number
+}
+
+interface VentaClienteItem {
+  producto: string
+  cantidad: number
+  precioVenta: number
+  costoUnitario: number
+}
+
 interface DatosDiarios {
   fecha: string
   ventas: { hoy: number; ayer: number; delta: number }
@@ -61,6 +81,10 @@ interface DatosDiarios {
   tasaCobranza: number
   pendiente: number
   ticketPromedio: number
+  gananciaBruta: number
+  margenBruto: number
+  costosProducto: CostoProducto[]
+  ventasDetalle: { cliente: string; items: VentaClienteItem[] }[]
   topClientes: { nombre: string; monto: number }[]
   desglose: DesgloseProd[]
   gastos: number
@@ -313,40 +337,175 @@ const S = {
 }
 
 function PdfTemplateDiario({ data }: { data: DatosDiarios }) {
-  const today = new Date().toLocaleDateString("es-AR", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+  const th: React.CSSProperties = { textAlign: "right", fontSize: "9px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em", padding: "5px 4px", borderBottom: "2px solid #d1d5db" }
+  const td: React.CSSProperties = { textAlign: "right", fontSize: "11px", padding: "5px 4px", borderBottom: "1px solid #f3f4f6" }
+  const tdL: React.CSSProperties = { ...td, textAlign: "left" }
+  const green: React.CSSProperties = { color: "#16a34a", fontWeight: 600 }
+  const red: React.CSSProperties = { color: "#dc2626" }
+  const pill = (margen: number): React.CSSProperties => ({
+    display: "inline-block", padding: "1px 6px", borderRadius: "9999px", fontSize: "10px", fontWeight: 700,
+    backgroundColor: margen >= 25 ? "#dcfce7" : margen >= 15 ? "#fef9c3" : "#fee2e2",
+    color: margen >= 25 ? "#166534" : margen >= 15 ? "#854d0e" : "#991b1b",
+  })
+
   return (
-    <div style={S.page}>
-      <div style={S.header}>
+    <div style={{ ...S.page, padding: "28px 36px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", borderBottom: "3px solid #16a34a", paddingBottom: "12px", marginBottom: "20px" }}>
         <div>
-          <div style={S.logoName}>AviGest</div>
-          <div style={S.logoSub}>Distribuidora Avícola</div>
+          <div style={{ fontSize: "10px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.08em" }}>AviGest · Reporte Diario</div>
+          <div style={{ fontSize: "20px", fontWeight: 800, color: "#111827", marginTop: "2px" }}>{data.fecha}</div>
         </div>
-        <div style={S.reportTitle}>
-          <div style={S.reportTitleText}>Reporte Diario</div>
-          <div style={S.reportDate}>{data.fecha}</div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: "10px", color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>Ganancia Bruta</div>
+          <div style={{ fontSize: "22px", fontWeight: 800, color: "#16a34a" }}>{formatCurrency(data.gananciaBruta)}</div>
+          <div style={{ fontSize: "10px", color: "#374151" }}>Margen {data.margenBruto}%</div>
         </div>
       </div>
 
-      <div style={S.sectionTitle}>Resultados del Día</div>
-      <div style={S.kpiGrid}>
+      {/* KPI Bar */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "8px", marginBottom: "20px" }}>
         {[
-          { label: "Ventas Totales", value: formatCurrency(data.ventas.hoy), delta: data.ventas.delta },
-          { label: "Cobros del Día", value: formatCurrency(data.cobros.hoy), delta: data.cobros.delta },
-          { label: "Cajones Vendidos", value: `${data.cajones.hoy} caj.`, delta: data.cajones.delta },
+          { label: "Ventas", value: formatCurrency(data.ventas.hoy), delta: data.ventas.delta, bg: "#f0fdf4" },
+          { label: "Cobros", value: formatCurrency(data.cobros.hoy), delta: data.cobros.delta, bg: "#eff6ff" },
+          { label: "Ganancia", value: formatCurrency(data.gananciaBruta), delta: null, bg: "#faf5ff" },
+          { label: "Margen", value: `${data.margenBruto}%`, delta: null, bg: "#fffbeb" },
+          { label: "Cajones", value: `${data.cajones.hoy}`, delta: data.cajones.delta, bg: "#f8fafc" },
         ].map((k) => (
-          <div key={k.label} style={S.kpiBox}>
-            <div style={S.kpiLabel}>{k.label}</div>
-            <div style={S.kpiValue}>{k.value}</div>
-            <div style={S.kpiDelta(k.delta >= 0)}>{k.delta >= 0 ? "▲" : "▼"} {Math.abs(k.delta)}% vs ayer</div>
+          <div key={k.label} style={{ backgroundColor: k.bg, borderRadius: "6px", padding: "10px", border: "1px solid #e5e7eb" }}>
+            <div style={{ fontSize: "9px", fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>{k.label}</div>
+            <div style={{ fontSize: "14px", fontWeight: 800, color: "#111827", marginTop: "2px" }}>{k.value}</div>
+            {k.delta !== null && (
+              <div style={{ fontSize: "9px", fontWeight: 600, color: k.delta >= 0 ? "#16a34a" : "#dc2626", marginTop: "2px" }}>
+                {k.delta >= 0 ? "▲ +" : "▼ "}{k.delta}% vs ayer
+              </div>
+            )}
           </div>
         ))}
       </div>
 
-      <div style={S.sectionTitle}>Indicadores Financieros</div>
+      {/* Rentabilidad por producto */}
+      {(data.costosProducto?.length ?? 0) > 0 && (
+        <>
+          <div style={S.sectionTitle}>Rentabilidad por Producto</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "16px" }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, textAlign: "left" }}>Producto</th>
+                <th style={th}>Costo unit.</th>
+                <th style={th}>P. venta</th>
+                <th style={th}>Cajones</th>
+                <th style={th}>Ingresos</th>
+                <th style={th}>Costo total</th>
+                <th style={th}>Ganancia</th>
+                <th style={th}>Margen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.costosProducto.map((p) => (
+                <tr key={p.producto}>
+                  <td style={tdL}>{p.producto}</td>
+                  <td style={td}>{formatCurrency(p.costoUnitario)}</td>
+                  <td style={td}>{formatCurrency(p.precioPromedio)}</td>
+                  <td style={td}>{p.cajones}</td>
+                  <td style={td}>{formatCurrency(p.ingresos)}</td>
+                  <td style={{ ...td, ...red }}>{formatCurrency(p.costoTotal)}</td>
+                  <td style={{ ...td, ...green }}>{formatCurrency(p.ganancia)}</td>
+                  <td style={td}><span style={pill(p.margen)}>{p.margen}%</span></td>
+                </tr>
+              ))}
+              <tr style={{ backgroundColor: "#f9fafb" }}>
+                <td style={{ ...tdL, fontWeight: 700 }}>Total</td>
+                <td style={td}>—</td>
+                <td style={td}>—</td>
+                <td style={{ ...td, fontWeight: 700 }}>{data.costosProducto.reduce((s, p) => s + p.cajones, 0)}</td>
+                <td style={{ ...td, fontWeight: 700 }}>{formatCurrency(data.ventas.hoy)}</td>
+                <td style={{ ...td, ...red, fontWeight: 700 }}>{formatCurrency(data.costosProducto.reduce((s, p) => s + p.costoTotal, 0))}</td>
+                <td style={{ ...td, ...green, fontWeight: 700 }}>{formatCurrency(data.gananciaBruta)}</td>
+                <td style={td}><span style={pill(data.margenBruto)}>{data.margenBruto}%</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {/* Detalle de ventas */}
+      {(data.ventasDetalle?.length ?? 0) > 0 && (
+        <>
+          <div style={S.sectionTitle}>Detalle de Ventas por Cliente</div>
+          <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "16px" }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, textAlign: "left" }}>Cliente / Producto</th>
+                <th style={th}>Cant.</th>
+                <th style={th}>P. venta</th>
+                <th style={th}>P. costo</th>
+                <th style={th}>Ingreso</th>
+                <th style={th}>Ganancia</th>
+                <th style={th}>Margen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.ventasDetalle.map((cl) => {
+                const totalCl = cl.items.reduce((s, i) => s + i.cantidad * i.precioVenta, 0)
+                const ganCl = cl.items.reduce((s, i) => s + i.cantidad * (i.precioVenta - i.costoUnitario), 0)
+                const marCl = totalCl > 0 ? Math.round((ganCl / totalCl) * 1000) / 10 : 0
+                return (
+                  <Fragment key={cl.cliente}>
+                    <tr style={{ backgroundColor: "#f8fafc" }}>
+                      <td colSpan={4} style={{ ...tdL, fontWeight: 700, fontSize: "12px" }}>{cl.cliente}</td>
+                      <td style={{ ...td, fontWeight: 700 }}>{formatCurrency(totalCl)}</td>
+                      <td style={{ ...td, ...green, fontWeight: 700 }}>{formatCurrency(ganCl)}</td>
+                      <td style={td}>{marCl}%</td>
+                    </tr>
+                    {cl.items.map((it, j) => {
+                      const ing = it.cantidad * it.precioVenta
+                      const gan = it.cantidad * (it.precioVenta - it.costoUnitario)
+                      const mar = ing > 0 ? Math.round((gan / ing) * 1000) / 10 : 0
+                      return (
+                        <tr key={j}>
+                          <td style={{ ...tdL, paddingLeft: "14px", color: "#6b7280" }}>└ {it.producto}</td>
+                          <td style={td}>{it.cantidad}</td>
+                          <td style={td}>{formatCurrency(it.precioVenta)}</td>
+                          <td style={{ ...td, color: "#6b7280" }}>{formatCurrency(it.costoUnitario)}</td>
+                          <td style={td}>{formatCurrency(ing)}</td>
+                          <td style={{ ...td, ...green }}>{formatCurrency(gan)}</td>
+                          <td style={td}>{mar}%</td>
+                        </tr>
+                      )
+                    })}
+                  </Fragment>
+                )
+              })}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {/* Clientes inactivos */}
+      {(data.clientesSinComprar?.length ?? 0) > 0 && (
+        <>
+          <div style={S.sectionTitle}>Clientes Inactivos (+7 días sin comprar)</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "6px", marginBottom: "16px" }}>
+            {data.clientesSinComprar.map((c) => {
+              const color = c.diasSinComprar >= 30 ? { bg: "#fee2e2", text: "#991b1b" } : c.diasSinComprar >= 14 ? { bg: "#fef9c3", text: "#854d0e" } : { bg: "#f1f5f9", text: "#475569" }
+              return (
+                <div key={c.nombre} style={{ display: "flex", justifyContent: "space-between", padding: "5px 8px", border: "1px solid #e5e7eb", borderRadius: "4px", fontSize: "10px" }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, marginRight: "6px" }}>{c.nombre}</span>
+                  <span style={{ ...color, padding: "1px 6px", borderRadius: "9999px", fontWeight: 700, fontSize: "9px", flexShrink: 0, backgroundColor: color.bg }}>{c.diasSinComprar}d</span>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Indicadores de cobro */}
+      <div style={S.sectionTitle}>Indicadores de Cobro</div>
       {[
-        { label: "Tasa de cobranza", value: `${data.tasaCobranza}%` },
+        { label: "Tasa de cobranza", value: `${data.tasaCobranza}%${data.tasaCobranza > 100 ? " *" : ""}` },
         { label: "Pendiente de cobro", value: formatCurrency(data.pendiente) },
-        { label: "Ticket promedio por venta", value: formatCurrency(data.ticketPromedio) },
+        { label: "Ticket promedio por cliente", value: formatCurrency(data.ticketPromedio) },
         { label: "Gastos del día", value: formatCurrency(data.gastos) },
       ].map((r) => (
         <div key={r.label} style={S.indRow}>
@@ -358,40 +517,9 @@ function PdfTemplateDiario({ data }: { data: DatosDiarios }) {
         <div style={{ fontSize: "9px", color: "#d97706", marginTop: "4px" }}>* Tasa &gt;100%: incluye cobros de meses anteriores</div>
       )}
 
-      {data.desglose?.length > 0 && (
-        <>
-          <div style={S.sectionTitle}>Desglose por Producto</div>
-          <div style={S.tableHead}>
-            <span style={{ flex: 1 }}>Producto</span>
-            <span style={{ width: "80px", textAlign: "center" }}>Cajones</span>
-            <span style={{ width: "120px", textAlign: "right" }}>Ingresos</span>
-          </div>
-          {data.desglose.map((p) => (
-            <div key={p.producto} style={S.tableRow}>
-              <span style={{ flex: 1 }}>{p.producto}</span>
-              <span style={{ width: "80px", textAlign: "center", color: "#6b7280" }}>{p.unidades}</span>
-              <span style={{ width: "120px", textAlign: "right", fontWeight: "600" }}>{formatCurrency(p.ingresos)}</span>
-            </div>
-          ))}
-        </>
-      )}
-
-      {data.topClientes?.length > 0 && (
-        <>
-          <div style={S.sectionTitle}>Top Clientes</div>
-          {data.topClientes.map((c, i) => (
-            <div key={c.nombre} style={S.tableRow}>
-              <div style={S.rankBadge(i)}>{i + 1}</div>
-              <span style={{ flex: 1 }}>{c.nombre}</span>
-              <span style={{ fontWeight: "600" }}>{formatCurrency(c.monto)}</span>
-            </div>
-          ))}
-        </>
-      )}
-
       <div style={S.footer}>
-        <span>Generado por AviGest</span>
-        <span>{today}</span>
+        <span>Generado por Francisco Guglielmotti (francisco@fdavicola.com.ar)</span>
+        <span>{data.fecha}</span>
       </div>
     </div>
   )
@@ -673,6 +801,8 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange
   pdfRef: React.RefObject<HTMLDivElement | null>; printRef: React.RefObject<HTMLDivElement | null>
   fecha: string; onFechaChange: (v: string) => void
 }) {
+  const [diasFiltro, setDiasFiltro] = useState(7)
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -691,82 +821,241 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange
       </div>
 
       <div ref={pdfRef} className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-3">
-          {isLoading || !data ? [0, 1, 2].map((i) => <MetricCardSkeleton key={i} />) : (
-            <>
-              <MetricCard title="Ventas del Día" value={data.ventas.hoy} delta={data.ventas.delta} deltaLabel="vs ayer" icon={ShoppingCart} />
-              <MetricCard title="Cobros del Día" value={data.cobros.hoy} delta={data.cobros.delta} deltaLabel="vs ayer" icon={Receipt} />
-              <MetricCard title="Cajones Vendidos" value={`${data.cajones.hoy.toLocaleString("es-AR")} caj.`} delta={data.cajones.delta} deltaLabel="vs ayer" icon={Package} />
-            </>
-          )}
+
+        {/* ① KPI Bar */}
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-5">
+          {isLoading || !data ? [0,1,2,3,4].map((i) => <MetricCardSkeleton key={i} />) : (<>
+            <MetricCard title="Ventas" value={data.ventas.hoy} delta={data.ventas.delta} deltaLabel="vs ayer" icon={ShoppingCart} />
+            <MetricCard title="Cobros" value={data.cobros.hoy} delta={data.cobros.delta} deltaLabel="vs ayer" icon={Receipt} />
+            <MetricCard title="Ganancia Bruta" value={data.gananciaBruta} icon={DollarSign} />
+            <MetricCard title="Margen" value={`${data.margenBruto}%`} icon={Target} />
+            <MetricCard title="Cajones" value={`${data.cajones.hoy} caj.`} delta={data.cajones.delta} deltaLabel="vs ayer" icon={Package} />
+          </>)}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-3">
-          {isLoading || !data ? [0, 1, 2].map((i) => <MetricCardSkeleton key={i} />) : (
-            <>
-              <MetricCard title="Tasa de Cobranza" value={`${data.tasaCobranza}%`} icon={CheckCircle2} note={data.tasaCobranza > 100 ? "Incluye cobros de meses anteriores" : undefined} />
-              <MetricCard title="Pendiente de Cobro" value={data.pendiente} icon={AlertTriangle} />
-              <MetricCard title="Ticket Promedio" value={data.ticketPromedio} icon={DollarSign} />
-            </>
-          )}
+        {/* ② Rentabilidad por Producto */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Award className="h-4 w-4 text-muted-foreground" />Rentabilidad por Producto
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {isLoading || !data ? <div className="p-4"><Skeleton className="h-32 w-full" /></div> :
+              (data.costosProducto?.length ?? 0) === 0 ? <p className="text-sm text-muted-foreground p-4">Sin ventas registradas.</p> : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/50">
+                      <th className="text-left py-2 px-3 font-semibold text-muted-foreground">Producto</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Costo unit.</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">P. venta</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Cajones</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Ingresos</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Costo total</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Ganancia</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Margen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.costosProducto.map((p) => (
+                      <tr key={p.producto} className="border-b border-border/50 hover:bg-muted/30">
+                        <td className="py-2 px-3 font-medium">{p.producto}</td>
+                        <td className="text-right py-2 px-3 text-muted-foreground">{formatCurrency(p.costoUnitario)}</td>
+                        <td className="text-right py-2 px-3 text-muted-foreground">{formatCurrency(p.precioPromedio)}</td>
+                        <td className="text-right py-2 px-3">{p.cajones}</td>
+                        <td className="text-right py-2 px-3">{formatCurrency(p.ingresos)}</td>
+                        <td className="text-right py-2 px-3 text-red-600">{formatCurrency(p.costoTotal)}</td>
+                        <td className="text-right py-2 px-3 font-semibold text-emerald-600">{formatCurrency(p.ganancia)}</td>
+                        <td className="text-right py-2 px-3">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${p.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : p.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{p.margen}%</span>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-muted/50 font-semibold">
+                      <td className="py-2 px-3">Total</td>
+                      <td className="text-right py-2 px-3 text-muted-foreground">—</td>
+                      <td className="text-right py-2 px-3 text-muted-foreground">—</td>
+                      <td className="text-right py-2 px-3">{data.costosProducto.reduce((s, p) => s + p.cajones, 0)}</td>
+                      <td className="text-right py-2 px-3">{formatCurrency(data.ventas.hoy)}</td>
+                      <td className="text-right py-2 px-3 text-red-600">{formatCurrency(data.costosProducto.reduce((s, p) => s + p.costoTotal, 0))}</td>
+                      <td className="text-right py-2 px-3 text-emerald-600">{formatCurrency(data.gananciaBruta)}</td>
+                      <td className="text-right py-2 px-3">
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${data.margenBruto >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : data.margenBruto >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{data.margenBruto}%</span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ③ Detalle de ventas */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />Detalle de Ventas por Cliente
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {isLoading || !data ? <div className="p-4"><Skeleton className="h-40 w-full" /></div> :
+              (data.ventasDetalle?.length ?? 0) === 0 ? <p className="text-sm text-muted-foreground p-4">Sin ventas registradas.</p> : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/50">
+                      <th className="text-left py-2 px-3 font-semibold text-muted-foreground">Cliente / Producto</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Cant.</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">P. venta</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">P. costo</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Ingreso</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Ganancia</th>
+                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Margen</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.ventasDetalle.map((cl) => {
+                      const totalCl = cl.items.reduce((s, i) => s + i.cantidad * i.precioVenta, 0)
+                      const ganCl = cl.items.reduce((s, i) => s + i.cantidad * (i.precioVenta - i.costoUnitario), 0)
+                      const marCl = totalCl > 0 ? Math.round((ganCl / totalCl) * 1000) / 10 : 0
+                      return (
+                        <Fragment key={cl.cliente}>
+                          <tr className="bg-muted/30 border-b border-border">
+                            <td colSpan={4} className="py-1.5 px-3 font-semibold text-xs">{cl.cliente}</td>
+                            <td className="text-right py-1.5 px-3 font-semibold">{formatCurrency(totalCl)}</td>
+                            <td className="text-right py-1.5 px-3 font-semibold text-emerald-600">{formatCurrency(ganCl)}</td>
+                            <td className="text-right py-1.5 px-3 font-semibold">{marCl}%</td>
+                          </tr>
+                          {cl.items.map((it, j) => {
+                            const ing = it.cantidad * it.precioVenta
+                            const gan = it.cantidad * (it.precioVenta - it.costoUnitario)
+                            const mar = ing > 0 ? Math.round((gan / ing) * 1000) / 10 : 0
+                            return (
+                              <tr key={j} className="border-b border-border/30 hover:bg-muted/20">
+                                <td className="py-1.5 pl-6 pr-3 text-muted-foreground">└ {it.producto}</td>
+                                <td className="text-right py-1.5 px-3">{it.cantidad}</td>
+                                <td className="text-right py-1.5 px-3">{formatCurrency(it.precioVenta)}</td>
+                                <td className="text-right py-1.5 px-3 text-muted-foreground">{formatCurrency(it.costoUnitario)}</td>
+                                <td className="text-right py-1.5 px-3">{formatCurrency(ing)}</td>
+                                <td className="text-right py-1.5 px-3 text-emerald-600">{formatCurrency(gan)}</td>
+                                <td className="text-right py-1.5 px-3 text-muted-foreground">{mar}%</td>
+                              </tr>
+                            )
+                          })}
+                        </Fragment>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ④ Gráficos */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Award className="h-4 w-4 text-muted-foreground" />Top Clientes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading || !data ? <Skeleton className="h-40 w-full" /> :
+                data.topClientes.length === 0 ? <p className="text-sm text-muted-foreground">Sin ventas.</p> : (
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={data.topClientes} layout="vertical" margin={{ left: 0, right: 10, top: 0, bottom: 0 }}>
+                    <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                    <YAxis type="category" dataKey="nombre" tick={{ fontSize: 10 }} width={120} />
+                    <Tooltip formatter={(v: any) => formatCurrency(v as number)} />
+                    <Bar dataKey="monto" fill="#059669" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium flex items-center gap-2">
+                <Package className="h-4 w-4 text-muted-foreground" />Mix de Productos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isLoading || !data ? <Skeleton className="h-40 w-full" /> :
+                (data.desglose?.length ?? 0) === 0 ? <p className="text-sm text-muted-foreground">Sin ventas.</p> : (
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie data={data.desglose} dataKey="ingresos" nameKey="producto" cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={2}>
+                      {data.desglose.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={(v: any) => formatCurrency(v as number)} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
-        {isLoading ? <Skeleton className="h-40 w-full" /> : data && <DesgloseCard desglose={data.desglose} />}
-
+        {/* ⑤ Indicadores de cobro + Gastos */}
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium flex items-center gap-2">
-                <Users className="h-4 w-4 text-muted-foreground" />Top 3 Clientes del Día
+                <CheckCircle2 className="h-4 w-4 text-muted-foreground" />Indicadores de Cobro
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {isLoading || !data ? [0, 1, 2].map((i) => <Skeleton key={i} className="h-6 w-full" />) :
-                data.topClientes.length === 0 ? <p className="text-sm text-muted-foreground">Sin ventas registradas hoy.</p> :
-                data.topClientes.map((c, i) => (
-                  <div key={c.nombre} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">{i + 1}</span>
-                      <span className="text-sm">{c.nombre}</span>
-                    </div>
-                    <span className="text-sm font-semibold">{formatCurrency(c.monto)}</span>
-                  </div>
-                ))
-              }
+            <CardContent className="space-y-2">
+              {isLoading || !data ? [0,1,2].map(i => <Skeleton key={i} className="h-6 w-full" />) : (<>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Tasa de cobranza</span><span className="font-semibold">{data.tasaCobranza}%{data.tasaCobranza > 100 && <span className="text-amber-500 text-xs ml-1">*ant.</span>}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Pendiente de cobro</span><span className="font-semibold">{formatCurrency(data.pendiente)}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">Ticket promedio</span><span className="font-semibold">{formatCurrency(data.ticketPromedio)}</span></div>
+                <div className="flex justify-between text-sm border-t pt-2"><span className="text-muted-foreground">Gastos del día</span><span className="font-semibold text-red-600">{formatCurrency(data.gastos)}</span></div>
+              </>)}
             </CardContent>
           </Card>
 
-          <div className="space-y-4">
-            <Card>
-              <CardHeader className="pb-2">
+          {/* ⑥ Clientes inactivos */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <DollarSign className="h-4 w-4 text-muted-foreground" />Gastos del Día
+                  <Clock className="h-4 w-4 text-muted-foreground" />Clientes Inactivos
                 </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoading || !data ? <Skeleton className="h-8 w-36" /> : <div className="text-2xl font-bold">{formatCurrency(data.gastos)}</div>}
-              </CardContent>
-            </Card>
-            {!isLoading && data?.clientesSinComprar && data.clientesSinComprar.length > 0 && (
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-medium flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-500" />
-                    Sin comprar +7 días
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {data.clientesSinComprar.map((c) => (
-                    <div key={c.nombre} className="flex items-center justify-between text-sm">
-                      <span className="truncate">{c.nombre}</span>
-                      <Badge variant="outline" className="text-amber-600 border-amber-300 shrink-0 ml-2">{c.diasSinComprar}d</Badge>
-                    </div>
+                <div className="flex gap-1">
+                  {[7, 14, 30].map((d) => (
+                    <button key={d} onClick={() => setDiasFiltro(d)}
+                      className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${diasFiltro === d ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:bg-muted"}`}>
+                      +{d}d
+                    </button>
                   ))}
-                </CardContent>
-              </Card>
-            )}
-          </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading || !data ? <Skeleton className="h-32 w-full" /> :
+                (() => {
+                  const filtrados = data.clientesSinComprar.filter(c => c.diasSinComprar >= diasFiltro)
+                  return filtrados.length === 0
+                    ? <p className="text-sm text-muted-foreground">Todos los clientes compraron en los últimos {diasFiltro} días.</p>
+                    : <div className="grid grid-cols-2 gap-1.5 max-h-40 overflow-y-auto">
+                        {filtrados.map((c) => (
+                          <div key={c.nombre} className="flex items-center justify-between py-1 px-2 rounded border border-border text-xs">
+                            <span className="truncate mr-1">{c.nombre}</span>
+                            <Badge variant="secondary" className={`text-[10px] h-5 shrink-0 ${c.diasSinComprar >= 30 ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" : c.diasSinComprar >= 14 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-slate-100 text-slate-700"}`}>
+                              {c.diasSinComprar}d
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                })()
+              }
+            </CardContent>
+          </Card>
         </div>
+
       </div>
     </div>
   )
