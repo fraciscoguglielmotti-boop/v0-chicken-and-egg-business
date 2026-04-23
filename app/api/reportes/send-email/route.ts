@@ -34,14 +34,14 @@ function buildEmailDiario(datos: any): string {
       <tr>
         <td style="background:#f0fdf4;border-radius:8px;text-align:center;">
           <div style="font-size:12px;color:#6b7280;">Ventas del Día</div>
-          <div style="font-size:20px;font-weight:bold;">${formatCurrency(ventas.hoy)}</div>
-          <div style="font-size:12px;color:${ventas.delta >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(ventas.delta)} vs ayer</div>
+          <div style="font-size:20px;font-weight:bold;">${formatCurrency(ventas?.hoy ?? 0)}</div>
+          <div style="font-size:12px;color:${(ventas?.delta ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(ventas?.delta ?? 0)} vs ayer</div>
         </td>
         <td width="8"></td>
         <td style="background:#eff6ff;border-radius:8px;text-align:center;">
           <div style="font-size:12px;color:#6b7280;">Cobros del Día</div>
-          <div style="font-size:20px;font-weight:bold;">${formatCurrency(cobros.hoy)}</div>
-          <div style="font-size:12px;color:${cobros.delta >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(cobros.delta)} vs ayer</div>
+          <div style="font-size:20px;font-weight:bold;">${formatCurrency(cobros?.hoy ?? 0)}</div>
+          <div style="font-size:12px;color:${(cobros?.delta ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(cobros?.delta ?? 0)} vs ayer</div>
         </td>
         <td width="8"></td>
         <td style="background:#fefce8;border-radius:8px;text-align:center;">
@@ -71,10 +71,10 @@ function buildEmailDiario(datos: any): string {
     </table>
 
     <!-- Top clientes -->
-    ${topClientes.length > 0 ? `
+    ${(topClientes?.length ?? 0) > 0 ? `
     <h3 style="font-size:14px;margin:0 0 10px;color:#374151;">Top Clientes del Día</h3>
     <table width="100%" cellpadding="8" cellspacing="0" style="margin-bottom:20px;border-collapse:collapse;">
-      ${topClientes.map((c: any, i: number) => `
+      ${(topClientes ?? []).map((c: any, i: number) => `
         <tr style="border-bottom:1px solid #f3f4f6;">
           <td style="font-size:13px;"><strong>${i + 1}.</strong> ${c.nombre}</td>
           <td style="text-align:right;font-size:13px;font-weight:bold;">${formatCurrency(c.monto)}</td>
@@ -85,7 +85,7 @@ function buildEmailDiario(datos: any): string {
     <!-- Gastos -->
     <div style="background:#fafafa;padding:12px;border-radius:6px;display:flex;justify-content:space-between;">
       <span style="font-size:13px;color:#6b7280;">Gastos del Día</span>
-      <span style="font-size:14px;font-weight:bold;">${formatCurrency(gastos)}</span>
+      <span style="font-size:14px;font-weight:bold;">${formatCurrency(gastos ?? 0)}</span>
     </div>
   </div>
 
@@ -113,14 +113,14 @@ function buildEmailSemanal(datos: any): string {
       <tr>
         <td style="background:#f0fdf4;border-radius:8px;text-align:center;">
           <div style="font-size:12px;color:#6b7280;">Ventas</div>
-          <div style="font-size:18px;font-weight:bold;">${formatCurrency(ventas.semana)}</div>
-          <div style="font-size:11px;color:${ventas.delta >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(ventas.delta)} vs semana ant.</div>
+          <div style="font-size:18px;font-weight:bold;">${formatCurrency(ventas?.semana ?? 0)}</div>
+          <div style="font-size:11px;color:${(ventas?.delta ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(ventas?.delta ?? 0)} vs semana ant.</div>
         </td>
         <td width="8"></td>
         <td style="background:#eff6ff;border-radius:8px;text-align:center;">
           <div style="font-size:12px;color:#6b7280;">Cobros</div>
-          <div style="font-size:18px;font-weight:bold;">${formatCurrency(cobros.semana)}</div>
-          <div style="font-size:11px;color:${cobros.delta >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(cobros.delta)} vs semana ant.</div>
+          <div style="font-size:18px;font-weight:bold;">${formatCurrency(cobros?.semana ?? 0)}</div>
+          <div style="font-size:11px;color:${(cobros?.delta ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(cobros?.delta ?? 0)} vs semana ant.</div>
         </td>
         <td width="8"></td>
         <td style="background:#fefce8;border-radius:8px;text-align:center;">
@@ -153,10 +153,10 @@ function buildEmailSemanal(datos: any): string {
       </tr>
     </table>
 
-    ${topClientes?.length > 0 ? `
+    ${(topClientes?.length ?? 0) > 0 ? `
     <h3 style="font-size:14px;margin:0 0 10px;color:#374151;">Top 5 Clientes</h3>
     <table width="100%" cellpadding="7" cellspacing="0" style="margin-bottom:20px;border-collapse:collapse;">
-      ${topClientes.map((c: any, i: number) => `
+      ${(topClientes ?? []).map((c: any, i: number) => `
         <tr style="border-bottom:1px solid #f3f4f6;">
           <td style="font-size:13px;">${i + 1}. ${c.nombre}</td>
           <td style="text-align:right;font-size:13px;font-weight:bold;">${formatCurrency(c.monto)}</td>
@@ -164,7 +164,7 @@ function buildEmailSemanal(datos: any): string {
       `).join("")}
     </table>` : ""}
 
-    ${desglose?.length > 0 ? `
+    ${(desglose?.length ?? 0) > 0 ? `
     <h3 style="font-size:14px;margin:0 0 10px;color:#374151;">Desglose por Producto</h3>
     <table width="100%" cellpadding="7" cellspacing="0" style="border-collapse:collapse;">
       ${desglose.map((p: any) => `
@@ -201,18 +201,18 @@ function buildEmailMensual(datos: any): string {
       <tr>
         <td style="text-align:center;border-right:1px solid #e5e7eb;">
           <div style="font-size:11px;color:#6b7280;">Ventas Totales</div>
-          <div style="font-size:17px;font-weight:bold;">${formatCurrency(resumen.ventas)}</div>
-          <div style="font-size:11px;color:${vs_mes_anterior.ventas >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(vs_mes_anterior.ventas)} vs mes ant.</div>
+          <div style="font-size:17px;font-weight:bold;">${formatCurrency(resumen?.ventas ?? 0)}</div>
+          <div style="font-size:11px;color:${(vs_mes_anterior?.ventas ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(vs_mes_anterior?.ventas ?? 0)} vs mes ant.</div>
         </td>
         <td style="text-align:center;border-right:1px solid #e5e7eb;">
           <div style="font-size:11px;color:#6b7280;">Cobros Totales</div>
-          <div style="font-size:17px;font-weight:bold;">${formatCurrency(resumen.cobros)}</div>
-          <div style="font-size:11px;color:${vs_mes_anterior.cobros >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(vs_mes_anterior.cobros)} vs mes ant.</div>
+          <div style="font-size:17px;font-weight:bold;">${formatCurrency(resumen?.cobros ?? 0)}</div>
+          <div style="font-size:11px;color:${(vs_mes_anterior?.cobros ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(vs_mes_anterior?.cobros ?? 0)} vs mes ant.</div>
         </td>
         <td style="text-align:center;">
           <div style="font-size:11px;color:#6b7280;">Resultado Neto</div>
-          <div style="font-size:17px;font-weight:bold;">${formatCurrency(resumen.resultadoNeto)}</div>
-          <div style="font-size:11px;color:#6b7280;">Margen: ${resumen.margenNeto}%</div>
+          <div style="font-size:17px;font-weight:bold;">${formatCurrency(resumen?.resultadoNeto ?? 0)}</div>
+          <div style="font-size:11px;color:#6b7280;">Margen: ${resumen?.margenNeto ?? 0}%</div>
         </td>
       </tr>
     </table>
@@ -223,30 +223,30 @@ function buildEmailMensual(datos: any): string {
       <tr>
         <td style="background:#f0fdf4;border-radius:6px;text-align:center;">
           <div style="font-size:11px;color:#6b7280;">Ticket Promedio</div>
-          <div style="font-size:15px;font-weight:bold;">${formatCurrency(kpis.ticketPromedio)}</div>
+          <div style="font-size:15px;font-weight:bold;">${formatCurrency(kpis?.ticketPromedio ?? 0)}</div>
         </td>
         <td width="8"></td>
         <td style="background:#eff6ff;border-radius:6px;text-align:center;">
           <div style="font-size:11px;color:#6b7280;">Tasa Cobranza</div>
-          <div style="font-size:15px;font-weight:bold;">${kpis.tasaCobranza}%</div>
+          <div style="font-size:15px;font-weight:bold;">${kpis?.tasaCobranza ?? 0}%</div>
         </td>
         <td width="8"></td>
         <td style="background:#fefce8;border-radius:6px;text-align:center;">
           <div style="font-size:11px;color:#6b7280;">Margen Bruto</div>
-          <div style="font-size:15px;font-weight:bold;">${kpis.margenBruto}%</div>
+          <div style="font-size:15px;font-weight:bold;">${kpis?.margenBruto ?? 0}%</div>
         </td>
         <td width="8"></td>
         <td style="background:#fdf4ff;border-radius:6px;text-align:center;">
           <div style="font-size:11px;color:#6b7280;">Crecimiento</div>
-          <div style="font-size:15px;font-weight:bold;color:${kpis.crecimientoMensual >= 0 ? '#16a34a' : '#dc2626'};">${kpis.crecimientoMensual >= 0 ? "+" : ""}${kpis.crecimientoMensual}%</div>
+          <div style="font-size:15px;font-weight:bold;color:${(kpis?.crecimientoMensual ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${(kpis?.crecimientoMensual ?? 0) >= 0 ? "+" : ""}${kpis?.crecimientoMensual ?? 0}%</div>
         </td>
       </tr>
     </table>
 
-    ${topClientes.length > 0 ? `
+    ${(topClientes?.length ?? 0) > 0 ? `
     <h3 style="font-size:14px;margin:0 0 10px;color:#374151;">Top Clientes del Mes</h3>
     <table width="100%" cellpadding="7" cellspacing="0" style="border-collapse:collapse;">
-      ${topClientes.slice(0, 5).map((c: any, i: number) => `
+      ${(topClientes ?? []).slice(0, 5).map((c: any, i: number) => `
         <tr style="border-bottom:1px solid #f3f4f6;">
           <td style="font-size:13px;">${i + 1}. ${c.nombre}</td>
           <td style="text-align:right;font-size:13px;font-weight:bold;">${formatCurrency(c.monto)}</td>
@@ -300,6 +300,8 @@ export async function POST(req: NextRequest) {
     if (!htmlMap[tipo]) {
       return NextResponse.json({ error: "tipo inválido" }, { status: 400 })
     }
+
+    console.log("[send-email] datos keys:", Object.keys(datos ?? {}))
 
     const { data, error } = await resend.emails.send({
       from: fromEmail,
