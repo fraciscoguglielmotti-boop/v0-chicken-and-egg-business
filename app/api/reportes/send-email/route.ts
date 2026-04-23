@@ -17,7 +17,7 @@ function deltaArrow(delta: number) {
 // ─── Templates HTML ───────────────────────────────────────────────────────────
 
 function buildEmailDiario(datos: any): string {
-  const { fecha, ventas, cobros, pedidos, topClientes, gastos } = datos
+  const { fecha, ventas, cobros, cajones, tasaCobranza, pendiente, ticketPromedio, topClientes, desglose, gastos } = datos
   return `
 <!DOCTYPE html>
 <html lang="es">
@@ -29,8 +29,8 @@ function buildEmailDiario(datos: any): string {
   </div>
 
   <div style="border:1px solid #e5e7eb;border-top:none;padding:20px;border-radius:0 0 8px 8px;">
-    <!-- KPIs -->
-    <table width="100%" cellpadding="12" cellspacing="0" style="margin-bottom:20px;">
+    <!-- KPIs principales -->
+    <table width="100%" cellpadding="12" cellspacing="0" style="margin-bottom:16px;">
       <tr>
         <td style="background:#f0fdf4;border-radius:8px;text-align:center;">
           <div style="font-size:12px;color:#6b7280;">Ventas del Día</div>
@@ -45,9 +45,27 @@ function buildEmailDiario(datos: any): string {
         </td>
         <td width="8"></td>
         <td style="background:#fefce8;border-radius:8px;text-align:center;">
-          <div style="font-size:12px;color:#6b7280;">Pedidos</div>
-          <div style="font-size:20px;font-weight:bold;">${pedidos.hoy}</div>
-          <div style="font-size:12px;color:${pedidos.delta >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(pedidos.delta)} vs ayer</div>
+          <div style="font-size:12px;color:#6b7280;">Cajones Vendidos</div>
+          <div style="font-size:20px;font-weight:bold;">${cajones?.hoy ?? 0}</div>
+          <div style="font-size:12px;color:${(cajones?.delta ?? 0) >= 0 ? '#16a34a' : '#dc2626'};">${deltaArrow(cajones?.delta ?? 0)} vs ayer</div>
+        </td>
+      </tr>
+    </table>
+
+    <!-- KPIs secundarios -->
+    <table width="100%" cellpadding="8" cellspacing="0" style="margin-bottom:16px;background:#f9fafb;border-radius:6px;">
+      <tr>
+        <td style="text-align:center;border-right:1px solid #e5e7eb;">
+          <div style="font-size:11px;color:#6b7280;">Tasa Cobranza</div>
+          <div style="font-weight:bold;font-size:13px;">${tasaCobranza ?? 0}%${(tasaCobranza ?? 0) > 100 ? ' <span style="font-size:9px;color:#d97706;">*ant.</span>' : ''}</div>
+        </td>
+        <td style="text-align:center;border-right:1px solid #e5e7eb;">
+          <div style="font-size:11px;color:#6b7280;">Pendiente</div>
+          <div style="font-weight:bold;font-size:13px;">${formatCurrency(pendiente ?? 0)}</div>
+        </td>
+        <td style="text-align:center;">
+          <div style="font-size:11px;color:#6b7280;">Ticket Promedio</div>
+          <div style="font-weight:bold;font-size:13px;">${formatCurrency(ticketPromedio ?? 0)}</div>
         </td>
       </tr>
     </table>
