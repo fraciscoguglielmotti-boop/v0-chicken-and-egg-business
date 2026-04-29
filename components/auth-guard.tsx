@@ -54,7 +54,6 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     checkAuth()
 
-    // Subscribe to auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session && !pathname?.startsWith("/auth/")) {
         router.replace("/auth/login")
@@ -64,10 +63,17 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       }
     })
 
-    return () => {
-      subscription.unsubscribe()
-    }
+    return () => { subscription.unsubscribe() }
   }, [checkAuth, pathname, router, supabase])
+
+  // Presence ping — update last_seen_at every 2 minutes while authenticated
+  useEffect(() => {
+    if (!user) return
+    const ping = () => fetch("/api/admin/presence", { method: "POST" }).catch(() => {})
+    ping()
+    const interval = setInterval(ping, 2 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [user])
 
   const logout = useCallback(async () => {
     await supabase.auth.signOut()

@@ -150,6 +150,20 @@ function ChartTooltip({ active, payload, label }: any) {
   )
 }
 
+function CustomLegend({ payload }: any) {
+  if (!payload?.length) return null
+  return (
+    <div className="flex justify-center flex-wrap gap-x-5 gap-y-1 mt-1">
+      {payload.map((entry: any, i: number) => (
+        <span key={i} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground leading-none">
+          <span className="shrink-0 w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: entry.color }} />
+          {entry.value}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 // ─── Componentes reutilizables ────────────────────────────────────────────────
 
 function MetricCard({ title, value, delta, deltaLabel, icon: Icon, note }: {
@@ -992,7 +1006,7 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange
                       {data.desglose.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
                     <Tooltip formatter={(v: any) => formatCurrency(v as number)} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Legend content={<CustomLegend />} />
                   </PieChart>
                 </ResponsiveContainer>
               )}
@@ -1126,7 +1140,7 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
                   <XAxis dataKey="dia" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} width={52} axisLine={false} tickLine={false} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Legend content={<CustomLegend />} />
                   <Bar dataKey="ventas" name="Ventas" fill="#22c55e" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="cobros" name="Cobros" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                 </BarChart>
@@ -1255,7 +1269,7 @@ function ReporteMensual({ data, isLoading, pdfRef, printRef, mes, onMesChange }:
                   <XAxis dataKey="mes" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000000).toFixed(1)}M`} width={55} axisLine={false} tickLine={false} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Legend content={<CustomLegend />} />
                   <Line type="monotone" dataKey="ventas" name="Ventas" stroke="#22c55e" strokeWidth={2} dot={{ r: 4 }} />
                   <Line type="monotone" dataKey="cobros" name="Cobros" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4 }} />
                 </LineChart>
@@ -1297,9 +1311,7 @@ function ReporteMensual({ data, isLoading, pdfRef, printRef, mes, onMesChange }:
                         <td className="px-3 py-2 text-right text-muted-foreground">{formatCurrency(c.costoVendido)}</td>
                         <td className="px-3 py-2 text-right font-semibold text-green-700 dark:text-green-400">{formatCurrency(c.ganancia)}</td>
                         <td className="px-3 py-2 text-right">
-                          <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-bold ${c.margen >= 20 ? "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300" : c.margen >= 10 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300"}`}>
-                            {c.margen}%
-                          </span>
+                          <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${c.margen >= 20 ? "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300" : c.margen >= 10 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300"}`}>{c.margen}%</span>
                         </td>
                       </tr>
                     ))}
