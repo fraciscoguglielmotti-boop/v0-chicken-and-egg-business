@@ -226,7 +226,7 @@ export async function GET(req: NextRequest) {
         supabase.from("cobros").select("monto").gte("fecha", d.today).lt("fecha", toDateStr(addDays(d.now, 1))),
         supabase.from("cobros").select("monto").gte("fecha", d.yesterday).lt("fecha", d.today),
         supabase.from("gastos").select("monto").gte("fecha", d.today).lt("fecha", toDateStr(addDays(d.now, 1))),
-        supabase.from("compras").select("producto,cantidad,precio_unitario,total,fecha").gte("fecha", d60ago).lte("fecha", d.today),
+        supabase.from("compras").select("fecha,producto,cantidad,precio_unitario,total").lte("fecha", d.today),
         supabase.from("ventas").select("cliente_nombre,fecha").gte("fecha", d60ago).lte("fecha", d.today),
       ])
 
@@ -247,36 +247,9 @@ export async function GET(req: NextRequest) {
       const clientesHoySet = new Set((vHoy ?? []).map((v) => v.cliente_nombre).filter(Boolean))
       const ticketPromedioDia = clientesHoySet.size > 0 ? Math.round(totalVHoy / clientesHoySet.size) : 0
 
-      // ── Costos por producto (ÚLTIMO precio de compra) ─────────────────────
-      // Normaliza nombre: minúsculas, sin acentos, sin ° ni símbolos, sólo letras/números
-      const normP = (s: string) => (s ?? "")
-        .toLowerCase()
-        .normalize("NFD").replace(/[̀-ͯ]/g, "")
-        .replace(/[^a-z0-9]/g, "")
-      const costoPorProd: Record<string, number> = {}
-      const latestFecha: Record<string, string> = {}
-      for (const c of comprasRecientes ?? []) {
-        const key = normP(c.producto)
-        if (!key) continue
-        const fecha = c.fecha ?? ""
-        if (!latestFecha[key] || fecha > latestFecha[key]) {
-          const unitCost = ((c.total ?? 0) > 0 && (c.cantidad ?? 0) > 0)
-            ? c.total / c.cantidad
-            : (c.precio_unitario ?? 0)
-          costoPorProd[key] = unitCost
-          latestFecha[key] = fecha
-        }
-      }
-      // Matching: primero exacto, después fuzzy (contains en cualquier dirección)
-      const getCosto = (nombre: string) => {
-        const key = normP(nombre)
-        if (!key) return 0
-        if (costoPorProd[key] !== undefined) return costoPorProd[key]
-        for (const [k, v] of Object.entries(costoPorProd)) {
-          if (k.includes(key) || key.includes(k)) return v
-        }
-        return 0
-      }
+      // Último precio de compra vigente en d.today para cada producto
+      const costTimelineDia = buildCostTimeline(comprasRecientes ?? [])
+      const getCostoDia = (nombre: string) => getCostAtDate(nombre, d.today, costTimelineDia)
 
       // ── Resumen de rentabilidad por producto ─────────────────────────────
       const prodMap: Record<string, { cajones: number; ingresos: number; costoTotal: number; precios: number[] }> = {}
@@ -287,13 +260,13 @@ export async function GET(req: NextRequest) {
         const pu = v.precio_unitario ?? 0
         prodMap[key].cajones += qty
         prodMap[key].ingresos += qty * pu
-        prodMap[key].costoTotal += qty * getCosto(key)
+        prodMap[key].costoTotal += qty * getCostoDia(key)
         if (pu > 0) prodMap[key].precios.push(pu)
       }
       const costosProducto = Object.entries(prodMap)
         .sort((a, b) => b[1].ingresos - a[1].ingresos)
         .map(([producto, pd]) => {
-          const costoUnitario = Math.round(getCosto(producto))
+          const costoUnitario = Math.round(getCostoDia(producto))
           const precioPromedio = pd.precios.length > 0 ? Math.round(pd.precios.reduce((s, p) => s + p, 0) / pd.precios.length) : 0
           const ganancia = Math.round(pd.ingresos - pd.costoTotal)
           const margen = pd.ingresos > 0 ? round1((ganancia / pd.ingresos) * 100) : 0
@@ -309,7 +282,7 @@ export async function GET(req: NextRequest) {
         const cliente = v.cliente_nombre || "Sin nombre"
         const prod = v.producto_nombre || "Sin nombre"
         const pu = v.precio_unitario ?? 0
-        const costoUnit = Math.round(getCosto(prod))
+        const costoUnit = Math.round(getCostoDia(prod))
         if (!clienteMap[cliente]) clienteMap[cliente] = new Map()
         const mapKey = `${prod}__${pu}`
         const existing = clienteMap[cliente].get(mapKey)
@@ -396,13 +369,13 @@ export async function GET(req: NextRequest) {
         { data: ventasRecientes },
       ] = await Promise.all([
         supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", d.weekStart).lte("fecha", d.weekEnd),
-        supabase.from("ventas").select("cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", w1.inicio).lte("fecha", w1.fin),
-        supabase.from("ventas").select("cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", w4.inicio).lte("fecha", w4.fin),
-        supabase.from("ventas").select("cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", w8.inicio).lte("fecha", w8.fin),
-        supabase.from("ventas").select("cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", w12.inicio).lte("fecha", w12.fin),
+        supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", w1.inicio).lte("fecha", w1.fin),
+        supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", w4.inicio).lte("fecha", w4.fin),
+        supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", w8.inicio).lte("fecha", w8.fin),
+        supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", w12.inicio).lte("fecha", w12.fin),
         supabase.from("cobros").select("fecha,monto").gte("fecha", d.weekStart).lte("fecha", d.weekEnd),
         supabase.from("cobros").select("monto").gte("fecha", w1.inicio).lte("fecha", w1.fin),
-        supabase.from("compras").select("producto,cantidad,precio_unitario,total,fecha").gte("fecha", d60ago).lte("fecha", d.today),
+        supabase.from("compras").select("fecha,producto,cantidad,precio_unitario,total").lte("fecha", d.today),
         supabase.from("ventas").select("cliente_nombre,fecha").gte("fecha", d60ago).lte("fecha", d.today),
       ])
 
@@ -439,36 +412,12 @@ export async function GET(req: NextRequest) {
       const startFmt = new Date(d.weekStart + "T12:00:00Z").toLocaleDateString("es-AR", { day: "numeric", month: "long", timeZone: "UTC" })
       const endFmt = new Date(d.weekEnd + "T12:00:00Z").toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
 
-      // ── Costos por producto (ÚLTIMO precio de compra, últimos 60 días) ────
-      const normP = (s: string) => (s ?? "")
-        .toLowerCase()
-        .normalize("NFD").replace(/[̀-ͯ]/g, "")
-        .replace(/[^a-z0-9]/g, "")
-      const costoPorProd: Record<string, number> = {}
-      const latestFecha: Record<string, string> = {}
-      for (const c of comprasRecientes ?? []) {
-        const key = normP(c.producto)
-        if (!key) continue
-        const fecha = c.fecha ?? ""
-        if (!latestFecha[key] || fecha > latestFecha[key]) {
-          const unitCost = ((c.total ?? 0) > 0 && (c.cantidad ?? 0) > 0)
-            ? c.total / c.cantidad
-            : (c.precio_unitario ?? 0)
-          costoPorProd[key] = unitCost
-          latestFecha[key] = fecha
-        }
-      }
-      const getCosto = (nombre: string) => {
-        const key = normP(nombre)
-        if (!key) return 0
-        if (costoPorProd[key] !== undefined) return costoPorProd[key]
-        for (const [k, v] of Object.entries(costoPorProd)) {
-          if (k.includes(key) || key.includes(k)) return v
-        }
-        return 0
-      }
+      // Último precio de compra vigente en la fecha de cada venta (historial completo)
+      const costTimelineSem = buildCostTimeline(comprasRecientes ?? [])
 
       // ── Rentabilidad por producto (semana) ─────────────────────────────────
+      // Para costosProducto (tabla de la semana actual), el costoUnitario a mostrar es
+      // el precio vigente al último día de la semana (representativo del período).
       const prodMap: Record<string, { cajones: number; ingresos: number; costoTotal: number; precios: number[] }> = {}
       for (const v of vSem ?? []) {
         const key = v.producto_nombre || "Sin nombre"
@@ -477,13 +426,13 @@ export async function GET(req: NextRequest) {
         const pu = v.precio_unitario ?? 0
         prodMap[key].cajones += qty
         prodMap[key].ingresos += qty * pu
-        prodMap[key].costoTotal += qty * getCosto(key)
+        prodMap[key].costoTotal += qty * getCostAtDate(key, v.fecha, costTimelineSem)
         if (pu > 0) prodMap[key].precios.push(pu)
       }
       const costosProducto = Object.entries(prodMap)
         .sort((a, b) => b[1].ingresos - a[1].ingresos)
         .map(([producto, pd]) => {
-          const costoUnitario = Math.round(getCosto(producto))
+          const costoUnitario = Math.round(getCostAtDate(producto, d.weekEnd, costTimelineSem))
           const precioPromedio = pd.precios.length > 0 ? Math.round(pd.precios.reduce((s, p) => s + p, 0) / pd.precios.length) : 0
           const ganancia = Math.round(pd.ingresos - pd.costoTotal)
           const margen = pd.ingresos > 0 ? round1((ganancia / pd.ingresos) * 100) : 0
@@ -493,35 +442,38 @@ export async function GET(req: NextRequest) {
       const gananciaBruta = costosProducto.reduce((s, p) => s + p.ganancia, 0)
       const margenBruto = totalVSem > 0 ? round1((gananciaBruta / totalVSem) * 100) : 0
 
-      // ── Detalle por cliente (agrupado SOLO por producto — sin split por precio) ──
-      const clienteMap: Record<string, Map<string, { cantidad: number; ingresos: number; costoUnitario: number }>> = {}
+      // ── Detalle por cliente — costo por fecha de cada venta ──────────────
+      // Acumula costo por (cliente, producto); el costoUnitario representativo
+      // es el de la última venta de ese producto para ese cliente en la semana.
+      const clienteMap: Record<string, Map<string, { cantidad: number; ingresos: number; costoTotal: number; lastCostoUnit: number }>> = {}
       for (const v of vSem ?? []) {
         const cliente = (v.cliente_nombre || "Sin nombre").trim() || "Sin nombre"
         const prod = (v.producto_nombre || "Sin nombre").trim() || "Sin nombre"
         const qty = v.cantidad ?? 0
         const pu = v.precio_unitario ?? 0
-        const costoUnit = Math.round(getCosto(prod))
+        const costoUnit = getCostAtDate(prod, v.fecha, costTimelineSem)
         if (!clienteMap[cliente]) clienteMap[cliente] = new Map()
         const existing = clienteMap[cliente].get(prod)
         if (existing) {
           existing.cantidad += qty
           existing.ingresos += qty * pu
+          existing.costoTotal += qty * costoUnit
+          existing.lastCostoUnit = Math.round(costoUnit)
         } else {
-          clienteMap[cliente].set(prod, { cantidad: qty, ingresos: qty * pu, costoUnitario: costoUnit })
+          clienteMap[cliente].set(prod, { cantidad: qty, ingresos: qty * pu, costoTotal: qty * costoUnit, lastCostoUnit: Math.round(costoUnit) })
         }
       }
       const ventasDetalle = Object.entries(clienteMap)
         .map(([cliente, itemsMap]) => {
           const items = Array.from(itemsMap.entries()).map(([producto, v]) => {
             const precioPromedio = v.cantidad > 0 ? Math.round(v.ingresos / v.cantidad) : 0
-            const costoTotal = v.cantidad * v.costoUnitario
-            const ganancia = Math.round(v.ingresos - costoTotal)
+            const ganancia = Math.round(v.ingresos - v.costoTotal)
             const margen = v.ingresos > 0 ? round1((ganancia / v.ingresos) * 100) : 0
             return {
               producto,
               cantidad: Math.round(v.cantidad),
               precioPromedio,
-              costoUnitario: v.costoUnitario,
+              costoUnitario: v.lastCostoUnit,
               ingresos: Math.round(v.ingresos),
               ganancia,
               margen,
@@ -534,23 +486,24 @@ export async function GET(req: NextRequest) {
         })
         .sort((a, b) => b.total - a.total)
 
-      // ── Comparación con semanas pasadas ───────────────────────────────────
+      // ── Comparación con semanas pasadas — costo por fecha de cada venta ───
       const fmtRange = (inicio: string, fin: string) => {
         const i = new Date(inicio + "T12:00:00Z")
         const f = new Date(fin + "T12:00:00Z")
         const opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", timeZone: "UTC" }
         return `${i.toLocaleDateString("es-AR", opts)} – ${f.toLocaleDateString("es-AR", opts)}`
       }
-      const weekMetrics = (rows: { cliente_nombre?: string | null; cantidad?: number; precio_unitario?: number; producto_nombre?: string | null }[] | null) => {
+      const weekMetrics = (rows: { fecha?: string; cliente_nombre?: string | null; cantidad?: number; precio_unitario?: number; producto_nombre?: string | null }[] | null) => {
         const r = rows ?? []
         let ventas = 0, cajones = 0, costoTotal = 0
         const clientes = new Set<string>()
         for (const v of r) {
           const qty = v.cantidad ?? 0
           const pu = v.precio_unitario ?? 0
+          const fechaVenta = v.fecha ?? d.today
           ventas += qty * pu
           cajones += qty
-          costoTotal += qty * getCosto(v.producto_nombre || "")
+          costoTotal += qty * getCostAtDate(v.producto_nombre || "", fechaVenta, costTimelineSem)
           if (v.cliente_nombre) clientes.add(v.cliente_nombre.trim())
         }
         const ganancia = ventas - costoTotal
