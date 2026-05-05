@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 import { buildCostTimeline, getCostAtDate } from "@/lib/cost-timeline"
+import { esMPGasto } from "@/lib/mp-constants"
 
 export const maxDuration = 30
 
@@ -29,17 +30,6 @@ const CATEGORIAS_SUELDOS = ["comisiones", "sueldos", "sueldo", "comisión", "com
 const CATEGORIAS_RETIROS = ["gastos personales francisco", "retiro de socio", "retiros"]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function esMPGasto(m: MovimientoMP): boolean {
-  const tipo = m.tipo?.toLowerCase()
-  const desc = m.descripcion?.toLowerCase() ?? ""
-  if (tipo !== "egreso") return false
-  // Excluir solo retiros bancarios y transferencias internas (movimiento de fondos, no gastos).
-  // "Transferencia enviada a [proveedor]" SÍ es un gasto y debe incluirse.
-  if (desc.startsWith("retiro")) return false
-  if (desc.includes("transferencia bancaria")) return false
-  return true
-}
 
 function mpAGasto(m: MovimientoMP): Gasto {
   return {

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DataTable } from "./data-table"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
+import { esMPGasto } from "@/lib/mp-constants"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { LoadingTable } from "@/components/loading-states"
@@ -52,15 +53,6 @@ interface GastoUnificado {
   descripcion?: string
   monto: number
   fuente: "gastos" | "mercadopago"
-}
-
-function esMPGasto(m: MovimientoMP): boolean {
-  const tipo = m.tipo?.toLowerCase()
-  const desc = m.descripcion?.toLowerCase() ?? ""
-  if (tipo !== "egreso") return false
-  if (desc.startsWith("retiro")) return false
-  if (desc.includes("transferencia bancaria")) return false
-  return true
 }
 
 function mpAGastoUnificado(m: MovimientoMP): GastoUnificado {

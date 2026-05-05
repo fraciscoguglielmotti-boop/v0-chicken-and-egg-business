@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight } from "lucide-react"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { formatCurrency } from "@/lib/utils"
+import { esMPGasto } from "@/lib/mp-constants"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -54,14 +55,7 @@ function gastosRealesMes(gastos: Gasto[], movimientosMp: MovimientoMP[], mes: st
     })
     .reduce((s, g) => s + g.monto, 0)
   const realMP = movimientosMp
-    .filter(m => {
-      const tipo = m.tipo?.toLowerCase()
-      const desc = (m.descripcion ?? "").toLowerCase()
-      if (tipo !== "egreso") return false
-      if (desc.startsWith("retiro")) return false
-      if (desc.includes("transferencia bancaria")) return false
-      return m.fecha.slice(0, 7) === mes
-    })
+    .filter(m => esMPGasto(m) && m.fecha.slice(0, 7) === mes)
     .reduce((s, m) => s + m.monto, 0)
   return realGastos + realMP
 }

@@ -9,8 +9,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useSupabase, updateRow, deleteRow, insertRow } from "@/hooks/use-supabase"
+import { MP_CATEGORIA_NO_COBRO, MP_CATEGORIAS_NO_GASTO, MP_EGRESO_NO_GASTO_LABEL } from "@/lib/mp-constants"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
 
@@ -260,7 +261,9 @@ export function MercadoPagoContent() {
       mesVerificar === "todos" || c.fecha.startsWith(mesVerificar)
     )
     const ingresosMp = movimientos.filter((m) =>
-      m.tipo === "ingreso" && (mesVerificar === "todos" || m.fecha.startsWith(mesVerificar))
+      m.tipo === "ingreso" &&
+      m.categoria !== MP_CATEGORIA_NO_COBRO &&
+      (mesVerificar === "todos" || m.fecha.startsWith(mesVerificar))
     )
     const mpUsados = new Set<string>()
     const cobrosConMatch: { cobro: Cobro; mov: MovimientoMP }[] = []
@@ -383,8 +386,12 @@ export function MercadoPagoContent() {
                         editingId === m.id ? (
                           <div className="flex items-center gap-1">
                             <Select value={editCat} onValueChange={setEditCat}>
-                              <SelectTrigger className="h-7 w-36 text-xs"><SelectValue placeholder="Categoría" /></SelectTrigger>
+                              <SelectTrigger className="h-7 w-44 text-xs"><SelectValue placeholder="Categoría" /></SelectTrigger>
                               <SelectContent>
+                                <SelectLabel className="text-xs">No es gasto operativo</SelectLabel>
+                                <SelectItem value={MP_EGRESO_NO_GASTO_LABEL}>{MP_EGRESO_NO_GASTO_LABEL}</SelectItem>
+                                <SelectSeparator />
+                                <SelectLabel className="text-xs">Gastos operativos</SelectLabel>
                                 {categorias.map((c) => <SelectItem key={c.id} value={c.nombre}>{c.nombre}</SelectItem>)}
                               </SelectContent>
                             </Select>
@@ -393,12 +400,33 @@ export function MercadoPagoContent() {
                           </div>
                         ) : (
                           <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" onClick={() => { setEditingId(m.id); setEditCat(m.categoria ?? "") }}>
-                            {m.categoria ? <Badge variant="secondary" className="text-xs">{m.categoria}</Badge> : <span className="italic">Sin categoría</span>}
+                            {m.categoria
+                              ? MP_CATEGORIAS_NO_GASTO.includes(m.categoria.toLowerCase().trim())
+                                ? <Badge variant="outline" className="text-xs border-amber-400 text-amber-700">{m.categoria}</Badge>
+                                : <Badge variant="secondary" className="text-xs">{m.categoria}</Badge>
+                              : <span className="italic">Sin categoría</span>
+                            }
                             <Pencil className="h-3 w-3 opacity-50" />
                           </button>
                         )
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        m.categoria === MP_CATEGORIA_NO_COBRO ? (
+                          <button
+                            className="flex items-center gap-1 text-xs hover:text-foreground"
+                            onClick={async () => { await updateRow("movimientos_mp", m.id, { categoria: null }); refreshMov() }}
+                          >
+                            <Badge variant="outline" className="text-xs border-orange-400 text-orange-600">No es cobro</Badge>
+                            <X className="h-3 w-3 opacity-50" />
+                          </button>
+                        ) : (
+                          <button
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={async () => { await updateRow("movimientos_mp", m.id, { categoria: MP_CATEGORIA_NO_COBRO }); refreshMov() }}
+                          >
+                            <span className="italic">Cobro</span>
+                            <Pencil className="h-3 w-3 opacity-50" />
+                          </button>
+                        )
                       )}
                     </td>
                     <td className="px-3 py-2 text-right">

@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card } from "@/components/ui/card"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { formatCurrency } from "@/lib/utils"
+import { esMPGasto } from "@/lib/mp-constants"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 
@@ -127,15 +128,8 @@ export function PresupuestosContent() {
     // Gastos reales pagados del mes (tabla gastos)
     const gastosDelMes = gastos.filter(g => g.fecha.startsWith(prefixMes) && g.pagado !== false)
 
-    // Egresos MP categorizados del mes
-    const mpDelMes = movimientosMp.filter(m => {
-      const tipo = m.tipo?.toLowerCase()
-      const desc = m.descripcion?.toLowerCase() ?? ""
-      if (tipo !== "egreso") return false
-      if (desc.startsWith("retiro")) return false
-      if (desc.includes("transferencia bancaria")) return false
-      return m.fecha.startsWith(prefixMes)
-    })
+    // Egresos MP del mes que son gastos operativos
+    const mpDelMes = movimientosMp.filter(m => esMPGasto(m) && m.fecha.startsWith(prefixMes))
 
     // Categorías con presupuesto o con gastos reales
     const todasCats = new Set([
