@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import useSWR from "swr"
-import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Loader2, Download } from "lucide-react"
+import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Loader2, Download, FileText } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -208,6 +208,20 @@ export function ContabilidadContent() {
     URL.revokeObjectURL(url)
   }
 
+  const [generatingPdf, setGeneratingPdf] = useState(false)
+  const handleDownloadPDF = async () => {
+    if (!data || generatingPdf) return
+    setGeneratingPdf(true)
+    try {
+      const { generateEERRPdf } = await import("@/lib/eerr-pdf")
+      await generateEERRPdf(data)
+    } catch (err) {
+      console.error("Error generando PDF:", err)
+    } finally {
+      setGeneratingPdf(false)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
@@ -241,7 +255,20 @@ export function ContabilidadContent() {
               className="gap-1.5"
             >
               <Download className="h-3.5 w-3.5" />
-              Descargar CSV
+              CSV
+            </Button>
+            <Button
+              size="sm"
+              variant="default"
+              onClick={handleDownloadPDF}
+              disabled={!data || isLoading || generatingPdf}
+              className="gap-1.5"
+            >
+              {generatingPdf
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <FileText className="h-3.5 w-3.5" />
+              }
+              {generatingPdf ? "Generando…" : "Descargar PDF"}
             </Button>
           </div>
         </div>
