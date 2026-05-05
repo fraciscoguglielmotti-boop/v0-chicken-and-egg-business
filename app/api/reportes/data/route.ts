@@ -19,56 +19,49 @@ function fuzzyLookup(key: string, map: Record<string, number>): number {
   return 0
 }
 
-function buildAvgCostMap(
-  compras: { producto: string; total: number; cantidad: number; precio_unitario: number }[]
-): Record<string, number> {
-  const acc: Record<string, { totalCosto: number; totalQty: number }> = {}
+// Construye un timeline de costos unitarios por producto, ordenado por fecha.
+// Permite buscar el último costo conocido antes o igual a una fecha dada.
+function buildCostTimeline(
+  compras: { fecha: string; producto: string; cantidad: number; precio_unitario: number; total: number }[]
+): Record<string, { fecha: string; unitCost: number }[]> {
+  const timeline: Record<string, { fecha: string; unitCost: number }[]> = {}
   for (const c of compras) {
-    if (!c.cantidad || c.cantidad <= 0) continue
+    if (!c.cantidad || c.cantidad <= 0 || !c.fecha) continue
     const prod = normProdName(c.producto)
     if (!prod) continue
-    const total = c.total > 0 ? c.total : c.cantidad * (c.precio_unitario ?? 0)
-    if (!acc[prod]) acc[prod] = { totalCosto: 0, totalQty: 0 }
-    acc[prod].totalCosto += total
-    acc[prod].totalQty += c.cantidad
+    const uc = (c.total ?? 0) > 0 ? c.total / c.cantidad : (c.precio_unitario ?? 0)
+    if (uc <= 0) continue
+    if (!timeline[prod]) timeline[prod] = []
+    timeline[prod].push({ fecha: c.fecha, unitCost: uc })
   }
-  const out: Record<string, number> = {}
-  for (const [prod, d] of Object.entries(acc)) {
-    out[prod] = d.totalQty > 0 ? d.totalCosto / d.totalQty : 0
+  for (const prod of Object.keys(timeline)) {
+    timeline[prod].sort((a, b) => a.fecha.localeCompare(b.fecha))
   }
-  return out
+  return timeline
 }
 
-function unitCost(productoNombre: string, avgCost: Record<string, number>): number {
-  return fuzzyLookup(normProdName(productoNombre), avgCost)
-}
-
-function calcCogs(
-  ventas: { producto_nombre?: string; cantidad?: number }[],
-  avgCost: Record<string, number>
+// Retorna el último costo de compra registrado para un producto en o antes de `fecha`.
+// Así cada venta usa el precio de compra vigente en ese momento, no un promedio histórico.
+function getCostAtDate(
+  productoNombre: string,
+  fecha: string,
+  timeline: Record<string, { fecha: string; unitCost: number }[]>
 ): number {
-  let cogs = 0
-  for (const v of ventas) {
-    cogs += (v.cantidad ?? 0) * unitCost(v.producto_nombre ?? "", avgCost)
+  const key = normProdName(productoNombre)
+  if (!key) return 0
+  let entries = timeline[key]
+  if (!entries) {
+    for (const [k, v] of Object.entries(timeline)) {
+      if (k.includes(key) || key.includes(k)) { entries = v; break }
+    }
   }
-  return cogs
-}
-
-function calcCostoPorCliente(
-  avgCost: Record<string, number>,
-  ventasMes: { cliente_nombre: string; producto_nombre: string; cantidad: number; precio_unitario: number }[]
-): Record<string, { cajones: number; totalVendido: number; costoVendido: number }> {
-  const result: Record<string, { cajones: number; totalVendido: number; costoVendido: number }> = {}
-  for (const v of ventasMes) {
-    if (!v.cantidad || v.cantidad <= 0) continue
-    const nombre = v.cliente_nombre || "Sin nombre"
-    const costUnit = unitCost(v.producto_nombre, avgCost)
-    if (!result[nombre]) result[nombre] = { cajones: 0, totalVendido: 0, costoVendido: 0 }
-    result[nombre].cajones += v.cantidad
-    result[nombre].totalVendido += v.cantidad * (v.precio_unitario ?? 0)
-    result[nombre].costoVendido += v.cantidad * costUnit
+  if (!entries || entries.length === 0) return 0
+  let lastCost = 0
+  for (const e of entries) {
+    if (e.fecha <= fecha) lastCost = e.unitCost
+    else break
   }
-  return result
+  return lastCost || entries[0].unitCost
 }
 
 // ─── Helpers de fecha ─────────────────────────────────────────────────────────
@@ -661,11 +654,19 @@ export async function GET(req: NextRequest) {
       const totalGMesAnt = sumMonto(gMesAnt ?? [])
       const totalCompMes = sumTotal(compMes ?? [])
 
-      // Costo promedio histórico ponderado por producto (compras hasta fin del mes)
-      // Usado para COGS, margen bruto/neto, rentabilidad por producto y por cliente.
-      const avgCost = buildAvgCostMap(todasCompras ?? [])
-      const cogsMes = calcCogs(vMes ?? [], avgCost)
-      const cogsMesAnt = calcCogs(vMesAnt ?? [], avgCost)
+      // Timeline de costos: para cada venta usa el último precio de compra vigente en esa fecha.
+      // Esto evita distorsiones del promedio histórico cuando los precios cambian con el tiempo.
+      const costTimeline = buildCostTimeline(todasCompras ?? [])
+
+      let cogsMes = 0
+      for (const v of vMes ?? []) {
+        cogsMes += (v.cantidad ?? 0) * getCostAtDate(v.producto_nombre ?? "", v.fecha, costTimeline)
+      }
+      // vMesAnt no tiene fecha por fila; usamos fin del mes anterior como proxy
+      let cogsMesAnt = 0
+      for (const v of vMesAnt ?? []) {
+        cogsMesAnt += (v.cantidad ?? 0) * getCostAtDate(v.producto_nombre ?? "", d.lastMonthEnd, costTimeline)
+      }
 
       const resultadoNeto = totalVMes - cogsMes - totalGMes
       const resultadoNetoAnt = totalVMesAnt - cogsMesAnt - totalGMesAnt
@@ -711,12 +712,13 @@ export async function GET(req: NextRequest) {
         value: totalMetodos > 0 ? Math.round((value / totalMetodos) * 100) : 0,
       }))
 
-      // Rentabilidad por producto — usa COGS (cantidad vendida × costo promedio histórico)
+      // Rentabilidad por producto — costo = último precio de compra vigente en la fecha de cada venta
       const prodAgg: Record<string, { ingresos: number; costo: number }> = {}
       for (const v of vMes ?? []) {
         const nombre = v.producto_nombre || "Sin nombre"
-        const ing = (v.cantidad ?? 0) * (v.precio_unitario ?? 0)
-        const cost = (v.cantidad ?? 0) * unitCost(nombre, avgCost)
+        const qty = v.cantidad ?? 0
+        const ing = qty * (v.precio_unitario ?? 0)
+        const cost = qty * getCostAtDate(nombre, v.fecha, costTimeline)
         if (!prodAgg[nombre]) prodAgg[nombre] = { ingresos: 0, costo: 0 }
         prodAgg[nombre].ingresos += ing
         prodAgg[nombre].costo += cost
@@ -730,8 +732,17 @@ export async function GET(req: NextRequest) {
 
       const mesLabel = d.now.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
 
-      // Por cliente: usa el mismo avgCost histórico → consistente con rentabilidadProductos
-      const costoMap = calcCostoPorCliente(avgCost, vMes ?? [])
+      // Por cliente: último precio de compra vigente en la fecha de cada venta
+      const costoMap: Record<string, { cajones: number; totalVendido: number; costoVendido: number }> = {}
+      for (const v of vMes ?? []) {
+        if (!v.cantidad || v.cantidad <= 0) continue
+        const nombre = v.cliente_nombre || "Sin nombre"
+        const costUnit = getCostAtDate(v.producto_nombre ?? "", v.fecha, costTimeline)
+        if (!costoMap[nombre]) costoMap[nombre] = { cajones: 0, totalVendido: 0, costoVendido: 0 }
+        costoMap[nombre].cajones += v.cantidad
+        costoMap[nombre].totalVendido += v.cantidad * (v.precio_unitario ?? 0)
+        costoMap[nombre].costoVendido += v.cantidad * costUnit
+      }
       const clientesMes = Object.entries(costoMap)
         .map(([nombre, d]) => {
           const costoVendido = Math.round(d.costoVendido)
