@@ -414,20 +414,31 @@ export function MercadoPagoContent() {
                           </button>
                         )
                       ) : (
-                        m.categoria === MP_CATEGORIA_NO_COBRO ? (
-                          <button
-                            className="flex items-center gap-1 text-xs hover:text-foreground"
-                            onClick={async () => { await updateRow("movimientos_mp", m.id, { categoria: null }); refreshMov() }}
-                          >
-                            <Badge variant="outline" className="text-xs border-orange-400 text-orange-600">No es cobro</Badge>
-                            <X className="h-3 w-3 opacity-50" />
-                          </button>
+                        editingId === m.id ? (
+                          <div className="flex items-center gap-1">
+                            <Select value={editCat} onValueChange={setEditCat}>
+                              <SelectTrigger className="h-7 w-36 text-xs"><SelectValue placeholder="Tipo" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="">Cobro de cliente</SelectItem>
+                                <SelectItem value={MP_CATEGORIA_NO_COBRO}>No es cobro</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={async () => {
+                              await updateRow("movimientos_mp", m.id, { categoria: editCat || null })
+                              setEditingId(null)
+                              refreshMov()
+                            }}><Check className="h-3 w-3" /></Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditingId(null)}><X className="h-3 w-3" /></Button>
+                          </div>
                         ) : (
                           <button
                             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                            onClick={async () => { await updateRow("movimientos_mp", m.id, { categoria: MP_CATEGORIA_NO_COBRO }); refreshMov() }}
+                            onClick={() => { setEditingId(m.id); setEditCat(m.categoria ?? "") }}
                           >
-                            <span className="italic">Cobro</span>
+                            {m.categoria === MP_CATEGORIA_NO_COBRO
+                              ? <Badge variant="outline" className="text-xs border-orange-400 text-orange-600">No es cobro</Badge>
+                              : <span className="italic">Cobro</span>
+                            }
                             <Pencil className="h-3 w-3 opacity-50" />
                           </button>
                         )
