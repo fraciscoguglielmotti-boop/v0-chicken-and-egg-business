@@ -113,6 +113,7 @@ interface DatosMensuales {
     cobros: number
     gastos: number
     compras: number
+    cogs: number
     resultadoNeto: number
     margenNeto: number
   }
@@ -702,7 +703,8 @@ function PdfTemplateMensual({ data }: { data: DatosMensuales }) {
             { label: "Margen neto", value: `${data.kpis.margenNeto}%` },
             { label: "Ticket promedio", value: formatCurrency(data.kpis.ticketPromedio) },
             { label: "Crecimiento mensual", value: `${data.kpis.crecimientoMensual >= 0 ? "+" : ""}${data.kpis.crecimientoMensual}%` },
-            { label: "CMV (Compras)", value: formatCurrency(data.resumen.compras) },
+            { label: "Costo de mercadería vendida", value: formatCurrency(data.resumen.cogs) },
+            { label: "Compras del mes (cash)", value: formatCurrency(data.resumen.compras) },
             { label: "Gastos operativos", value: formatCurrency(data.resumen.gastos) },
             { label: "Cajones vendidos", value: `${totalCajones}` },
           ].map(r => (
