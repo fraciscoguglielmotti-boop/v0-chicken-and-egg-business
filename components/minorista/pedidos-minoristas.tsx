@@ -50,6 +50,14 @@ import {
   nextPedidoNumero,
 } from "./types"
 
+interface PedidoCosto {
+  costo: number
+  ganancia: number
+  margenPct: number
+  itemsConCosto: number
+  itemsSinCosto: number
+}
+
 interface Props {
   pedidos: PedidoMinorista[]
   items: ItemPedidoMinorista[]
@@ -58,6 +66,7 @@ interface Props {
   promos: PromoMinorista[]
   mutatePedidos: () => Promise<any>
   mutateItems: () => Promise<any>
+  costoByPedido: Map<string, PedidoCosto>
 }
 
 interface DraftItem {
@@ -83,6 +92,7 @@ export function PedidosMinoristas({
   promos,
   mutatePedidos,
   mutateItems,
+  costoByPedido,
 }: Props) {
   const { toast } = useToast()
   const { confirm, ConfirmDialog } = useConfirm()
@@ -438,11 +448,32 @@ export function PedidosMinoristas({
                   ))}
                 </div>
 
-                <div className="flex items-center justify-between border-t pt-2">
-                  <span className="text-xs text-muted-foreground uppercase">
-                    {p.forma_pago}
-                  </span>
-                  <span className="text-lg font-bold">{formatCurrency(p.total)}</span>
+                <div className="border-t pt-2 space-y-1">
+                  {(() => {
+                    const cg = costoByPedido.get(p.id)
+                    if (!cg || (cg.itemsConCosto === 0 && cg.itemsSinCosto === 0)) return null
+                    return (
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span>
+                          Costo {formatCurrency(cg.costo)}
+                          {cg.itemsSinCosto > 0 && (
+                            <span className="ml-1 text-amber-600">
+                              ({cg.itemsSinCosto} sin costo)
+                            </span>
+                          )}
+                        </span>
+                        <span className={cg.ganancia >= 0 ? "text-emerald-600 font-medium" : "text-rose-600 font-medium"}>
+                          Gan. {formatCurrency(cg.ganancia)} ({cg.margenPct.toFixed(0)}%)
+                        </span>
+                      </div>
+                    )
+                  })()}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground uppercase">
+                      {p.forma_pago}
+                    </span>
+                    <span className="text-lg font-bold">{formatCurrency(p.total)}</span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-1.5">

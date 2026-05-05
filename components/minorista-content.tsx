@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  DollarSign,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent } from "@/components/ui/card"
@@ -21,6 +22,7 @@ import { StatCard } from "@/components/stat-card"
 import { Badge } from "@/components/ui/badge"
 import { useSupabase } from "@/hooks/use-supabase"
 import { formatCurrency } from "@/lib/utils"
+import { buildCostTimeline, getCostAtDate, type CostTimeline } from "@/lib/cost-timeline"
 import {
   ClienteMinorista,
   ProductoMinorista,
@@ -38,6 +40,22 @@ import { PedidosMinoristas } from "./minorista/pedidos-minoristas"
 import { RepartosMinoristas } from "./minorista/repartos-minoristas"
 import { EtiquetasMinoristas } from "./minorista/etiquetas-minoristas"
 import { RendicionMinoristas } from "./minorista/rendicion-minoristas"
+
+interface CompraRow {
+  fecha: string
+  producto?: string
+  cantidad?: number
+  precio_unitario?: number
+  total?: number
+}
+
+export interface PedidoCosto {
+  costo: number
+  ganancia: number
+  margenPct: number
+  itemsConCosto: number
+  itemsSinCosto: number
+}
 
 export function MinoristaContent() {
   const {
@@ -69,6 +87,40 @@ export function MinoristaContent() {
     data: rendiciones = [],
     mutate: mutateRendiciones,
   } = useSupabase<RendicionMinorista>("rendiciones_minoristas")
+  const { data: compras = [] } = useSupabase<CompraRow>("compras")
+
+  const costTimeline = useMemo(() => buildCostTimeline(compras), [compras])
+
+  // Ganancia por pedido: cada item busca el costo unitario en la compra más
+  // cercana anterior a la fecha del pedido. Mismo esquema que ventas mayoristas.
+  const costoByPedido = useMemo(() => {
+    const m = new Map<string, PedidoCosto>()
+    const itemsByPed = new Map<string, ItemPedidoMinorista[]>()
+    for (const it of items) {
+      const arr = itemsByPed.get(it.pedido_id) ?? []
+      arr.push(it)
+      itemsByPed.set(it.pedido_id, arr)
+    }
+    for (const p of pedidos) {
+      const its = itemsByPed.get(p.id) ?? []
+      let costo = 0
+      let conCosto = 0
+      let sinCosto = 0
+      for (const it of its) {
+        const c = getCostAtDate(it.nombre_producto, p.fecha, costTimeline)
+        if (c > 0) {
+          costo += c * (it.cantidad ?? 0)
+          conCosto++
+        } else {
+          sinCosto++
+        }
+      }
+      const ganancia = (p.total ?? 0) - costo
+      const margenPct = (p.total ?? 0) > 0 ? (ganancia / p.total) * 100 : 0
+      m.set(p.id, { costo, ganancia, margenPct, itemsConCosto: conCosto, itemsSinCosto: sinCosto })
+    }
+    return m
+  }, [pedidos, items, costTimeline])
 
   return (
     <Tabs defaultValue="hoy" className="space-y-4">
@@ -109,6 +161,7 @@ export function MinoristaContent() {
           items={items}
           clientes={clientes}
           repartos={repartos}
+          costoByPedido={costoByPedido}
         />
       </TabsContent>
 
@@ -121,6 +174,7 @@ export function MinoristaContent() {
           promos={promos}
           mutatePedidos={mutatePedidos}
           mutateItems={mutateItems}
+          costoByPedido={costoByPedido}
         />
       </TabsContent>
 
@@ -177,11 +231,13 @@ function HoyTab({
   items,
   clientes,
   repartos,
+  costoByPedido,
 }: {
   pedidos: PedidoMinorista[]
   items: ItemPedidoMinorista[]
   clientes: ClienteMinorista[]
   repartos: RepartoMinorista[]
+  costoByPedido: Map<string, PedidoCosto>
 }) {
   const hoy = new Date().toISOString().slice(0, 10)
 
@@ -215,6 +271,19 @@ function HoyTab({
     ["recibido", "confirmado"].includes(p.estado)
   ).length
 
+  // Ganancia del día (sólo entregados — los demás aún no se concretaron)
+  const pedidosCobrados = pedidosHoy.filter((p) => p.estado === "entregado")
+  const gananciaHoy = pedidosCobrados.reduce(
+    (s, p) => s + (costoByPedido.get(p.id)?.ganancia ?? 0),
+    0
+  )
+  const ventasCobradasHoy = pedidosCobrados.reduce((s, p) => s + (p.total ?? 0), 0)
+  const margenPctHoy = ventasCobradasHoy > 0 ? (gananciaHoy / ventasCobradasHoy) * 100 : 0
+  const itemsSinCostoHoy = pedidosHoy.reduce(
+    (s, p) => s + (costoByPedido.get(p.id)?.itemsSinCosto ?? 0),
+    0
+  )
+
   const repartosHoy = repartos.filter((r) => r.fecha === hoy)
 
   return (
@@ -245,6 +314,31 @@ function HoyTab({
           icon={CheckCircle2}
           variant={fallidos > 0 ? "warning" : "default"}
         />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <StatCard
+          title="Ganancia (entregados hoy)"
+          value={formatCurrency(gananciaHoy)}
+          subtitle={ventasCobradasHoy > 0 ? `${margenPctHoy.toFixed(1)}% margen` : "Aún no hay entregas"}
+          icon={DollarSign}
+          variant={gananciaHoy >= 0 ? "success" : "warning"}
+        />
+        <StatCard
+          title="Ventas cobradas hoy"
+          value={formatCurrency(ventasCobradasHoy)}
+          subtitle={`${pedidosCobrados.length} entregado(s)`}
+          icon={TrendingUp}
+        />
+        {itemsSinCostoHoy > 0 && (
+          <StatCard
+            title="Items sin costo"
+            value={String(itemsSinCostoHoy)}
+            subtitle="Productos sin compra registrada"
+            icon={AlertTriangle}
+            variant="warning"
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

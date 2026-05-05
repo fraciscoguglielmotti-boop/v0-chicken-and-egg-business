@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react"
 import useSWR from "swr"
-import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Loader2 } from "lucide-react"
+import { ChevronDown, ChevronRight, TrendingUp, TrendingDown, Loader2, Download } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
 
 interface Gasto {
   fecha: string
@@ -128,6 +129,85 @@ export function ContabilidadContent() {
   const eerr = data?.current ?? emptyEERR
   const prev = data?.previous ?? emptyEERR
 
+  const handleDownloadCSV = () => {
+    if (!data) return
+    const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`
+    const fmtPct = (n: number) => `${n.toFixed(1)}%`
+    const rows: string[] = []
+
+    rows.push(esc(`Estado de Resultados — ${selectedMonth}`))
+    rows.push("")
+    rows.push([esc("Concepto"), esc("Mes actual"), esc("Mes anterior")].join(","))
+    rows.push([esc("(+) Ventas"), esc(eerr.totalVentas), esc(prev.totalVentas)].join(","))
+    rows.push([esc("(−) Costo de mercadería vendida"), esc(eerr.totalCMV), esc(prev.totalCMV)].join(","))
+    rows.push([esc(`= Margen Bruto (${fmtPct(eerr.margenPct)})`), esc(eerr.margenBruto), esc(prev.margenBruto)].join(","))
+    rows.push([esc("(−) Gastos Operativos"), esc(eerr.totalGastosOp), esc(prev.totalGastosOp)].join(","))
+    rows.push([esc(`= Resultado Operativo (${fmtPct(eerr.resultadoOpPct)})`), esc(eerr.resultadoOp), esc(prev.resultadoOp)].join(","))
+    rows.push([esc("(−) Sueldos y Comisiones"), esc(eerr.totalSueldos), esc(prev.totalSueldos)].join(","))
+    rows.push([esc("(−) Retiros personales"), esc(eerr.totalRetiros), esc(prev.totalRetiros)].join(","))
+    rows.push([esc(`= Resultado del Período (${fmtPct(eerr.resultadoFinalPct)})`), esc(eerr.resultadoFinal), esc(prev.resultadoFinal)].join(","))
+
+    rows.push("")
+    rows.push(esc("Desglose de Gastos Operativos"))
+    rows.push([esc("Categoría"), esc("Total")].join(","))
+    Object.entries(eerr.desglose)
+      .sort((a, b) => b[1] - a[1])
+      .forEach(([cat, total]) => {
+        rows.push([esc(cat), esc(total)].join(","))
+      })
+
+    rows.push("")
+    rows.push(esc("Detalle de Movimientos"))
+    rows.push([esc("Fecha"), esc("Categoría"), esc("Descripción"), esc("Medio de pago"), esc("Monto")].join(","))
+    Object.entries(eerr.movimientosPorCat).forEach(([cat, movs]) => {
+      movs
+        .slice()
+        .sort((a, b) => b.fecha.localeCompare(a.fecha))
+        .forEach((g) => {
+          rows.push([
+            esc(g.fecha.slice(0, 10)),
+            esc(cat),
+            esc(g.descripcion ?? ""),
+            esc(g.medio_pago ?? ""),
+            esc(g.monto),
+          ].join(","))
+        })
+    })
+    eerr.gastosSueldos
+      .slice()
+      .sort((a, b) => b.fecha.localeCompare(a.fecha))
+      .forEach((g) => {
+        rows.push([
+          esc(g.fecha.slice(0, 10)),
+          esc(g.categoria),
+          esc(g.descripcion ?? ""),
+          esc(g.medio_pago ?? ""),
+          esc(g.monto),
+        ].join(","))
+      })
+    eerr.gastosRetiros
+      .slice()
+      .sort((a, b) => b.fecha.localeCompare(a.fecha))
+      .forEach((g) => {
+        rows.push([
+          esc(g.fecha.slice(0, 10)),
+          esc(g.categoria),
+          esc(g.descripcion ?? ""),
+          esc(g.medio_pago ?? ""),
+          esc(g.monto),
+        ].join(","))
+      })
+
+    const bom = "﻿"
+    const blob = new Blob([bom + rows.join("\n")], { type: "text/csv;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `eerr-${selectedMonth}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
@@ -151,7 +231,19 @@ export function ContabilidadContent() {
       <Card className="p-6">
         <div className="flex items-center justify-between mb-5">
           <h3 className="font-semibold text-base">Estado de Resultados</h3>
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          <div className="flex items-center gap-2">
+            {isLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDownloadCSV}
+              disabled={!data || isLoading}
+              className="gap-1.5"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Descargar CSV
+            </Button>
+          </div>
         </div>
 
         {isLoading && !data ? (
