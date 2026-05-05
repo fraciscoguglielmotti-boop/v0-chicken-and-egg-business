@@ -1,68 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
-
-// ─── Costo promedio por producto para reporte de clientes ────────────────────
-// Usa costo promedio ponderado de compras históricas por producto.
-// Match estricto (nombre normalizado): si no hay compra para ese producto, costo = 0.
-// Esto evita asignar costos incorrectos cuando los nombres no coinciden exactamente.
-
-function normProdName(s?: string) {
-  return (s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "")
-}
-
-function fuzzyLookup(key: string, map: Record<string, number>): number {
-  if (!key) return 0
-  if (map[key] !== undefined) return map[key]
-  for (const [k, v] of Object.entries(map)) {
-    if (k.includes(key) || key.includes(k)) return v
-  }
-  return 0
-}
-
-// Construye un timeline de costos unitarios por producto, ordenado por fecha.
-// Permite buscar el último costo conocido antes o igual a una fecha dada.
-function buildCostTimeline(
-  compras: { fecha: string; producto: string; cantidad: number; precio_unitario: number; total: number }[]
-): Record<string, { fecha: string; unitCost: number }[]> {
-  const timeline: Record<string, { fecha: string; unitCost: number }[]> = {}
-  for (const c of compras) {
-    if (!c.cantidad || c.cantidad <= 0 || !c.fecha) continue
-    const prod = normProdName(c.producto)
-    if (!prod) continue
-    const uc = (c.total ?? 0) > 0 ? c.total / c.cantidad : (c.precio_unitario ?? 0)
-    if (uc <= 0) continue
-    if (!timeline[prod]) timeline[prod] = []
-    timeline[prod].push({ fecha: c.fecha, unitCost: uc })
-  }
-  for (const prod of Object.keys(timeline)) {
-    timeline[prod].sort((a, b) => a.fecha.localeCompare(b.fecha))
-  }
-  return timeline
-}
-
-// Retorna el último costo de compra registrado para un producto en o antes de `fecha`.
-// Así cada venta usa el precio de compra vigente en ese momento, no un promedio histórico.
-function getCostAtDate(
-  productoNombre: string,
-  fecha: string,
-  timeline: Record<string, { fecha: string; unitCost: number }[]>
-): number {
-  const key = normProdName(productoNombre)
-  if (!key) return 0
-  let entries = timeline[key]
-  if (!entries) {
-    for (const [k, v] of Object.entries(timeline)) {
-      if (k.includes(key) || key.includes(k)) { entries = v; break }
-    }
-  }
-  if (!entries || entries.length === 0) return 0
-  let lastCost = 0
-  for (const e of entries) {
-    if (e.fecha <= fecha) lastCost = e.unitCost
-    else break
-  }
-  return lastCost || entries[0].unitCost
-}
+import { buildCostTimeline, getCostAtDate } from "@/lib/cost-timeline"
 
 // ─── Helpers de fecha ─────────────────────────────────────────────────────────
 

@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DataTable } from "./data-table"
 import { useSupabase, insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
+import { buildCostTimeline, getCostAtDate } from "@/lib/cost-timeline"
 import { formatDate, formatCurrency } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
@@ -35,6 +36,7 @@ interface Compra {
   producto: string
   cantidad: number
   precio_unitario: number
+  total: number
   fecha: string
 }
 
@@ -50,40 +52,24 @@ export function VendedoresContent() {
   const [form, setForm] = useState({ nombre: "", comision: "0" })
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7))
 
-  // Calcular costo promedio por producto
-  const costosProducto = useMemo(() => {
-    const costos = new Map<string, { total: number, count: number }>()
-    compras.forEach(c => {
-      if (!c.producto) return // Skip compras sin producto
-      const key = c.producto.toLowerCase()
-      const existing = costos.get(key) || { total: 0, count: 0 }
-      costos.set(key, {
-        total: existing.total + (c.cantidad * c.precio_unitario),
-        count: existing.count + c.cantidad
-      })
-    })
-    const result = new Map<string, number>()
-    costos.forEach((value, key) => {
-      result.set(key, value.total / value.count)
-    })
-    return result
-  }, [compras])
+  // Último precio de compra vigente al momento de cada venta
+  const costTimeline = useMemo(() => buildCostTimeline(compras), [compras])
 
   // Calcular comisiones por vendedor
   const comisionesPorVendedor = useMemo(() => {
     const comisiones = new Map<string, { totalGanancia: number, totalVentas: number, comision: number, ventas: number }>()
-    
+
     ventas
       .filter(v => v.fecha.startsWith(selectedMonth))
       .forEach(venta => {
-        if (!venta.vendedor) return // Skip ventas sin vendedor
+        if (!venta.vendedor) return
         const vendedor = vendedores.find(v => v.nombre === venta.vendedor)
         if (!vendedor) return
-        
-        const costoUnitario = costosProducto.get(venta.producto_nombre?.toLowerCase() || '') || 0
+
+        const costoUnitario = getCostAtDate(venta.producto_nombre || "", venta.fecha, costTimeline)
         const gananciaVenta = (venta.precio_unitario - costoUnitario) * venta.cantidad
         const comisionVenta = gananciaVenta * (vendedor.comision / 100)
-        
+
         const existing = comisiones.get(vendedor.nombre) || { totalGanancia: 0, totalVentas: 0, comision: 0, ventas: 0 }
         comisiones.set(vendedor.nombre, {
           totalGanancia: existing.totalGanancia + gananciaVenta,
@@ -92,14 +78,14 @@ export function VendedoresContent() {
           ventas: existing.ventas + 1
         })
       })
-    
+
     return Array.from(comisiones.entries()).map(([nombre, data]) => ({
-      id: nombre, // Usar nombre como ID único
+      id: nombre,
       nombre,
       ...data,
       porcentaje: vendedores.find(v => v.nombre === nombre)?.comision || 0
     }))
-  }, [ventas, vendedores, costosProducto, selectedMonth])
+  }, [ventas, vendedores, costTimeline, selectedMonth])
 
   const filteredVendedores = vendedores.filter((v) =>
     v.nombre.toLowerCase().includes(searchTerm.toLowerCase())

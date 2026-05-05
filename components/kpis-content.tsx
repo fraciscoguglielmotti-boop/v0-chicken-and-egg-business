@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/utils"
 import { useBalanceVisibility } from "@/contexts/balance-visibility"
 import { TrendingUp, TrendingDown, Percent, Users, Clock, DollarSign } from "lucide-react"
+import { buildCostTimeline, getCostAtDate } from "@/lib/cost-timeline"
 import {
   BarChart,
   Bar,
@@ -26,7 +27,7 @@ interface Venta {
   fecha: string
   cliente_nombre: string
   vendedor?: string
-  producto_nombre?: string
+  producto_nombre: string
   cantidad: number
   precio_unitario: number
 }
@@ -43,8 +44,9 @@ interface Compra {
   id: string
   fecha: string
   precio_unitario: number
-  cantidad?: number
-  producto?: string
+  cantidad: number
+  total: number
+  producto: string
 }
 
 const COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"]
@@ -100,7 +102,12 @@ export function KpisContent() {
 
     const totalVentas = ventas.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
     const totalCobros = cobros.reduce((acc, c) => acc + Number(c.monto), 0)
-    const totalCompras = compras.reduce((acc, c) => acc + Number(c.precio_unitario) * (c.cantidad ?? 1), 0)
+
+    // COGS: último precio de compra vigente en la fecha de cada venta
+    const costTimeline = buildCostTimeline(compras)
+    const totalCOGS = ventas.reduce((acc, v) => {
+      return acc + v.cantidad * getCostAtDate(v.producto_nombre || "", v.fecha, costTimeline)
+    }, 0)
 
     // Ticket Promedio
     const ticketPromedio = ventas.length > 0 ? totalVentas / ventas.length : 0
@@ -108,8 +115,8 @@ export function KpisContent() {
     // Tasa de Cobro
     const tasaCobro = totalVentas > 0 ? (totalCobros / totalVentas) * 100 : 0
 
-    // Margen Bruto
-    const margenBruto = totalVentas > 0 ? ((totalVentas - totalCompras) / totalVentas) * 100 : 0
+    // Margen Bruto sobre COGS (no sobre compras del período)
+    const margenBruto = totalVentas > 0 ? ((totalVentas - totalCOGS) / totalVentas) * 100 : 0
 
     // Tasa de Morosidad (clientes con saldo > 0)
     const clientesSaldos = new Map<string, number>()

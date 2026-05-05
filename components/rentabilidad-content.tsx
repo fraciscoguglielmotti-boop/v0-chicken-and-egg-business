@@ -8,6 +8,7 @@ import { formatCurrency } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { buildCostTimeline, getCostAtDate } from "@/lib/cost-timeline"
 
 interface Venta {
   fecha: string
@@ -45,60 +46,19 @@ export function RentabilidadContent() {
   const enPeriodo = (fecha: string) => (!desde || fecha >= desde) && (!hasta || fecha <= hasta)
 
   const rentabilidadPorProducto = useMemo(() => {
-    const norm = (s?: string) => (s ?? "").toLowerCase().trim()
+    const costTimeline = buildCostTimeline(compras)
+    const result = new Map<string, { nombre: string; cantidadVendida: number; ingresoTotal: number; costoTotal: number }>()
 
-    // ── FIFO por producto con TODAS las compras históricas ─────────────────────
-    const queues = new Map<string, { qty: number; costUnit: number }[]>()
-    const ultimoCosto = new Map<string, number>()
-
-    const sortedCompras = [...compras].sort((a, b) => a.fecha.localeCompare(b.fecha))
-    for (const c of sortedCompras) {
-      if (!c.cantidad || c.cantidad <= 0) continue
-      const total = c.total > 0 ? c.total : c.cantidad * c.precio_unitario
-      const costUnit = total / c.cantidad
-      const prod = norm(c.producto) || "__sin__"
-      if (!queues.has(prod)) queues.set(prod, [])
-      queues.get(prod)!.push({ qty: c.cantidad, costUnit })
-      ultimoCosto.set(prod, costUnit)
-    }
-
-    // ── Recorrer TODAS las ventas en orden cronológico ─────────────────────────
-    // consumiendo FIFO, pero acumulando solo las que caen en el período
-    const result = new Map<string, {
-      nombre: string; cantidadVendida: number; ingresoTotal: number; costoTotal: number
-    }>()
-
-    const allVentasSorted = [...ventas].sort((a, b) => a.fecha.localeCompare(b.fecha))
-
-    for (const v of allVentasSorted) {
-      if (!v.producto_nombre) continue
-      const prod = norm(v.producto_nombre)
-      const queue = queues.get(prod) ?? []
-
-      // Calcular costo FIFO para esta venta
-      let remaining = v.cantidad
-      let costoVenta = 0
-      while (remaining > 0 && queue.length > 0) {
-        const lote = queue[0]
-        const consumed = Math.min(remaining, lote.qty)
-        costoVenta += consumed * lote.costUnit
-        lote.qty -= consumed
-        remaining -= consumed
-        if (lote.qty <= 0) queue.shift()
-      }
-      // Fallback: último costo conocido para unidades sin lote
-      if (remaining > 0) {
-        costoVenta += remaining * (ultimoCosto.get(prod) ?? 0)
-      }
-
-      // Solo acumular si cae en el período seleccionado
-      if (enPeriodo(v.fecha)) {
-        const item = result.get(prod) ?? { nombre: v.producto_nombre, cantidadVendida: 0, ingresoTotal: 0, costoTotal: 0 }
-        item.cantidadVendida += v.cantidad
-        item.ingresoTotal += v.cantidad * v.precio_unitario
-        item.costoTotal += costoVenta
-        result.set(prod, item)
-      }
+    for (const v of ventas) {
+      if (!v.producto_nombre || !enPeriodo(v.fecha)) continue
+      const costoUnit = getCostAtDate(v.producto_nombre, v.fecha, costTimeline)
+      const costoVenta = v.cantidad * costoUnit
+      const prod = v.producto_nombre
+      const item = result.get(prod) ?? { nombre: prod, cantidadVendida: 0, ingresoTotal: 0, costoTotal: 0 }
+      item.cantidadVendida += v.cantidad
+      item.ingresoTotal += v.cantidad * v.precio_unitario
+      item.costoTotal += costoVenta
+      result.set(prod, item)
     }
 
     return Array.from(result.values()).map(item => ({

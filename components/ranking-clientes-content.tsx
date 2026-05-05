@@ -8,6 +8,7 @@ import { formatCurrency } from "@/lib/utils"
 import { TrendingUp, TrendingDown, Users, DollarSign, Clock, AlertCircle, ChevronDown, ChevronRight } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
+import { buildCostTimeline, getCostAtDate } from "@/lib/cost-timeline"
 
 interface Venta {
   id: string
@@ -30,6 +31,8 @@ interface Compra {
   producto: string
   fecha: string
   precio_unitario: number
+  cantidad: number
+  total: number
 }
 
 interface VentaDetalle {
@@ -176,26 +179,7 @@ export function RankingClientesContent() {
   const { data: compras = [] } = useSupabase<Compra>("compras")
 
   const rankings = useMemo(() => {
-    // Historial de costos por producto, ordenado DESC por fecha
-    // (compras viene DESC por created_at desde useSupabase, pero usamos fecha de la compra)
-    const costosHistoricos = new Map<string, { fecha: string; precio: number }[]>()
-    compras.forEach(c => {
-      if (!c.producto) return
-      const key = c.producto.toLowerCase().trim()
-      const hist = costosHistoricos.get(key) || []
-      hist.push({ fecha: c.fecha.slice(0, 10), precio: c.precio_unitario })
-      costosHistoricos.set(key, hist)
-    })
-    costosHistoricos.forEach((hist, key) => {
-      costosHistoricos.set(key, hist.sort((a, b) => b.fecha.localeCompare(a.fecha)))
-    })
-
-    // Costo vigente al momento de una venta (última compra con fecha <= fecha de venta)
-    const getCosto = (producto: string, fecha: string): number => {
-      const hist = costosHistoricos.get(producto.toLowerCase().trim()) || []
-      const match = hist.find(h => h.fecha <= fecha.slice(0, 10))
-      return match?.precio ?? 0
-    }
+    const costTimeline = buildCostTimeline(compras)
 
     const clientesMap = new Map<string, ClienteData>()
 
@@ -215,7 +199,7 @@ export function RankingClientesContent() {
 
       const total = v.cantidad * v.precio_unitario
       const producto = v.producto_nombre || "Sin producto"
-      const costo = getCosto(producto, v.fecha)
+      const costo = getCostAtDate(producto, v.fecha, costTimeline)
       const ganancia = costo > 0 ? total - (v.cantidad * costo) : 0
 
       cliente.totalVentas += total
@@ -251,10 +235,12 @@ export function RankingClientesContent() {
 
     clientesMap.forEach(c => { c.saldoPendiente = c.totalVentas - c.totalCobrado })
 
-    // Productos sin costo al momento de las ventas
+    // Productos sin costo registrado
     const productosEnVentas = new Set<string>()
-    ventas.forEach(v => { if (v.producto_nombre) productosEnVentas.add(v.producto_nombre.toLowerCase().trim()) })
-    const productosSinCosto = Array.from(productosEnVentas).filter(p => !costosHistoricos.has(p))
+    ventas.forEach(v => { if (v.producto_nombre) productosEnVentas.add(v.producto_nombre) })
+    const productosSinCosto = Array.from(productosEnVentas).filter(p =>
+      getCostAtDate(p, new Date().toISOString().slice(0, 10), costTimeline) === 0
+    )
 
     const arr = Array.from(clientesMap.values())
     return {

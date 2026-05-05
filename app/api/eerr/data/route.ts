@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
+import { buildCostTimeline, getCostAtDate } from "@/lib/cost-timeline"
 
 export const maxDuration = 30
 
@@ -57,8 +58,6 @@ function prevMonthStr(month: string): string {
 }
 
 // ─── Paginación ──────────────────────────────────────────────────────────────
-// Supabase limita por default a 1000 filas. Paginamos para traer todo el
-// historial (FIFO requiere compras y ventas completas hasta el mes objetivo).
 
 async function fetchAll<T>(
   supabase: any,
@@ -88,99 +87,6 @@ async function fetchAll<T>(
   return all
 }
 
-// ─── Motor FIFO ───────────────────────────────────────────────────────────────
-
-interface Lote { qty: number; costUnit: number }
-
-function calcCMV_FIFO(
-  todasCompras: Compra[],
-  todasVentas: Venta[],
-  monthPrefix: string
-): number {
-  const norm = (s?: string) => (s ?? "").toLowerCase().trim()
-
-  const queues = new Map<string, Lote[]>()
-
-  const sortedCompras = [...todasCompras].sort((a, b) => a.fecha.localeCompare(b.fecha))
-  for (const c of sortedCompras) {
-    if (!c.cantidad || c.cantidad <= 0) continue
-    const total = c.total > 0 ? c.total : c.cantidad * c.precio_unitario
-    const costUnit = total / c.cantidad
-    const prod = norm(c.producto) || "__sin_producto__"
-    if (!queues.has(prod)) queues.set(prod, [])
-    queues.get(prod)!.push({ qty: c.cantidad, costUnit })
-  }
-
-  const ultimoCostoUnit = new Map<string, number>()
-  for (const c of sortedCompras) {
-    if (!c.cantidad || c.cantidad <= 0) continue
-    const total = c.total > 0 ? c.total : c.cantidad * c.precio_unitario
-    const prod = norm(c.producto) || "__sin_producto__"
-    ultimoCostoUnit.set(prod, total / c.cantidad)
-  }
-
-  const ultimoCostoGlobal = sortedCompras.length > 0
-    ? (() => {
-        const last = sortedCompras[sortedCompras.length - 1]
-        const t = last.total > 0 ? last.total : last.cantidad * last.precio_unitario
-        return last.cantidad > 0 ? t / last.cantidad : 0
-      })()
-    : 0
-
-  const [_y, _m] = monthPrefix.split("-").map(Number)
-  const endOfMonth = monthPrefix + "-" + String(new Date(_y, _m, 0).getDate()).padStart(2, "0")
-  const sortedVentas = [...todasVentas]
-    .filter((v) => v.fecha <= endOfMonth)
-    .sort((a, b) => a.fecha.localeCompare(b.fecha))
-
-  let cmv = 0
-
-  for (const v of sortedVentas) {
-    if (!v.cantidad || v.cantidad <= 0) continue
-
-    const prodVenta = norm(v.producto_nombre)
-
-    let queue = queues.get(prodVenta)
-    if (!queue) {
-      const entry = Array.from(queues.entries()).find(
-        ([k]) => k !== "__sin_producto__" && (k.includes(prodVenta) || prodVenta.includes(k))
-      )
-      queue = entry?.[1] ?? queues.get("__sin_producto__")
-    }
-
-    let remaining = v.cantidad
-    let ventaCost = 0
-
-    if (queue) {
-      while (remaining > 0.0001 && queue.length > 0) {
-        const lot = queue[0]
-        const used = Math.min(remaining, lot.qty)
-        ventaCost += used * lot.costUnit
-        lot.qty -= used
-        remaining -= used
-        if (lot.qty <= 0.0001) queue.shift()
-      }
-    }
-
-    if (remaining > 0.0001) {
-      const fallback =
-        ultimoCostoUnit.get(prodVenta) ??
-        Array.from(ultimoCostoUnit.entries()).find(
-          ([k]) => k !== "__sin_producto__" && (k.includes(prodVenta) || prodVenta.includes(k))
-        )?.[1] ??
-        ultimoCostoUnit.get("__sin_producto__") ??
-        ultimoCostoGlobal
-      ventaCost += remaining * fallback
-    }
-
-    if (v.fecha.startsWith(monthPrefix)) {
-      cmv += ventaCost
-    }
-  }
-
-  return cmv
-}
-
 // ─── Cálculo principal ────────────────────────────────────────────────────────
 
 function calcEERR(
@@ -193,7 +99,10 @@ function calcEERR(
   const gastosFiltrados = gastosUnificados.filter((g) => mesContable(g) === month)
 
   const totalVentas = ventasFiltradas.reduce((s, v) => s + v.cantidad * v.precio_unitario, 0)
-  const totalCMV = calcCMV_FIFO(todasCompras, todasVentas, month)
+  const costTimeline = buildCostTimeline(todasCompras)
+  const totalCMV = ventasFiltradas.reduce((s, v) => {
+    return s + (v.cantidad ?? 0) * getCostAtDate(v.producto_nombre ?? "", v.fecha, costTimeline)
+  }, 0)
   const margenBruto = totalVentas - totalCMV
   const margenPct = totalVentas > 0 ? (margenBruto / totalVentas) * 100 : 0
 
@@ -255,8 +164,7 @@ export async function GET(req: NextRequest) {
     const prev = prevMonthStr(month)
     const [ey, em] = month.split("-").map(Number)
     const endOfMonth = `${month}-${String(new Date(ey, em, 0).getDate()).padStart(2, "0")}`
-    // Para FIFO necesitamos TODAS las compras y ventas hasta fin del mes objetivo
-    // Para gastos, sólo los del mes actual y el anterior
+    const prevStart = `${prev}-01`
 
     const supabase = await createClient()
 
@@ -265,7 +173,7 @@ export async function GET(req: NextRequest) {
         supabase,
         "ventas",
         "fecha,cantidad,precio_unitario,producto_nombre",
-        [{ col: "fecha", op: "lte", val: endOfMonth }]
+        [{ col: "fecha", op: "gte", val: prevStart }, { col: "fecha", op: "lte", val: endOfMonth }]
       ),
       fetchAll<Compra>(
         supabase,
