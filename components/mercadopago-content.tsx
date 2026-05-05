@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useSupabase, updateRow, deleteRow, insertRow } from "@/hooks/use-supabase"
 import { MP_CATEGORIA_NO_COBRO, MP_CATEGORIAS_NO_GASTO, MP_EGRESO_NO_GASTO_LABEL } from "@/lib/mp-constants"
 import { formatCurrency, formatDate } from "@/lib/utils"
@@ -388,11 +388,15 @@ export function MercadoPagoContent() {
                             <Select value={editCat} onValueChange={setEditCat}>
                               <SelectTrigger className="h-7 w-44 text-xs"><SelectValue placeholder="Categoría" /></SelectTrigger>
                               <SelectContent>
-                                <SelectLabel className="text-xs">No es gasto operativo</SelectLabel>
-                                <SelectItem value={MP_EGRESO_NO_GASTO_LABEL}>{MP_EGRESO_NO_GASTO_LABEL}</SelectItem>
+                                <SelectGroup>
+                                  <SelectLabel className="text-xs">No es gasto operativo</SelectLabel>
+                                  <SelectItem value={MP_EGRESO_NO_GASTO_LABEL}>{MP_EGRESO_NO_GASTO_LABEL}</SelectItem>
+                                </SelectGroup>
                                 <SelectSeparator />
-                                <SelectLabel className="text-xs">Gastos operativos</SelectLabel>
-                                {categorias.map((c) => <SelectItem key={c.id} value={c.nombre}>{c.nombre}</SelectItem>)}
+                                <SelectGroup>
+                                  <SelectLabel className="text-xs">Gastos operativos</SelectLabel>
+                                  {categorias.map((c) => <SelectItem key={c.id} value={c.nombre}>{c.nombre}</SelectItem>)}
+                                </SelectGroup>
                               </SelectContent>
                             </Select>
                             <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => guardarCategoria(m.id, editCat)}><Check className="h-3 w-3" /></Button>
