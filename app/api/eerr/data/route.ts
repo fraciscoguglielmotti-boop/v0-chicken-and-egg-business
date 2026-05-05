@@ -25,8 +25,8 @@ interface MovimientoMP {
   categoria?: string
 }
 
-const CATEGORIAS_SUELDOS = ["Comisiones", "Sueldos", "Sueldo", "Comisión"]
-const CATEGORIAS_RETIROS = ["Gastos Personales Francisco", "Retiro de socio", "Retiros"]
+const CATEGORIAS_SUELDOS = ["comisiones", "sueldos", "sueldo", "comisión", "comision"]
+const CATEGORIAS_RETIROS = ["gastos personales francisco", "retiro de socio", "retiros"]
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -107,9 +107,9 @@ function calcEERR(
   const margenPct = totalVentas > 0 ? (margenBruto / totalVentas) * 100 : 0
 
   const esSueldo = (g: Gasto) =>
-    CATEGORIAS_SUELDOS.some((cat) => g.categoria?.toLowerCase() === cat.toLowerCase())
+    CATEGORIAS_SUELDOS.some((cat) => (g.categoria ?? "").toLowerCase().trim() === cat)
   const esRetiro = (g: Gasto) =>
-    CATEGORIAS_RETIROS.some((cat) => g.categoria?.toLowerCase() === cat.toLowerCase())
+    CATEGORIAS_RETIROS.some((cat) => (g.categoria ?? "").toLowerCase().trim() === cat)
 
   const gastosOp = gastosFiltrados.filter((g) => !esSueldo(g) && !esRetiro(g))
   const gastosSueldos = gastosFiltrados.filter(esSueldo)

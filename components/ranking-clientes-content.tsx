@@ -204,7 +204,7 @@ export function RankingClientesContent() {
 
       cliente.totalVentas += total
       cliente.totalCajones += v.cantidad
-      cliente.rentabilidad += ganancia
+      if (costo > 0) cliente.rentabilidad += ganancia
       if (v.fecha > cliente.ultimaVenta) cliente.ultimaVenta = v.fecha
 
       const prodCount = cliente.productos.get(producto) || 0

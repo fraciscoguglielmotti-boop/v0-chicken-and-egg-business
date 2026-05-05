@@ -99,63 +99,61 @@ export function KpisContent() {
     const añoActual = now.getFullYear()
     const mesAnterior = mesActual === 0 ? 11 : mesActual - 1
     const añoMesAnterior = mesActual === 0 ? añoActual - 1 : añoActual
+    const prefixActual   = `${añoActual}-${String(mesActual + 1).padStart(2, "0")}`
+    const prefixAnterior = `${añoMesAnterior}-${String(mesAnterior + 1).padStart(2, "0")}`
+
+    const costTimeline = buildCostTimeline(compras)
+
+    // [Fix 8] Margen Bruto filtrado al mes actual (no histórico acumulado)
+    const ventasDelMes = ventas.filter(v => v.fecha.startsWith(prefixActual))
+    const totalVMesActual = ventasDelMes.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
+    const cogsDelMes = ventasDelMes.reduce((acc, v) =>
+      acc + v.cantidad * getCostAtDate(v.producto_nombre || "", v.fecha, costTimeline), 0)
+    const margenBruto = totalVMesActual > 0 ? ((totalVMesActual - cogsDelMes) / totalVMesActual) * 100 : 0
 
     const totalVentas = ventas.reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
     const totalCobros = cobros.reduce((acc, c) => acc + Number(c.monto), 0)
-
-    // COGS: último precio de compra vigente en la fecha de cada venta
-    const costTimeline = buildCostTimeline(compras)
-    const totalCOGS = ventas.reduce((acc, v) => {
-      return acc + v.cantidad * getCostAtDate(v.producto_nombre || "", v.fecha, costTimeline)
-    }, 0)
-
-    // Ticket Promedio
-    const ticketPromedio = ventas.length > 0 ? totalVentas / ventas.length : 0
-
-    // Tasa de Cobro
     const tasaCobro = totalVentas > 0 ? (totalCobros / totalVentas) * 100 : 0
 
-    // Margen Bruto sobre COGS (no sobre compras del período)
-    const margenBruto = totalVentas > 0 ? ((totalVentas - totalCOGS) / totalVentas) * 100 : 0
+    // [Fix 1] Ticket Promedio: por cliente único del mes, no por transacción
+    const clientesDelMes = new Set(ventasDelMes.map(v => v.cliente_nombre).filter(Boolean))
+    const ticketPromedio = clientesDelMes.size > 0 ? totalVMesActual / clientesDelMes.size : 0
 
-    // Tasa de Morosidad (clientes con saldo > 0)
-    const clientesSaldos = new Map<string, number>()
+    // Saldos por cliente (para morosidad y DSO)
+    const saldosPorCliente = new Map<string, number>()
     ventas.forEach(v => {
       const key = v.cliente_nombre.toLowerCase().trim()
-      clientesSaldos.set(key, (clientesSaldos.get(key) || 0) + v.cantidad * v.precio_unitario)
+      saldosPorCliente.set(key, (saldosPorCliente.get(key) || 0) + v.cantidad * v.precio_unitario)
     })
     cobros.forEach(c => {
       const key = c.cliente_nombre.toLowerCase().trim()
-      clientesSaldos.set(key, (clientesSaldos.get(key) || 0) - Number(c.monto))
+      saldosPorCliente.set(key, (saldosPorCliente.get(key) || 0) - Number(c.monto))
     })
-    const clientesConDeuda = Array.from(clientesSaldos.values()).filter(s => s > 0).length
-    const totalClientesActivos = clientesSaldos.size
-    const tasaMorosidad = totalClientesActivos > 0 ? (clientesConDeuda / totalClientesActivos) * 100 : 0
 
-    // Crecimiento Mensual — comparación por prefijo "YYYY-MM" para evitar bug UTC
-    const prefixActual   = `${añoActual}-${String(mesActual + 1).padStart(2, "0")}`
-    const prefixAnterior = `${añoMesAnterior}-${String(mesAnterior + 1).padStart(2, "0")}`
-    const ventasMesActual = ventas
-      .filter(v => v.fecha.startsWith(prefixActual))
-      .reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
+    // [Fix 2] Tasa de Morosidad: denominador = clientes con ventas (no todos los del sistema)
+    const clientesConVentas = new Set(ventas.map(v => v.cliente_nombre.toLowerCase().trim())).size
+    const clientesConDeuda = Array.from(saldosPorCliente.values()).filter(s => s > 0).length
+    const tasaMorosidad = clientesConVentas > 0 ? (clientesConDeuda / clientesConVentas) * 100 : 0
+
+    // Crecimiento Mensual
+    const ventasMesActual = totalVMesActual
     const ventasMesAnterior = ventas
       .filter(v => v.fecha.startsWith(prefixAnterior))
       .reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
     const crecimientoMensual = ventasMesAnterior > 0 ? ((ventasMesActual - ventasMesAnterior) / ventasMesAnterior) * 100 : 0
 
-    // Días Promedio de Cobro (approx: usando fecha de cobro vs promedio de ventas)
-    let sumasDias = 0
-    let countDias = 0
-    cobros.forEach(cobro => {
-      const ventasCliente = ventas.filter(v => v.cliente_nombre.toLowerCase().trim() === cobro.cliente_nombre.toLowerCase().trim())
-      if (ventasCliente.length === 0) return
-      const avgVentaDate = ventasCliente.reduce((acc, v) => acc + new Date(v.fecha).getTime(), 0) / ventasCliente.length
-      const dias = (new Date(cobro.fecha).getTime() - avgVentaDate) / (1000 * 60 * 60 * 24)
-      if (dias >= 0) { sumasDias += dias; countDias++ }
-    })
-    const diasPromCobro = countDias > 0 ? Math.round(sumasDias / countDias) : 0
+    // [Fix 4] DSO (Days Sales Outstanding) = (saldo pendiente / ventas últimos 30 días) × 30
+    const thirtyDaysAgo = new Date(now)
+    thirtyDaysAgo.setDate(now.getDate() - 30)
+    const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().slice(0, 10)
+    const ventasUltimos30 = ventas
+      .filter(v => v.fecha >= thirtyDaysAgoStr)
+      .reduce((acc, v) => acc + v.cantidad * v.precio_unitario, 0)
+    const totalPendiente = Array.from(saldosPorCliente.values())
+      .filter(s => s > 0).reduce((s, v) => s + v, 0)
+    const dso = ventasUltimos30 > 0 ? Math.round((totalPendiente / ventasUltimos30) * 30) : 0
 
-    return { ticketPromedio, tasaCobro, margenBruto, tasaMorosidad, crecimientoMensual, diasPromCobro, ventasMesActual, ventasMesAnterior }
+    return { ticketPromedio, tasaCobro, margenBruto, tasaMorosidad, crecimientoMensual, dso, ventasMesActual, ventasMesAnterior }
   }, [ventas, cobros, compras, clientes])
 
   // Últimos 6 meses de ventas vs cobros
@@ -344,25 +342,25 @@ export function KpisContent() {
         <KpiCard
           title="Ticket Promedio"
           value={hidden ? "••••••" : formatCurrency(kpis.ticketPromedio)}
-          subtitle="Por venta registrada"
+          subtitle="Por cliente único del mes"
           icon={DollarSign}
         />
         <KpiCard
           title="Tasa de Cobro"
           value={`${kpis.tasaCobro.toFixed(1)}%`}
-          subtitle="Cobrado vs vendido"
+          subtitle="Cobrado vs vendido (histórico)"
           icon={Percent}
         />
         <KpiCard
           title="Margen Bruto"
           value={`${kpis.margenBruto.toFixed(1)}%`}
-          subtitle="(Ventas − Compras) / Ventas"
+          subtitle="Este mes — (Ventas − CMV) / Ventas"
           icon={TrendingUp}
         />
         <KpiCard
           title="Tasa de Morosidad"
           value={`${kpis.tasaMorosidad.toFixed(1)}%`}
-          subtitle="Clientes con saldo pendiente"
+          subtitle="Clientes con deuda / clientes activos"
           icon={Users}
         />
         <KpiCard
@@ -374,9 +372,9 @@ export function KpisContent() {
           trendLabel="vs mes anterior"
         />
         <KpiCard
-          title="Días Prom. de Cobro"
-          value={`${kpis.diasPromCobro} días`}
-          subtitle="Entre venta y cobro"
+          title="DSO"
+          value={`${kpis.dso} días`}
+          subtitle="Días promedio de cobranza (30d)"
           icon={Clock}
         />
       </div>

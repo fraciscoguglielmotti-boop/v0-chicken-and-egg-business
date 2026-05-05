@@ -519,7 +519,7 @@ export async function GET(req: NextRequest) {
         { data: todasVentasHist },
       ] = await Promise.all([
         supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", d.monthStart).lte("fecha", d.monthEnd),
-        supabase.from("ventas").select("producto_nombre,cantidad,precio_unitario").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
+        supabase.from("ventas").select("fecha,producto_nombre,cantidad,precio_unitario").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
         supabase.from("ventas").select("producto_nombre,cantidad,precio_unitario").gte("fecha", d.sameMonthLastYearStart).lte("fecha", d.sameMonthLastYearEnd),
         supabase.from("cobros").select("fecha,monto,metodo_pago").gte("fecha", d.monthStart).lte("fecha", d.monthEnd),
         supabase.from("cobros").select("monto").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
@@ -553,10 +553,9 @@ export async function GET(req: NextRequest) {
       for (const v of vMes ?? []) {
         cogsMes += (v.cantidad ?? 0) * getCostAtDate(v.producto_nombre ?? "", v.fecha, costTimeline)
       }
-      // vMesAnt no tiene fecha por fila; usamos fin del mes anterior como proxy
       let cogsMesAnt = 0
       for (const v of vMesAnt ?? []) {
-        cogsMesAnt += (v.cantidad ?? 0) * getCostAtDate(v.producto_nombre ?? "", d.lastMonthEnd, costTimeline)
+        cogsMesAnt += (v.cantidad ?? 0) * getCostAtDate(v.producto_nombre ?? "", v.fecha, costTimeline)
       }
 
       const resultadoNeto = totalVMes - cogsMes - totalGMes
