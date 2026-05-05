@@ -1060,55 +1060,13 @@ function ReporteDiario({ data, isLoading, pdfRef, printRef, fecha, onFechaChange
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Award className="h-4 w-4 text-muted-foreground" />Rentabilidad por Producto
             </CardTitle>
+            <CardDescription className="text-xs">Click en cualquier columna para ordenar</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             {isLoading || !data ? <div className="p-4"><Skeleton className="h-32 w-full" /></div> :
               (data.costosProducto?.length ?? 0) === 0 ? <p className="text-sm text-muted-foreground p-4">Sin ventas registradas.</p> : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/50">
-                      <th className="text-left py-2 px-3 font-semibold text-muted-foreground">Producto</th>
-                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Costo unit.</th>
-                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">P. venta</th>
-                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Cajones</th>
-                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Ingresos</th>
-                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Costo total</th>
-                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Ganancia</th>
-                      <th className="text-right py-2 px-3 font-semibold text-muted-foreground">Margen</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.costosProducto.map((p) => (
-                      <tr key={p.producto} className="border-b border-border/50 hover:bg-muted/30">
-                        <td className="py-2 px-3 font-medium">{p.producto}</td>
-                        <td className="text-right py-2 px-3 text-muted-foreground">{formatCurrency(p.costoUnitario)}</td>
-                        <td className="text-right py-2 px-3 text-muted-foreground">{formatCurrency(p.precioPromedio)}</td>
-                        <td className="text-right py-2 px-3">{p.cajones}</td>
-                        <td className="text-right py-2 px-3">{formatCurrency(p.ingresos)}</td>
-                        <td className="text-right py-2 px-3 text-red-600">{formatCurrency(p.costoTotal)}</td>
-                        <td className="text-right py-2 px-3 font-semibold text-emerald-600">{formatCurrency(p.ganancia)}</td>
-                        <td className="text-right py-2 px-3">
-                          <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${p.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : p.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{p.margen}%</span>
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="bg-muted/50 font-semibold">
-                      <td className="py-2 px-3">Total</td>
-                      <td className="text-right py-2 px-3 text-muted-foreground">—</td>
-                      <td className="text-right py-2 px-3 text-muted-foreground">—</td>
-                      <td className="text-right py-2 px-3">{data.costosProducto.reduce((s, p) => s + p.cajones, 0)}</td>
-                      <td className="text-right py-2 px-3">{formatCurrency(data.ventas.hoy)}</td>
-                      <td className="text-right py-2 px-3 text-red-600">{formatCurrency(data.costosProducto.reduce((s, p) => s + p.costoTotal, 0))}</td>
-                      <td className="text-right py-2 px-3 text-emerald-600">{formatCurrency(data.gananciaBruta)}</td>
-                      <td className="text-right py-2 px-3">
-                        <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${data.margenBruto >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : data.margenBruto >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{data.margenBruto}%</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
+                <CostosProductoTable rows={data.costosProducto} totalIngresos={data.ventas.hoy} gananciaBruta={data.gananciaBruta} margenBruto={data.margenBruto} variant="compact" />
+              )}
           </CardContent>
         </Card>
 
@@ -1337,57 +1295,14 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
                 <Award className="h-4 w-4 text-muted-foreground" />
                 Rentabilidad por Producto — Semana
               </CardTitle>
+              <CardDescription className="text-xs">Click en cualquier columna para ordenar</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      <th className="text-left pb-2">Producto</th>
-                      <th className="text-right pb-2">Costo unit.</th>
-                      <th className="text-right pb-2">P. venta</th>
-                      <th className="text-right pb-2">Cajones</th>
-                      <th className="text-right pb-2">Ingresos</th>
-                      <th className="text-right pb-2">Costo total</th>
-                      <th className="text-right pb-2">Ganancia</th>
-                      <th className="text-right pb-2">Margen</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.costosProducto.map((p) => (
-                      <tr key={p.producto} className="border-b last:border-0">
-                        <td className="py-2 font-medium">{p.producto}</td>
-                        <td className="py-2 text-right text-muted-foreground">{formatCurrency(p.costoUnitario)}</td>
-                        <td className="py-2 text-right">{formatCurrency(p.precioPromedio)}</td>
-                        <td className="py-2 text-right">{p.cajones}</td>
-                        <td className="py-2 text-right font-medium">{formatCurrency(p.ingresos)}</td>
-                        <td className="py-2 text-right text-red-600">{formatCurrency(p.costoTotal)}</td>
-                        <td className="py-2 text-right text-green-600 font-medium">{formatCurrency(p.ganancia)}</td>
-                        <td className="py-2 text-right">
-                          <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${p.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : p.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{p.margen}%</span>
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="border-t-2 bg-muted/30 font-bold">
-                      <td className="py-2">Total</td>
-                      <td className="py-2 text-right text-muted-foreground">—</td>
-                      <td className="py-2 text-right text-muted-foreground">—</td>
-                      <td className="py-2 text-right">{data.costosProducto.reduce((s, p) => s + p.cajones, 0)}</td>
-                      <td className="py-2 text-right">{formatCurrency(data.ventas.semana)}</td>
-                      <td className="py-2 text-right text-red-600">{formatCurrency(data.costosProducto.reduce((s, p) => s + p.costoTotal, 0))}</td>
-                      <td className="py-2 text-right text-green-600">{formatCurrency(data.gananciaBruta ?? 0)}</td>
-                      <td className="py-2 text-right">
-                        <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${(data.margenBruto ?? 0) >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : (data.margenBruto ?? 0) >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{data.margenBruto ?? 0}%</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+              <CostosProductoTable rows={data.costosProducto} totalIngresos={data.ventas.semana} gananciaBruta={data.gananciaBruta ?? 0} margenBruto={data.margenBruto ?? 0} />
             </CardContent>
           </Card>
         )}
 
-        {/* Resumen por cliente — un renglón por cliente-producto (sin detalle por operación) */}
         {!isLoading && data && (data.ventasDetalle?.length ?? 0) > 0 && (
           <Card>
             <CardHeader className="pb-3">
@@ -1395,58 +1310,14 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
                 <Users className="h-4 w-4 text-muted-foreground" />
                 Resumen por Cliente — Semana
               </CardTitle>
+              <CardDescription className="text-xs">Click en columna para ordenar</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      <th className="text-left pb-2">Cliente / Producto</th>
-                      <th className="text-right pb-2">Cajones</th>
-                      <th className="text-right pb-2">P. prom.</th>
-                      <th className="text-right pb-2">Ingresos</th>
-                      <th className="text-right pb-2">Ganancia</th>
-                      <th className="text-right pb-2">Margen</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.ventasDetalle.map((cl) => {
-                      const cajonesCl = cl.items.reduce((s, i) => s + i.cantidad, 0)
-                      return (
-                        <Fragment key={cl.cliente}>
-                          <tr className="bg-muted/30">
-                            <td className="py-2 font-bold">{cl.cliente}</td>
-                            <td className="py-2 text-right font-bold">{cajonesCl}</td>
-                            <td className="py-2 text-right text-muted-foreground">—</td>
-                            <td className="py-2 text-right font-bold">{formatCurrency(cl.total)}</td>
-                            <td className="py-2 text-right text-emerald-600 font-bold">{formatCurrency(cl.ganancia)}</td>
-                            <td className="py-2 text-right">
-                              <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${cl.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : cl.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{cl.margen}%</span>
-                            </td>
-                          </tr>
-                          {cl.items.map((it) => (
-                            <tr key={it.producto} className="border-b last:border-0">
-                              <td className="py-1.5 pl-6 text-muted-foreground">└ {it.producto}</td>
-                              <td className="py-1.5 text-right">{it.cantidad}</td>
-                              <td className="py-1.5 text-right">{formatCurrency(it.precioPromedio)}</td>
-                              <td className="py-1.5 text-right">{formatCurrency(it.ingresos)}</td>
-                              <td className="py-1.5 text-right text-emerald-600">{formatCurrency(it.ganancia)}</td>
-                              <td className="py-1.5 text-right">
-                                <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${it.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : it.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{it.margen}%</span>
-                              </td>
-                            </tr>
-                          ))}
-                        </Fragment>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <VentasDetalleSemanalTable rows={data.ventasDetalle} />
             </CardContent>
           </Card>
         )}
 
-        {/* Comparación con semanas pasadas */}
         {!isLoading && data && (data.comparacionSemanas?.length ?? 0) > 0 && (
           <Card>
             <CardHeader className="pb-3">
@@ -1454,47 +1325,10 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
                 <CalendarRange className="h-4 w-4 text-muted-foreground" />
                 Comparación con semanas anteriores
               </CardTitle>
-              <CardDescription>Mismo rango de 7 días hace 1 / 4 / 8 / 12 semanas</CardDescription>
+              <CardDescription>Mismo rango de 7 días hace 1 / 4 / 8 / 12 semanas. Click en columna para ordenar.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      <th className="text-left pb-2">Semana</th>
-                      <th className="text-left pb-2">Rango</th>
-                      <th className="text-right pb-2">Ventas</th>
-                      <th className="text-right pb-2">Ganancia</th>
-                      <th className="text-right pb-2">Margen</th>
-                      <th className="text-right pb-2">Cajones</th>
-                      <th className="text-right pb-2">Clientes</th>
-                      <th className="text-right pb-2">Δ vs actual</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.comparacionSemanas.map((w, idx) => {
-                      const base = data.comparacionSemanas[0]?.ventas ?? 0
-                      const delta = w.actual ? null : base > 0 ? Math.round(((w.ventas - base) / base) * 1000) / 10 : 0
-                      return (
-                        <tr key={idx} className={`border-b last:border-0 ${w.actual ? "bg-emerald-50 dark:bg-emerald-950/20 font-semibold" : ""}`}>
-                          <td className="py-2">{w.label}</td>
-                          <td className="py-2 text-muted-foreground">{w.rango}</td>
-                          <td className="py-2 text-right">{formatCurrency(w.ventas)}</td>
-                          <td className="py-2 text-right text-emerald-600">{formatCurrency(w.ganancia)}</td>
-                          <td className="py-2 text-right">
-                            <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${w.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : w.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{w.margen}%</span>
-                          </td>
-                          <td className="py-2 text-right">{w.cajones}</td>
-                          <td className="py-2 text-right">{w.clientes}</td>
-                          <td className={`py-2 text-right ${delta === null ? "text-muted-foreground" : delta >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                            {delta === null ? "—" : `${delta >= 0 ? "+" : ""}${delta}%`}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <ComparacionSemanasTable rows={data.comparacionSemanas} />
               <p className="mt-2 text-xs text-muted-foreground">* Ganancia calculada con el último precio de compra conocido para cada producto.</p>
             </CardContent>
           </Card>
@@ -1622,6 +1456,182 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
           </CardContent>
         </Card>
       </div>
+    </div>
+  )
+}
+
+// ─── Tablas ordenables compartidas ────────────────────────────────────────────
+
+type VentasDetalleSem = DatosSemanales["ventasDetalle"][number]
+type ComparacionSem = DatosSemanales["comparacionSemanas"][number]
+
+function CostosProductoTable({ rows, totalIngresos, gananciaBruta, margenBruto, variant = "default" }: {
+  rows: CostoProducto[]
+  totalIngresos: number
+  gananciaBruta: number
+  margenBruto: number
+  variant?: "default" | "compact"
+}) {
+  const { sorted, sortKey, sortDir, toggle } = useSortable<CostoProducto>(rows, "ingresos", "desc")
+  const totalCajones = rows.reduce((s, p) => s + p.cajones, 0)
+  const totalCosto = rows.reduce((s, p) => s + p.costoTotal, 0)
+  const headerCls = variant === "compact" ? "text-left py-2 px-3 font-semibold text-muted-foreground" : "text-left pb-2"
+  const tableCls = variant === "compact" ? "w-full text-xs" : "w-full text-sm"
+  const headTrCls = variant === "compact" ? "border-b border-border bg-muted/50" : "border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide"
+  const bodyTrCls = variant === "compact" ? "border-b border-border/50 hover:bg-muted/30" : "border-b last:border-0"
+  const totalTrCls = variant === "compact" ? "bg-muted/50 font-semibold" : "border-t-2 bg-muted/30 font-bold"
+  const cellCls = variant === "compact" ? "py-2 px-3" : "py-2"
+
+  return (
+    <div className="overflow-x-auto">
+      <table className={tableCls}>
+        <thead>
+          <tr className={headTrCls}>
+            <SortableTH active={sortKey === "producto"} dir={sortDir} onClick={() => toggle("producto")} className={headerCls}>Producto</SortableTH>
+            <SortableTH active={sortKey === "costoUnitario"} dir={sortDir} onClick={() => toggle("costoUnitario")} align="right" className={headerCls.replace("text-left", "text-right")}>Costo unit.</SortableTH>
+            <SortableTH active={sortKey === "precioPromedio"} dir={sortDir} onClick={() => toggle("precioPromedio")} align="right" className={headerCls.replace("text-left", "text-right")}>P. venta</SortableTH>
+            <SortableTH active={sortKey === "cajones"} dir={sortDir} onClick={() => toggle("cajones")} align="right" className={headerCls.replace("text-left", "text-right")}>Cajones</SortableTH>
+            <SortableTH active={sortKey === "ingresos"} dir={sortDir} onClick={() => toggle("ingresos")} align="right" className={headerCls.replace("text-left", "text-right")}>Ingresos</SortableTH>
+            <SortableTH active={sortKey === "costoTotal"} dir={sortDir} onClick={() => toggle("costoTotal")} align="right" className={headerCls.replace("text-left", "text-right")}>Costo total</SortableTH>
+            <SortableTH active={sortKey === "ganancia"} dir={sortDir} onClick={() => toggle("ganancia")} align="right" className={headerCls.replace("text-left", "text-right")}>Ganancia</SortableTH>
+            <SortableTH active={sortKey === "margen"} dir={sortDir} onClick={() => toggle("margen")} align="right" className={headerCls.replace("text-left", "text-right")}>Margen</SortableTH>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((p) => (
+            <tr key={p.producto} className={bodyTrCls}>
+              <td className={`${cellCls} font-medium`}>{p.producto}</td>
+              <td className={`${cellCls} text-right text-muted-foreground`}>{formatCurrency(p.costoUnitario)}</td>
+              <td className={`${cellCls} text-right ${variant === "compact" ? "text-muted-foreground" : ""}`}>{formatCurrency(p.precioPromedio)}</td>
+              <td className={`${cellCls} text-right`}>{p.cajones}</td>
+              <td className={`${cellCls} text-right ${variant === "default" ? "font-medium" : ""}`}>{formatCurrency(p.ingresos)}</td>
+              <td className={`${cellCls} text-right text-red-600`}>{formatCurrency(p.costoTotal)}</td>
+              <td className={`${cellCls} text-right text-${variant === "compact" ? "emerald" : "green"}-600 font-${variant === "compact" ? "semibold" : "medium"}`}>{formatCurrency(p.ganancia)}</td>
+              <td className={`${cellCls} text-right`}>
+                <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${p.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : p.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{p.margen}%</span>
+              </td>
+            </tr>
+          ))}
+          <tr className={totalTrCls}>
+            <td className={cellCls}>Total</td>
+            <td className={`${cellCls} text-right text-muted-foreground`}>—</td>
+            <td className={`${cellCls} text-right text-muted-foreground`}>—</td>
+            <td className={`${cellCls} text-right`}>{totalCajones}</td>
+            <td className={`${cellCls} text-right`}>{formatCurrency(totalIngresos)}</td>
+            <td className={`${cellCls} text-right text-red-600`}>{formatCurrency(totalCosto)}</td>
+            <td className={`${cellCls} text-right text-${variant === "compact" ? "emerald" : "green"}-600`}>{formatCurrency(gananciaBruta)}</td>
+            <td className={`${cellCls} text-right`}>
+              <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${margenBruto >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : margenBruto >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{margenBruto}%</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function VentasDetalleSemanalTable({ rows }: { rows: VentasDetalleSem[] }) {
+  type Row = { cliente: string; cajones: number; total: number; ganancia: number; margen: number; items: VentasDetalleSem["items"] }
+  const enriched: Row[] = useMemo(
+    () => rows.map((cl) => ({
+      cliente: cl.cliente,
+      cajones: cl.items.reduce((s, i) => s + i.cantidad, 0),
+      total: cl.total,
+      ganancia: cl.ganancia,
+      margen: cl.margen,
+      items: cl.items,
+    })),
+    [rows]
+  )
+  const { sorted, sortKey, sortDir, toggle } = useSortable<Row>(enriched, "total", "desc")
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            <SortableTH active={sortKey === "cliente"} dir={sortDir} onClick={() => toggle("cliente")} className="pb-2">Cliente / Producto</SortableTH>
+            <SortableTH active={sortKey === "cajones"} dir={sortDir} onClick={() => toggle("cajones")} align="right" className="pb-2">Cajones</SortableTH>
+            <th className="text-right pb-2">P. prom.</th>
+            <SortableTH active={sortKey === "total"} dir={sortDir} onClick={() => toggle("total")} align="right" className="pb-2">Ingresos</SortableTH>
+            <SortableTH active={sortKey === "ganancia"} dir={sortDir} onClick={() => toggle("ganancia")} align="right" className="pb-2">Ganancia</SortableTH>
+            <SortableTH active={sortKey === "margen"} dir={sortDir} onClick={() => toggle("margen")} align="right" className="pb-2">Margen</SortableTH>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((cl) => (
+            <Fragment key={cl.cliente}>
+              <tr className="bg-muted/30">
+                <td className="py-2 font-bold">{cl.cliente}</td>
+                <td className="py-2 text-right font-bold">{cl.cajones}</td>
+                <td className="py-2 text-right text-muted-foreground">—</td>
+                <td className="py-2 text-right font-bold">{formatCurrency(cl.total)}</td>
+                <td className="py-2 text-right text-emerald-600 font-bold">{formatCurrency(cl.ganancia)}</td>
+                <td className="py-2 text-right">
+                  <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${cl.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : cl.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{cl.margen}%</span>
+                </td>
+              </tr>
+              {cl.items.map((it) => (
+                <tr key={it.producto} className="border-b last:border-0">
+                  <td className="py-1.5 pl-6 text-muted-foreground">└ {it.producto}</td>
+                  <td className="py-1.5 text-right">{it.cantidad}</td>
+                  <td className="py-1.5 text-right">{formatCurrency(it.precioPromedio)}</td>
+                  <td className="py-1.5 text-right">{formatCurrency(it.ingresos)}</td>
+                  <td className="py-1.5 text-right text-emerald-600">{formatCurrency(it.ganancia)}</td>
+                  <td className="py-1.5 text-right">
+                    <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${it.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : it.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{it.margen}%</span>
+                  </td>
+                </tr>
+              ))}
+            </Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ComparacionSemanasTable({ rows }: { rows: ComparacionSem[] }) {
+  const { sorted, sortKey, sortDir, toggle } = useSortable<ComparacionSem>(rows, "ventas", "desc")
+  const base = rows.find((w) => w.actual)?.ventas ?? rows[0]?.ventas ?? 0
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            <SortableTH active={sortKey === "label"} dir={sortDir} onClick={() => toggle("label")} className="pb-2">Semana</SortableTH>
+            <th className="text-left pb-2">Rango</th>
+            <SortableTH active={sortKey === "ventas"} dir={sortDir} onClick={() => toggle("ventas")} align="right" className="pb-2">Ventas</SortableTH>
+            <SortableTH active={sortKey === "ganancia"} dir={sortDir} onClick={() => toggle("ganancia")} align="right" className="pb-2">Ganancia</SortableTH>
+            <SortableTH active={sortKey === "margen"} dir={sortDir} onClick={() => toggle("margen")} align="right" className="pb-2">Margen</SortableTH>
+            <SortableTH active={sortKey === "cajones"} dir={sortDir} onClick={() => toggle("cajones")} align="right" className="pb-2">Cajones</SortableTH>
+            <SortableTH active={sortKey === "clientes"} dir={sortDir} onClick={() => toggle("clientes")} align="right" className="pb-2">Clientes</SortableTH>
+            <th className="text-right pb-2">Δ vs actual</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((w, idx) => {
+            const delta = w.actual ? null : base > 0 ? Math.round(((w.ventas - base) / base) * 1000) / 10 : 0
+            return (
+              <tr key={idx} className={`border-b last:border-0 ${w.actual ? "bg-emerald-50 dark:bg-emerald-950/20 font-semibold" : ""}`}>
+                <td className="py-2">{w.label}</td>
+                <td className="py-2 text-muted-foreground">{w.rango}</td>
+                <td className="py-2 text-right">{formatCurrency(w.ventas)}</td>
+                <td className="py-2 text-right text-emerald-600">{formatCurrency(w.ganancia)}</td>
+                <td className="py-2 text-right">
+                  <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${w.margen >= 25 ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" : w.margen >= 15 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"}`}>{w.margen}%</span>
+                </td>
+                <td className="py-2 text-right">{w.cajones}</td>
+                <td className="py-2 text-right">{w.clientes}</td>
+                <td className={`py-2 text-right ${delta === null ? "text-muted-foreground" : delta >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {delta === null ? "—" : `${delta >= 0 ? "+" : ""}${delta}%`}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
     </div>
   )
 }
