@@ -54,7 +54,14 @@ function gastosRealesMes(gastos: Gasto[], movimientosMp: MovimientoMP[], mes: st
     })
     .reduce((s, g) => s + g.monto, 0)
   const realMP = movimientosMp
-    .filter(m => m.tipo?.toLowerCase() === "egreso" && !(m.descripcion?.toLowerCase() ?? "").startsWith("transferencia") && m.fecha.slice(0, 7) === mes)
+    .filter(m => {
+      const tipo = m.tipo?.toLowerCase()
+      const desc = (m.descripcion ?? "").toLowerCase()
+      if (tipo !== "egreso") return false
+      if (desc.startsWith("retiro")) return false
+      if (desc.includes("transferencia bancaria")) return false
+      return m.fecha.slice(0, 7) === mes
+    })
     .reduce((s, m) => s + m.monto, 0)
   return realGastos + realMP
 }
@@ -225,7 +232,10 @@ export function FlujoContent() {
     const mpDelMes = movimientosMp.filter(m => {
       const tipo = m.tipo?.toLowerCase()
       const desc = m.descripcion?.toLowerCase() ?? ""
-      return tipo === "egreso" && !desc.startsWith("transferencia") && m.fecha.startsWith(prefixMes)
+      if (tipo !== "egreso") return false
+      if (desc.startsWith("retiro")) return false
+      if (desc.includes("transferencia bancaria")) return false
+      return m.fecha.startsWith(prefixMes)
     })
     const fijosActivos = proyectados.filter(g => g.activo && (g.periodicidad === "mensual" || (g.periodicidad === "unico" && g.mes === prefixMes)))
 

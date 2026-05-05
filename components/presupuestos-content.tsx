@@ -131,7 +131,10 @@ export function PresupuestosContent() {
     const mpDelMes = movimientosMp.filter(m => {
       const tipo = m.tipo?.toLowerCase()
       const desc = m.descripcion?.toLowerCase() ?? ""
-      return tipo === "egreso" && !desc.startsWith("transferencia") && m.fecha.startsWith(prefixMes)
+      if (tipo !== "egreso") return false
+      if (desc.startsWith("retiro")) return false
+      if (desc.includes("transferencia bancaria")) return false
+      return m.fecha.startsWith(prefixMes)
     })
 
     // Categorías con presupuesto o con gastos reales

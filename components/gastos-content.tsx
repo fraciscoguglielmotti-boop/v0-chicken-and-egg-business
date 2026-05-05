@@ -57,7 +57,10 @@ interface GastoUnificado {
 function esMPGasto(m: MovimientoMP): boolean {
   const tipo = m.tipo?.toLowerCase()
   const desc = m.descripcion?.toLowerCase() ?? ""
-  return tipo === "egreso" && !desc.startsWith("transferencia")
+  if (tipo !== "egreso") return false
+  if (desc.startsWith("retiro")) return false
+  if (desc.includes("transferencia bancaria")) return false
+  return true
 }
 
 function mpAGastoUnificado(m: MovimientoMP): GastoUnificado {

@@ -33,7 +33,12 @@ const CATEGORIAS_RETIROS = ["gastos personales francisco", "retiro de socio", "r
 function esMPGasto(m: MovimientoMP): boolean {
   const tipo = m.tipo?.toLowerCase()
   const desc = m.descripcion?.toLowerCase() ?? ""
-  return tipo === "egreso" && !desc.startsWith("transferencia")
+  if (tipo !== "egreso") return false
+  // Excluir solo retiros bancarios y transferencias internas (movimiento de fondos, no gastos).
+  // "Transferencia enviada a [proveedor]" SÍ es un gasto y debe incluirse.
+  if (desc.startsWith("retiro")) return false
+  if (desc.includes("transferencia bancaria")) return false
+  return true
 }
 
 function mpAGasto(m: MovimientoMP): Gasto {
