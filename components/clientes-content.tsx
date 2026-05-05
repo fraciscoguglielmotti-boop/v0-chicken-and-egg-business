@@ -17,7 +17,8 @@ interface Cliente {
   id: string
   nombre: string
   cuit?: string
-  telefono?: string
+  whatsapp?: string
+  telefono?: string  // legacy — se lee para compatibilidad pero ya no se escribe
   direccion?: string
   saldo_inicial: number
   fecha_alta: string
@@ -61,7 +62,7 @@ export function ClientesContent() {
   const [form, setForm] = useState({
     nombre: "",
     cuit: "",
-    telefono: "",
+    whatsapp: "",
     direccion: "",
     saldo_inicial: "0",
     vendedor_nombre: "",
@@ -93,7 +94,7 @@ export function ClientesContent() {
         await updateRow("clientes", editingCliente.id, {
           nombre: form.nombre,
           cuit: form.cuit || null,
-          telefono: form.telefono || null,
+          whatsapp: form.whatsapp || null,
           direccion: form.direccion || null,
           saldo_inicial: Number(form.saldo_inicial),
           vendedor_nombre: form.vendedor_nombre || null,
@@ -103,7 +104,7 @@ export function ClientesContent() {
         await insertRow("clientes", {
           nombre: form.nombre,
           cuit: form.cuit || null,
-          telefono: form.telefono || null,
+          whatsapp: form.whatsapp || null,
           direccion: form.direccion || null,
           saldo_inicial: Number(form.saldo_inicial),
           fecha_alta: new Date().toISOString().split('T')[0],
@@ -126,7 +127,7 @@ export function ClientesContent() {
     setForm({
       nombre: cliente.nombre,
       cuit: cliente.cuit || "",
-      telefono: cliente.telefono || "",
+      whatsapp: cliente.whatsapp || cliente.telefono || "",
       direccion: cliente.direccion || "",
       saldo_inicial: String(cliente.saldo_inicial || 0),
       vendedor_nombre: cliente.vendedor_nombre || "",
@@ -149,7 +150,7 @@ export function ClientesContent() {
   }
 
   const resetForm = () => {
-    setForm({ nombre: "", cuit: "", telefono: "", direccion: "", saldo_inicial: "0", vendedor_nombre: "", condicion_pago: "inmediato", plazo_dias: "0", dia_pago: "1" })
+    setForm({ nombre: "", cuit: "", whatsapp: "", direccion: "", saldo_inicial: "0", vendedor_nombre: "", condicion_pago: "inmediato", plazo_dias: "0", dia_pago: "1" })
     setEditingCliente(null)
   }
 
@@ -203,8 +204,9 @@ export function ClientesContent() {
   }
 
   const handleWhatsAppClick = (cliente: Cliente) => {
-    if (cliente.telefono) {
-      sendWhatsApp(cliente, cliente.telefono)
+    const numero = cliente.whatsapp || cliente.telefono
+    if (numero) {
+      sendWhatsApp(cliente, numero)
     } else {
       setWaCliente(cliente)
       setWaTempPhone("")
@@ -215,7 +217,7 @@ export function ClientesContent() {
   const columns = [
     { key: "nombre", header: "Nombre", render: (c: Cliente) => <span className="font-medium">{c.nombre}</span> },
     { key: "cuit", header: "CUIT", render: (c: Cliente) => c.cuit || "-", mobileHidden: true },
-    { key: "telefono", header: "Telefono", render: (c: Cliente) => c.telefono || "-" },
+    { key: "whatsapp", header: "Telefono", render: (c: Cliente) => c.whatsapp || c.telefono || "-" },
     { key: "direccion", header: "Direccion", render: (c: Cliente) => c.direccion || "-", mobileHidden: true },
     { key: "vendedor_nombre", header: "Vendedor", render: (c: Cliente) => c.vendedor_nombre || "-", mobileHidden: true },
     { key: "condicion_pago", header: "Cond. Pago", render: (c: Cliente) => <span className="text-sm text-muted-foreground">{labelCondicion(c)}</span>, mobileHidden: true },
@@ -287,14 +289,14 @@ export function ClientesContent() {
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="telefono">Telefono</Label>
+                  <Label htmlFor="whatsapp">Telefono</Label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
-                      id="telefono"
+                      id="whatsapp"
                       placeholder="Telefono"
-                      value={form.telefono}
-                      onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+                      value={form.whatsapp}
+                      onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
                       className="pl-9"
                     />
                   </div>

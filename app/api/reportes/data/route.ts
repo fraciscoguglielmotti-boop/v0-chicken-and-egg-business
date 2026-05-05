@@ -6,17 +6,28 @@ import { NextRequest, NextResponse } from "next/server"
 // Match estricto (nombre normalizado): si no hay compra para ese producto, costo = 0.
 // Esto evita asignar costos incorrectos cuando los nombres no coinciden exactamente.
 
+function normProdName(s?: string) {
+  return (s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "")
+}
+
+function fuzzyLookup(key: string, map: Record<string, number>): number {
+  if (!key) return 0
+  if (map[key] !== undefined) return map[key]
+  for (const [k, v] of Object.entries(map)) {
+    if (k.includes(key) || key.includes(k)) return v
+  }
+  return 0
+}
+
 function calcCostoPorCliente(
   todasCompras: { fecha: string; producto: string; total: number; cantidad: number; precio_unitario: number }[],
   ventasMes: { fecha: string; cliente_nombre: string; producto_nombre: string; cantidad: number; precio_unitario: number }[]
 ): Record<string, { cajones: number; totalVendido: number; costoVendido: number }> {
-  const norm = (s?: string) => (s ?? "").toLowerCase().trim().replace(/\s+/g, " ")
-
   // Costo promedio ponderado por producto (histórico hasta el mes)
   const costoPorProducto: Record<string, { totalCosto: number; totalQty: number }> = {}
   for (const c of todasCompras) {
     if (!c.cantidad || c.cantidad <= 0) continue
-    const prod = norm(c.producto)
+    const prod = normProdName(c.producto)
     if (!prod) continue
     const total = c.total > 0 ? c.total : c.cantidad * (c.precio_unitario ?? 0)
     if (!costoPorProducto[prod]) costoPorProducto[prod] = { totalCosto: 0, totalQty: 0 }
@@ -28,13 +39,12 @@ function calcCostoPorCliente(
     avgCost[prod] = d.totalQty > 0 ? d.totalCosto / d.totalQty : 0
   }
 
-  // Acumular por cliente usando costo promedio del producto (match estricto)
+  // Acumular por cliente con fuzzy match en nombre de producto
   const result: Record<string, { cajones: number; totalVendido: number; costoVendido: number }> = {}
   for (const v of ventasMes) {
     if (!v.cantidad || v.cantidad <= 0) continue
     const nombre = v.cliente_nombre || "Sin nombre"
-    const prodKey = norm(v.producto_nombre)
-    const costUnit = avgCost[prodKey] ?? 0   // 0 si no hay compra registrada para ese producto
+    const costUnit = fuzzyLookup(normProdName(v.producto_nombre), avgCost)
     if (!result[nombre]) result[nombre] = { cajones: 0, totalVendido: 0, costoVendido: 0 }
     result[nombre].cajones += v.cantidad
     result[nombre].totalVendido += v.cantidad * (v.precio_unitario ?? 0)
@@ -678,20 +688,21 @@ export async function GET(req: NextRequest) {
         value: totalMetodos > 0 ? Math.round((value / totalMetodos) * 100) : 0,
       }))
 
-      // Rentabilidad por producto
+      // Rentabilidad por producto — fuzzy match entre ventas y compras del mes
       const vPorProd: Record<string, number> = {}
       for (const v of vMes ?? []) {
         const nombre = v.producto_nombre || "Sin nombre"
         vPorProd[nombre] = (vPorProd[nombre] ?? 0) + (v.cantidad ?? 0) * (v.precio_unitario ?? 0)
       }
-      const cPorProd: Record<string, number> = {}
+      const cPorProdNorm: Record<string, number> = {}
       for (const c of compMes ?? []) {
-        const nombre = c.producto || "Sin nombre"
-        cPorProd[nombre] = (cPorProd[nombre] ?? 0) + (c.total ?? (c.cantidad ?? 0) * (c.precio_unitario ?? 0))
+        const key = normProdName(c.producto)
+        if (!key) continue
+        cPorProdNorm[key] = (cPorProdNorm[key] ?? 0) + (c.total ?? (c.cantidad ?? 0) * (c.precio_unitario ?? 0))
       }
       const rentabilidadProductos = Object.entries(vPorProd)
         .map(([producto, ingresos]) => {
-          const costo = cPorProd[producto] ?? 0
+          const costo = fuzzyLookup(normProdName(producto), cPorProdNorm)
           const margen = ingresos > 0 ? round1(((ingresos - costo) / ingresos) * 100) : 0
           return { producto, ingresos: Math.round(ingresos), costo: Math.round(costo), margen }
         })
