@@ -727,7 +727,6 @@ export async function GET(req: NextRequest) {
           return { producto, ingresos: Math.round(p.ingresos), costo: Math.round(p.costo), margen }
         })
         .sort((a, b) => b.ingresos - a.ingresos)
-        .slice(0, 6)
 
       const mesLabel = d.now.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
 

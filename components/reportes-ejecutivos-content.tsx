@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, useEffect, useRef, useState, useCallback } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -191,6 +191,55 @@ function CustomLegend({ payload }: any) {
         </span>
       ))}
     </div>
+  )
+}
+
+// ─── Sorting helpers ──────────────────────────────────────────────────────────
+
+type SortDir = "asc" | "desc"
+
+function useSortable<T extends Record<string, any>>(items: T[], defaultKey: keyof T, defaultDir: SortDir = "desc") {
+  const [sortKey, setSortKey] = useState<keyof T>(defaultKey)
+  const [sortDir, setSortDir] = useState<SortDir>(defaultDir)
+
+  const sorted = useMemo(() => {
+    return [...items].sort((a, b) => {
+      const av = a[sortKey]
+      const bv = b[sortKey]
+      let cmp = 0
+      if (typeof av === "string" && typeof bv === "string") {
+        cmp = av.localeCompare(bv, "es", { sensitivity: "base" })
+      } else {
+        cmp = (Number(av) || 0) - (Number(bv) || 0)
+      }
+      return sortDir === "asc" ? cmp : -cmp
+    })
+  }, [items, sortKey, sortDir])
+
+  const toggle = (key: keyof T) => {
+    if (key === sortKey) setSortDir((d: SortDir) => (d === "asc" ? "desc" : "asc"))
+    else { setSortKey(key); setSortDir(typeof items[0]?.[key] === "string" ? "asc" : "desc") }
+  }
+
+  return { sorted, sortKey, sortDir, toggle }
+}
+
+function SortableTH({ active, dir, onClick, children, align = "left", className = "" }: {
+  active: boolean; dir: SortDir; onClick: () => void
+  children: React.ReactNode; align?: "left" | "right"; className?: string
+}) {
+  return (
+    <th
+      onClick={onClick}
+      className={`cursor-pointer select-none hover:text-primary transition-colors ${align === "right" ? "text-right" : "text-left"} ${className}`}
+    >
+      <span className={`inline-flex items-center gap-1 ${align === "right" ? "justify-end w-full" : ""}`}>
+        {children}
+        <span className={`text-[9px] leading-none transition-opacity ${active ? "opacity-100" : "opacity-30"}`}>
+          {active ? (dir === "asc" ? "▲" : "▼") : "▼"}
+        </span>
+      </span>
+    </th>
   )
 }
 
@@ -1577,6 +1626,115 @@ function ReporteSemanal({ data, isLoading, pdfRef, printRef, semana, onSemanaCha
   )
 }
 
+// ─── Tablas ordenables del mensual ────────────────────────────────────────────
+
+type ClienteMes = DatosMensuales["clientesMes"][number]
+
+function ClientesMesTable({ rows, mes }: { rows: ClienteMes[]; mes: string }) {
+  const { sorted, sortKey, sortDir, toggle } = useSortable<ClienteMes>(rows, "totalVendido", "desc")
+  const totalCajones = rows.reduce((s, c) => s + c.cajones, 0)
+  const totalVendido = rows.reduce((s, c) => s + c.totalVendido, 0)
+  const totalCosto = rows.reduce((s, c) => s + c.costoVendido, 0)
+  const totalGanancia = rows.reduce((s, c) => s + c.ganancia, 0)
+  const margenTotal = totalVendido > 0 ? `${(((totalVendido - totalCosto) / totalVendido) * 100).toFixed(1)}%` : "—"
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium flex items-center gap-2">
+          <Users className="h-4 w-4 text-muted-foreground" />Ventas por Cliente — {mes}
+        </CardTitle>
+        <CardDescription className="text-xs">Click en cualquier columna para ordenar</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-[#1e3a5f] text-white">
+                <SortableTH active={sortKey === "nombre"} dir={sortDir} onClick={() => toggle("nombre")} className="px-3 py-2 font-semibold">Cliente</SortableTH>
+                <SortableTH active={sortKey === "cajones"} dir={sortDir} onClick={() => toggle("cajones")} align="right" className="px-3 py-2 font-semibold">Cajones</SortableTH>
+                <SortableTH active={sortKey === "totalVendido"} dir={sortDir} onClick={() => toggle("totalVendido")} align="right" className="px-3 py-2 font-semibold">Vendido</SortableTH>
+                <SortableTH active={sortKey === "costoVendido"} dir={sortDir} onClick={() => toggle("costoVendido")} align="right" className="px-3 py-2 font-semibold">Costo</SortableTH>
+                <SortableTH active={sortKey === "ganancia"} dir={sortDir} onClick={() => toggle("ganancia")} align="right" className="px-3 py-2 font-semibold">Ganancia</SortableTH>
+                <SortableTH active={sortKey === "margen"} dir={sortDir} onClick={() => toggle("margen")} align="right" className="px-3 py-2 font-semibold">Mrg %</SortableTH>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((c, i) => (
+                <tr key={c.nombre} className={i % 2 === 0 ? "bg-slate-50 dark:bg-slate-900/40" : ""}>
+                  <td className="px-3 py-2 font-medium">{c.nombre}</td>
+                  <td className="px-3 py-2 text-right">{c.cajones}</td>
+                  <td className="px-3 py-2 text-right">{formatCurrency(c.totalVendido)}</td>
+                  <td className="px-3 py-2 text-right text-muted-foreground">{formatCurrency(c.costoVendido)}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-green-700 dark:text-green-400">{formatCurrency(c.ganancia)}</td>
+                  <td className="px-3 py-2 text-right">
+                    <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${c.margen >= 20 ? "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300" : c.margen >= 10 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300"}`}>{c.margen}%</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-[#1e3a5f] text-white font-bold">
+                <td className="px-3 py-2">TOTAL</td>
+                <td className="px-3 py-2 text-right">{totalCajones}</td>
+                <td className="px-3 py-2 text-right">{formatCurrency(totalVendido)}</td>
+                <td className="px-3 py-2 text-right">{formatCurrency(totalCosto)}</td>
+                <td className="px-3 py-2 text-right">{formatCurrency(totalGanancia)}</td>
+                <td className="px-3 py-2 text-right">{margenTotal}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+type RentabilidadProd = DatosMensuales["rentabilidadProductos"][number]
+
+function RentabilidadProductosTable({ rows }: { rows: RentabilidadProd[] }) {
+  const { sorted, sortKey, sortDir, toggle } = useSortable<RentabilidadProd>(rows, "ingresos", "desc")
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium">Rentabilidad por Producto</CardTitle>
+        <CardDescription className="text-xs">Click en columna para ordenar</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Sin datos este mes.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="border-b text-muted-foreground">
+                <tr>
+                  <SortableTH active={sortKey === "producto"} dir={sortDir} onClick={() => toggle("producto")} className="py-1.5 font-semibold">Producto</SortableTH>
+                  <SortableTH active={sortKey === "ingresos"} dir={sortDir} onClick={() => toggle("ingresos")} align="right" className="py-1.5 font-semibold">Ingresos</SortableTH>
+                  <SortableTH active={sortKey === "costo"} dir={sortDir} onClick={() => toggle("costo")} align="right" className="py-1.5 font-semibold">Costo</SortableTH>
+                  <SortableTH active={sortKey === "margen"} dir={sortDir} onClick={() => toggle("margen")} align="right" className="py-1.5 font-semibold">Mrg %</SortableTH>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((p) => (
+                  <tr key={p.producto} className="border-b last:border-0">
+                    <td className="py-1.5 truncate max-w-[140px]">{p.producto}</td>
+                    <td className="py-1.5 text-right">{formatCurrency(p.ingresos)}</td>
+                    <td className="py-1.5 text-right text-muted-foreground">{formatCurrency(p.costo)}</td>
+                    <td className="py-1.5 text-right">
+                      <Badge variant={p.margen >= 25 ? "default" : "secondary"} className="text-[10px]">{p.margen}%</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 // ─── Reporte Mensual ──────────────────────────────────────────────────────────
 
 function ReporteMensual({ data, isLoading, pdfRef, printRef, mes, onMesChange }: { data: DatosMensuales | null; isLoading: boolean; pdfRef: React.RefObject<HTMLDivElement | null>; printRef: React.RefObject<HTMLDivElement | null>; mes: string; onMesChange: (v: string) => void }) {
@@ -1674,61 +1832,19 @@ function ReporteMensual({ data, isLoading, pdfRef, printRef, mes, onMesChange }:
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Users className="h-4 w-4 text-muted-foreground" />Ventas por Cliente — {data?.mes ?? ""}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoading || !data ? (
-              <div className="space-y-2">{[0,1,2,3,4].map((i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
-            ) : !data.clientesMes?.length ? (
-              <p className="text-sm text-muted-foreground">Sin datos este mes.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-[#1e3a5f] text-white">
-                      <th className="px-3 py-2 text-left font-semibold">Cliente</th>
-                      <th className="px-3 py-2 text-right font-semibold">Cajones</th>
-                      <th className="px-3 py-2 text-right font-semibold">Vendido</th>
-                      <th className="px-3 py-2 text-right font-semibold">Costo</th>
-                      <th className="px-3 py-2 text-right font-semibold">Ganancia</th>
-                      <th className="px-3 py-2 text-right font-semibold">Mrg %</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.clientesMes.map((c, i) => (
-                      <tr key={c.nombre} className={i % 2 === 0 ? "bg-slate-50 dark:bg-slate-900/40" : ""}>
-                        <td className="px-3 py-2 font-medium">{c.nombre}</td>
-                        <td className="px-3 py-2 text-right">{c.cajones}</td>
-                        <td className="px-3 py-2 text-right">{formatCurrency(c.totalVendido)}</td>
-                        <td className="px-3 py-2 text-right text-muted-foreground">{formatCurrency(c.costoVendido)}</td>
-                        <td className="px-3 py-2 text-right font-semibold text-green-700 dark:text-green-400">{formatCurrency(c.ganancia)}</td>
-                        <td className="px-3 py-2 text-right">
-                          <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${c.margen >= 20 ? "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300" : c.margen >= 10 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300"}`}>{c.margen}%</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-[#1e3a5f] text-white font-bold">
-                      <td className="px-3 py-2">TOTAL</td>
-                      <td className="px-3 py-2 text-right">{data.clientesMes.reduce((s, c) => s + c.cajones, 0)}</td>
-                      <td className="px-3 py-2 text-right">{formatCurrency(data.clientesMes.reduce((s, c) => s + c.totalVendido, 0))}</td>
-                      <td className="px-3 py-2 text-right">{formatCurrency(data.clientesMes.reduce((s, c) => s + c.costoVendido, 0))}</td>
-                      <td className="px-3 py-2 text-right">{formatCurrency(data.clientesMes.reduce((s, c) => s + c.ganancia, 0))}</td>
-                      <td className="px-3 py-2 text-right">
-                        {(() => { const tv = data.clientesMes.reduce((s, c) => s + c.totalVendido, 0); const cv = data.clientesMes.reduce((s, c) => s + c.costoVendido, 0); return tv > 0 ? `${(((tv - cv) / tv) * 100).toFixed(1)}%` : "—" })()}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {isLoading || !data ? (
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-sm font-medium flex items-center gap-2"><Users className="h-4 w-4 text-muted-foreground" />Ventas por Cliente</CardTitle></CardHeader>
+            <CardContent><div className="space-y-2">{[0,1,2,3,4].map((i) => <Skeleton key={i} className="h-8 w-full" />)}</div></CardContent>
+          </Card>
+        ) : !data.clientesMes?.length ? (
+          <Card>
+            <CardHeader className="pb-3"><CardTitle className="text-sm font-medium flex items-center gap-2"><Users className="h-4 w-4 text-muted-foreground" />Ventas por Cliente — {data.mes}</CardTitle></CardHeader>
+            <CardContent><p className="text-sm text-muted-foreground">Sin datos este mes.</p></CardContent>
+          </Card>
+        ) : (
+          <ClientesMesTable rows={data.clientesMes} mes={data.mes} />
+        )}
 
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
@@ -1761,23 +1877,14 @@ function ReporteMensual({ data, isLoading, pdfRef, printRef, mes, onMesChange }:
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Rentabilidad por Producto</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              {isLoading || !data ? [0,1,2,3].map((i) => <Skeleton key={i} className="h-6 w-full" />) :
-                data.rentabilidadProductos.length === 0 ? <p className="text-sm text-muted-foreground">Sin datos este mes.</p> :
-                data.rentabilidadProductos.map((p) => (
-                  <div key={p.producto} className="flex items-center justify-between text-sm">
-                    <span className="truncate max-w-[140px]">{p.producto}</span>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={p.margen >= 25 ? "default" : "secondary"} className="text-xs">{p.margen}%</Badge>
-                      <span className="text-muted-foreground w-24 text-right">{formatCurrency(p.ingresos)}</span>
-                    </div>
-                  </div>
-                ))
-              }
-            </CardContent>
-          </Card>
+          {isLoading || !data ? (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Rentabilidad por Producto</CardTitle></CardHeader>
+              <CardContent className="space-y-2">{[0,1,2,3].map((i) => <Skeleton key={i} className="h-6 w-full" />)}</CardContent>
+            </Card>
+          ) : (
+            <RentabilidadProductosTable rows={data.rentabilidadProductos} />
+          )}
         </div>
       </div>
     </div>
