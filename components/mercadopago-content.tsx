@@ -416,10 +416,10 @@ export function MercadoPagoContent() {
                       ) : (
                         editingId === m.id ? (
                           <div className="flex items-center gap-1">
-                            <Select value={editCat} onValueChange={setEditCat}>
+                            <Select value={editCat || "_cobro"} onValueChange={(v) => setEditCat(v === "_cobro" ? "" : v)}>
                               <SelectTrigger className="h-7 w-36 text-xs"><SelectValue placeholder="Tipo" /></SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="">Cobro de cliente</SelectItem>
+                                <SelectItem value="_cobro">Cobro de cliente</SelectItem>
                                 <SelectItem value={MP_CATEGORIA_NO_COBRO}>No es cobro</SelectItem>
                               </SelectContent>
                             </Select>
