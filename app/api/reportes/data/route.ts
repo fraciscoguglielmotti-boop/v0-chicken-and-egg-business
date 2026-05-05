@@ -19,32 +19,50 @@ function fuzzyLookup(key: string, map: Record<string, number>): number {
   return 0
 }
 
-function calcCostoPorCliente(
-  todasCompras: { fecha: string; producto: string; total: number; cantidad: number; precio_unitario: number }[],
-  ventasMes: { fecha: string; cliente_nombre: string; producto_nombre: string; cantidad: number; precio_unitario: number }[]
-): Record<string, { cajones: number; totalVendido: number; costoVendido: number }> {
-  // Costo promedio ponderado por producto (histórico hasta el mes)
-  const costoPorProducto: Record<string, { totalCosto: number; totalQty: number }> = {}
-  for (const c of todasCompras) {
+function buildAvgCostMap(
+  compras: { producto: string; total: number; cantidad: number; precio_unitario: number }[]
+): Record<string, number> {
+  const acc: Record<string, { totalCosto: number; totalQty: number }> = {}
+  for (const c of compras) {
     if (!c.cantidad || c.cantidad <= 0) continue
     const prod = normProdName(c.producto)
     if (!prod) continue
     const total = c.total > 0 ? c.total : c.cantidad * (c.precio_unitario ?? 0)
-    if (!costoPorProducto[prod]) costoPorProducto[prod] = { totalCosto: 0, totalQty: 0 }
-    costoPorProducto[prod].totalCosto += total
-    costoPorProducto[prod].totalQty += c.cantidad
+    if (!acc[prod]) acc[prod] = { totalCosto: 0, totalQty: 0 }
+    acc[prod].totalCosto += total
+    acc[prod].totalQty += c.cantidad
   }
-  const avgCost: Record<string, number> = {}
-  for (const [prod, d] of Object.entries(costoPorProducto)) {
-    avgCost[prod] = d.totalQty > 0 ? d.totalCosto / d.totalQty : 0
+  const out: Record<string, number> = {}
+  for (const [prod, d] of Object.entries(acc)) {
+    out[prod] = d.totalQty > 0 ? d.totalCosto / d.totalQty : 0
   }
+  return out
+}
 
-  // Acumular por cliente con fuzzy match en nombre de producto
+function unitCost(productoNombre: string, avgCost: Record<string, number>): number {
+  return fuzzyLookup(normProdName(productoNombre), avgCost)
+}
+
+function calcCogs(
+  ventas: { producto_nombre?: string; cantidad?: number }[],
+  avgCost: Record<string, number>
+): number {
+  let cogs = 0
+  for (const v of ventas) {
+    cogs += (v.cantidad ?? 0) * unitCost(v.producto_nombre ?? "", avgCost)
+  }
+  return cogs
+}
+
+function calcCostoPorCliente(
+  avgCost: Record<string, number>,
+  ventasMes: { cliente_nombre: string; producto_nombre: string; cantidad: number; precio_unitario: number }[]
+): Record<string, { cajones: number; totalVendido: number; costoVendido: number }> {
   const result: Record<string, { cajones: number; totalVendido: number; costoVendido: number }> = {}
   for (const v of ventasMes) {
     if (!v.cantidad || v.cantidad <= 0) continue
     const nombre = v.cliente_nombre || "Sin nombre"
-    const costUnit = fuzzyLookup(normProdName(v.producto_nombre), avgCost)
+    const costUnit = unitCost(v.producto_nombre, avgCost)
     if (!result[nombre]) result[nombre] = { cajones: 0, totalVendido: 0, costoVendido: 0 }
     result[nombre].cajones += v.cantidad
     result[nombre].totalVendido += v.cantidad * (v.precio_unitario ?? 0)
@@ -617,8 +635,8 @@ export async function GET(req: NextRequest) {
         { data: todasVentasHist },
       ] = await Promise.all([
         supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", d.monthStart).lte("fecha", d.monthEnd),
-        supabase.from("ventas").select("cantidad,precio_unitario").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
-        supabase.from("ventas").select("cantidad,precio_unitario").gte("fecha", d.sameMonthLastYearStart).lte("fecha", d.sameMonthLastYearEnd),
+        supabase.from("ventas").select("producto_nombre,cantidad,precio_unitario").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
+        supabase.from("ventas").select("producto_nombre,cantidad,precio_unitario").gte("fecha", d.sameMonthLastYearStart).lte("fecha", d.sameMonthLastYearEnd),
         supabase.from("cobros").select("fecha,monto,metodo_pago").gte("fecha", d.monthStart).lte("fecha", d.monthEnd),
         supabase.from("cobros").select("monto").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
         supabase.from("cobros").select("monto").gte("fecha", d.sameMonthLastYearStart).lte("fecha", d.sameMonthLastYearEnd),
@@ -642,12 +660,17 @@ export async function GET(req: NextRequest) {
       const totalGMes = sumMonto(gMes ?? [])
       const totalGMesAnt = sumMonto(gMesAnt ?? [])
       const totalCompMes = sumTotal(compMes ?? [])
-      const totalCompMesAnt = sumTotal(compMesAnt ?? [])
 
-      const resultadoNeto = totalVMes - totalCompMes - totalGMes
-      const resultadoNetoAnt = totalVMesAnt - totalCompMesAnt - totalGMesAnt
+      // Costo promedio histórico ponderado por producto (compras hasta fin del mes)
+      // Usado para COGS, margen bruto/neto, rentabilidad por producto y por cliente.
+      const avgCost = buildAvgCostMap(todasCompras ?? [])
+      const cogsMes = calcCogs(vMes ?? [], avgCost)
+      const cogsMesAnt = calcCogs(vMesAnt ?? [], avgCost)
+
+      const resultadoNeto = totalVMes - cogsMes - totalGMes
+      const resultadoNetoAnt = totalVMesAnt - cogsMesAnt - totalGMesAnt
       const margenNeto = totalVMes > 0 ? round1((resultadoNeto / totalVMes) * 100) : 0
-      const margenBruto = totalVMes > 0 ? round1(((totalVMes - totalCompMes) / totalVMes) * 100) : 0
+      const margenBruto = totalVMes > 0 ? round1(((totalVMes - cogsMes) / totalVMes) * 100) : 0
       const tasaCobranza = totalVMes > 0 ? round1((totalCMes / totalVMes) * 100) : 0
       const clientesMesCount = new Set((vMes ?? []).map((v) => v.cliente_nombre).filter(Boolean)).size
       const ticketPromedio = clientesMesCount > 0 ? Math.round(totalVMes / clientesMesCount) : 0
@@ -688,31 +711,28 @@ export async function GET(req: NextRequest) {
         value: totalMetodos > 0 ? Math.round((value / totalMetodos) * 100) : 0,
       }))
 
-      // Rentabilidad por producto — fuzzy match entre ventas y compras del mes
-      const vPorProd: Record<string, number> = {}
+      // Rentabilidad por producto — usa COGS (cantidad vendida × costo promedio histórico)
+      const prodAgg: Record<string, { ingresos: number; costo: number }> = {}
       for (const v of vMes ?? []) {
         const nombre = v.producto_nombre || "Sin nombre"
-        vPorProd[nombre] = (vPorProd[nombre] ?? 0) + (v.cantidad ?? 0) * (v.precio_unitario ?? 0)
+        const ing = (v.cantidad ?? 0) * (v.precio_unitario ?? 0)
+        const cost = (v.cantidad ?? 0) * unitCost(nombre, avgCost)
+        if (!prodAgg[nombre]) prodAgg[nombre] = { ingresos: 0, costo: 0 }
+        prodAgg[nombre].ingresos += ing
+        prodAgg[nombre].costo += cost
       }
-      const cPorProdNorm: Record<string, number> = {}
-      for (const c of compMes ?? []) {
-        const key = normProdName(c.producto)
-        if (!key) continue
-        cPorProdNorm[key] = (cPorProdNorm[key] ?? 0) + (c.total ?? (c.cantidad ?? 0) * (c.precio_unitario ?? 0))
-      }
-      const rentabilidadProductos = Object.entries(vPorProd)
-        .map(([producto, ingresos]) => {
-          const costo = fuzzyLookup(normProdName(producto), cPorProdNorm)
-          const margen = ingresos > 0 ? round1(((ingresos - costo) / ingresos) * 100) : 0
-          return { producto, ingresos: Math.round(ingresos), costo: Math.round(costo), margen }
+      const rentabilidadProductos = Object.entries(prodAgg)
+        .map(([producto, p]) => {
+          const margen = p.ingresos > 0 ? round1(((p.ingresos - p.costo) / p.ingresos) * 100) : 0
+          return { producto, ingresos: Math.round(p.ingresos), costo: Math.round(p.costo), margen }
         })
         .sort((a, b) => b.ingresos - a.ingresos)
         .slice(0, 6)
 
       const mesLabel = d.now.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
 
-      // Por cliente: costo promedio ponderado por producto (match estricto de nombre)
-      const costoMap = calcCostoPorCliente(todasCompras ?? [], vMes ?? [])
+      // Por cliente: usa el mismo avgCost histórico → consistente con rentabilidadProductos
+      const costoMap = calcCostoPorCliente(avgCost, vMes ?? [])
       const clientesMes = Object.entries(costoMap)
         .map(([nombre, d]) => {
           const costoVendido = Math.round(d.costoVendido)
@@ -737,6 +757,7 @@ export async function GET(req: NextRequest) {
           cobros: Math.round(totalCMes),
           gastos: Math.round(totalGMes),
           compras: Math.round(totalCompMes),
+          cogs: Math.round(cogsMes),
           resultadoNeto: Math.round(resultadoNeto),
           margenNeto,
         },
