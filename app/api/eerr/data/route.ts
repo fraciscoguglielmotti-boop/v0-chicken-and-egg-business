@@ -163,6 +163,30 @@ export async function GET(req: NextRequest) {
 
     const supabase = await createClient()
 
+    // Gastos: incluir tanto los con `fecha` en el rango como los de tarjeta
+    // de crédito con `fecha_pago` en el rango (su mes contable se rige por fecha_pago).
+    const fetchGastos = async (): Promise<Gasto[]> => {
+      const all: Gasto[] = []
+      let from = 0
+      const pageSize = 1000
+      while (true) {
+        const { data, error } = await supabase
+          .from("gastos")
+          .select("fecha,monto,categoria,medio_pago,fecha_pago,descripcion,pagado")
+          .or(
+            `and(fecha.gte.${prevStart},fecha.lte.${endOfMonth}),` +
+            `and(fecha_pago.gte.${prevStart},fecha_pago.lte.${endOfMonth})`
+          )
+          .range(from, from + pageSize - 1)
+        if (error) throw error
+        if (!data || data.length === 0) break
+        all.push(...(data as Gasto[]))
+        if (data.length < pageSize) break
+        from += pageSize
+      }
+      return all
+    }
+
     const [ventas, compras, gastos, movimientosMp] = await Promise.all([
       fetchAll<Venta>(
         supabase,
@@ -176,12 +200,7 @@ export async function GET(req: NextRequest) {
         "fecha,total,cantidad,precio_unitario,producto",
         [{ col: "fecha", op: "lte", val: endOfMonth }]
       ),
-      fetchAll<Gasto>(
-        supabase,
-        "gastos",
-        "fecha,monto,categoria,medio_pago,fecha_pago,descripcion,pagado",
-        [{ col: "fecha", op: "gte", val: `${prev}-01` }, { col: "fecha", op: "lte", val: endOfMonth }]
-      ),
+      fetchGastos(),
       fetchAll<MovimientoMP>(
         supabase,
         "movimientos_mp",
