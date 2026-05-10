@@ -153,7 +153,7 @@ export function GastosContent() {
     setFormData({
       fecha: gasto.fecha,
       tipo: gasto.tipo,
-      categoria: gasto.categoria,
+      categoria: gasto.categoria || "",
       descripcion: gasto.descripcion || "",
       monto: gasto.monto.toString(),
       medio_pago: gasto.medio_pago || "Efectivo",
@@ -198,7 +198,7 @@ export function GastosContent() {
   const filteredGastos = gastos
     .filter((g) => {
       const matchSearch =
-        g.categoria.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (g.categoria || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (g.descripcion || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (g.tarjeta || "").toLowerCase().includes(searchTerm.toLowerCase())
       const matchCategoria = categoriaFiltro === "todas" || g.categoria === categoriaFiltro
