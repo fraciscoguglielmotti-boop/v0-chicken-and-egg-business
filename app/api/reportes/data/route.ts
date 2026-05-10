@@ -533,7 +533,7 @@ export async function GET(req: NextRequest) {
         supabase.from("ventas").select("fecha,producto_nombre,cantidad,precio_unitario").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
         supabase.from("ventas").select("producto_nombre,cantidad,precio_unitario").gte("fecha", d.sameMonthLastYearStart).lte("fecha", d.sameMonthLastYearEnd),
         supabase.from("cobros").select("fecha,monto,metodo_pago").gte("fecha", d.monthStart).lte("fecha", d.monthEnd),
-        supabase.from("cobros").select("monto").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
+        supabase.from("cobros").select("monto,metodo_pago").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
         supabase.from("cobros").select("monto").gte("fecha", d.sameMonthLastYearStart).lte("fecha", d.sameMonthLastYearEnd),
         // Gastos: incluir tanto los con `fecha` en el rango como los de tarjeta de crédito
         // con `fecha_pago` en el rango (su mes contable se rige por fecha_pago).
@@ -567,11 +567,16 @@ export async function GET(req: NextRequest) {
       const totalVMes = sumVentas(vMes ?? [])
       const totalVMesAnt = sumVentas(vMesAnt ?? [])
       const totalVMesAA = sumVentas(vMesAA ?? [])
-      const totalCMes = sumMonto(cMes ?? [])
-      const totalCMesAnt = sumMonto(cMesAnt ?? [])
+      const esIncobrable = (m?: string | null) => (m ?? "").toLowerCase() === "incobrable"
+      const cobrosCashMes = (cMes ?? []).filter((c: any) => !esIncobrable(c.metodo_pago))
+      const cobrosCashMesAnt = (cMesAnt ?? []).filter((c: any) => !esIncobrable(c.metodo_pago))
+      const totalCMes = sumMonto(cobrosCashMes)
+      const totalCMesAnt = sumMonto(cobrosCashMesAnt)
       const totalCMesAA = sumMonto(cMesAA ?? [])
-      const totalGMes = gastosUnificados.filter((g) => g.mesContable === monthKey).reduce((s, g) => s + (g.monto ?? 0), 0)
-      const totalGMesAnt = gastosUnificados.filter((g) => g.mesContable === lastMonthKey).reduce((s, g) => s + (g.monto ?? 0), 0)
+      const totalIncobrablesMes = (cMes ?? []).filter((c: any) => esIncobrable(c.metodo_pago)).reduce((s: number, c: any) => s + Number(c.monto ?? 0), 0)
+      const totalIncobrablesMesAnt = (cMesAnt ?? []).filter((c: any) => esIncobrable(c.metodo_pago)).reduce((s: number, c: any) => s + Number(c.monto ?? 0), 0)
+      const totalGMes = gastosUnificados.filter((g) => g.mesContable === monthKey).reduce((s, g) => s + (g.monto ?? 0), 0) + totalIncobrablesMes
+      const totalGMesAnt = gastosUnificados.filter((g) => g.mesContable === lastMonthKey).reduce((s, g) => s + (g.monto ?? 0), 0) + totalIncobrablesMesAnt
       const totalCompMes = sumTotal(compMes ?? [])
 
       // Timeline de costos: para cada venta usa el último precio de compra vigente en esa fecha.
@@ -617,9 +622,9 @@ export async function GET(req: NextRequest) {
           cobros: Math.round(data.cobros),
         }))
 
-      // Distribución métodos de pago (en % del monto)
+      // Distribución métodos de pago (en % del monto) — excluye incobrables (no es plata real)
       const metodosMap: Record<string, number> = {}
-      for (const c of cMes ?? []) {
+      for (const c of cobrosCashMes) {
         const metodo = c.metodo_pago
           ? c.metodo_pago.charAt(0).toUpperCase() + c.metodo_pago.slice(1)
           : "Otro"

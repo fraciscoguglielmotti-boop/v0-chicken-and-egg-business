@@ -20,6 +20,13 @@ interface Gasto {
   pagado?: boolean
 }
 
+interface CobroIncobrable {
+  fecha: string
+  monto: number
+  cliente_nombre?: string
+  metodo_pago?: string
+}
+
 interface EERRResult {
   totalVentas: number
   totalCMV: number
@@ -32,6 +39,8 @@ interface EERRResult {
   gastosRetiros: Gasto[]
   totalSueldos: number
   totalRetiros: number
+  totalIncobrables: number
+  incobrables: CobroIncobrable[]
   resultadoOp: number
   resultadoOpPct: number
   resultadoFinal: number
@@ -57,6 +66,8 @@ const emptyEERR: EERRResult = {
   gastosRetiros: [],
   totalSueldos: 0,
   totalRetiros: 0,
+  totalIncobrables: 0,
+  incobrables: [],
   resultadoOp: 0,
   resultadoOpPct: 0,
   resultadoFinal: 0,
@@ -119,6 +130,7 @@ export function ContabilidadContent() {
   const [expandedCat, setExpandedCat] = useState<string | null>(null)
   const [sueldosExpanded, setSueldosExpanded] = useState(false)
   const [retirosExpanded, setRetirosExpanded] = useState(false)
+  const [incobrablesExpanded, setIncobrablesExpanded] = useState(false)
 
   const { data, error, isLoading } = useSWR<EERRResponse>(
     `/api/eerr/data?month=${selectedMonth}`,
@@ -142,6 +154,7 @@ export function ContabilidadContent() {
     rows.push([esc("(−) Costo de mercadería vendida"), esc(eerr.totalCMV), esc(prev.totalCMV)].join(","))
     rows.push([esc(`= Margen Bruto (${fmtPct(eerr.margenPct)})`), esc(eerr.margenBruto), esc(prev.margenBruto)].join(","))
     rows.push([esc("(−) Gastos Operativos"), esc(eerr.totalGastosOp), esc(prev.totalGastosOp)].join(","))
+    rows.push([esc("(−) Incobrables"), esc(eerr.totalIncobrables), esc(prev.totalIncobrables)].join(","))
     rows.push([esc(`= Resultado Operativo (${fmtPct(eerr.resultadoOpPct)})`), esc(eerr.resultadoOp), esc(prev.resultadoOp)].join(","))
     rows.push([esc("(−) Sueldos y Comisiones"), esc(eerr.totalSueldos), esc(prev.totalSueldos)].join(","))
     rows.push([esc("(−) Retiros personales"), esc(eerr.totalRetiros), esc(prev.totalRetiros)].join(","))
@@ -337,6 +350,34 @@ export function ContabilidadContent() {
               </div>
             )}
 
+            {eerr.totalIncobrables > 0 && (
+              <>
+                <button
+                  onClick={() => setIncobrablesExpanded((v) => !v)}
+                  className="flex items-center justify-between w-full py-2.5 border-b border-border/40 text-left hover:bg-muted/30 rounded transition-colors"
+                >
+                  <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                    {incobrablesExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                    (−) Incobrables
+                  </span>
+                  <span className="text-sm font-medium tabular-nums">{formatCurrency(eerr.totalIncobrables)}</span>
+                </button>
+                {incobrablesExpanded && (
+                  <div className="pl-4 ml-2 border-l-2 border-border/30 mb-1">
+                    {eerr.incobrables.slice().sort((a, b) => b.fecha.localeCompare(a.fecha)).map((c, i) => (
+                      <div key={i} className="flex items-center justify-between py-1.5 text-xs border-b border-border/10 last:border-0">
+                        <div className="flex flex-col">
+                          <span className="text-muted-foreground/70">{c.fecha.slice(0, 10)}</span>
+                          <span className="text-muted-foreground">{c.cliente_nombre || "—"}</span>
+                        </div>
+                        <span className="tabular-nums text-muted-foreground">{formatCurrency(c.monto)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
             <EERRTotal label="= Resultado Operativo" value={eerr.resultadoOp} pct={eerr.resultadoOpPct} />
 
             {/* Sueldos expandible */}
@@ -426,6 +467,7 @@ export function ContabilidadContent() {
                   { label: "CMV", actual: eerr.totalCMV, prev: prev.totalCMV },
                   { label: "Margen Bruto", actual: eerr.margenBruto, prev: prev.margenBruto },
                   { label: "Gastos Operativos", actual: eerr.totalGastosOp, prev: prev.totalGastosOp },
+                  { label: "Incobrables", actual: eerr.totalIncobrables, prev: prev.totalIncobrables },
                   { label: "Resultado Operativo", actual: eerr.resultadoOp, prev: prev.resultadoOp },
                   { label: "Sueldos", actual: eerr.totalSueldos, prev: prev.totalSueldos },
                   { label: "Retiros personales", actual: eerr.totalRetiros, prev: prev.totalRetiros },
