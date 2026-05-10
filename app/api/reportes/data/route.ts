@@ -1,6 +1,14 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextRequest, NextResponse } from "next/server"
 import { buildCostTimeline, getCostAtDate } from "@/lib/cost-timeline"
+import { esMPGasto } from "@/lib/mp-constants"
+
+// Mes contable: para tarjeta de crédito el gasto pertenece al mes de su `fecha_pago`,
+// no al mes de la compra. Mantener consistente con /api/eerr/data.
+function mesContableGasto(g: { medio_pago?: string | null; fecha_pago?: string | null; fecha: string }): string {
+  if (g.medio_pago === "Tarjeta Credito" && g.fecha_pago) return g.fecha_pago.slice(0, 7)
+  return g.fecha.slice(0, 7)
+}
 
 // ─── Helpers de fecha ─────────────────────────────────────────────────────────
 
@@ -502,6 +510,9 @@ export async function GET(req: NextRequest) {
 
     // ── Mensual ───────────────────────────────────────────────────────────────
     if (tipo === "mensual") {
+      const monthKey = d.monthStart.slice(0, 7)
+      const lastMonthKey = d.lastMonthStart.slice(0, 7)
+
       const [
         { data: vMes },
         { data: vMesAnt },
@@ -509,8 +520,8 @@ export async function GET(req: NextRequest) {
         { data: cMes },
         { data: cMesAnt },
         { data: cMesAA },
-        { data: gMes },
-        { data: gMesAnt },
+        { data: gastosRaw },
+        { data: mpRaw },
         { data: compMes },
         { data: compMesAnt },
         { data: vSeis },
@@ -524,8 +535,16 @@ export async function GET(req: NextRequest) {
         supabase.from("cobros").select("fecha,monto,metodo_pago").gte("fecha", d.monthStart).lte("fecha", d.monthEnd),
         supabase.from("cobros").select("monto").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
         supabase.from("cobros").select("monto").gte("fecha", d.sameMonthLastYearStart).lte("fecha", d.sameMonthLastYearEnd),
-        supabase.from("gastos").select("monto").gte("fecha", d.monthStart).lte("fecha", d.monthEnd),
-        supabase.from("gastos").select("monto").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
+        // Gastos: incluir tanto los con `fecha` en el rango como los de tarjeta de crédito
+        // con `fecha_pago` en el rango (su mes contable se rige por fecha_pago).
+        supabase.from("gastos").select("fecha,monto,medio_pago,fecha_pago,pagado")
+          .or(
+            `and(fecha.gte.${d.lastMonthStart},fecha.lte.${d.monthEnd}),` +
+            `and(fecha_pago.gte.${d.lastMonthStart},fecha_pago.lte.${d.monthEnd})`
+          ),
+        // MercadoPago: egresos que sí son gastos operativos (no son pagos a proveedores)
+        supabase.from("movimientos_mp").select("fecha,tipo,monto,descripcion,categoria")
+          .gte("fecha", d.lastMonthStart).lte("fecha", d.monthEnd),
         supabase.from("compras").select("total,producto,cantidad,precio_unitario").gte("fecha", d.monthStart).lte("fecha", d.monthEnd),
         supabase.from("compras").select("total,cantidad,precio_unitario").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
         supabase.from("ventas").select("fecha,cantidad,precio_unitario").gte("fecha", d.sixMonthsAgo).lte("fecha", d.monthEnd),
@@ -535,14 +554,24 @@ export async function GET(req: NextRequest) {
         supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").lte("fecha", d.monthEnd),
       ])
 
+      // Unificar gastos (tabla gastos pagados + egresos MP que sean gastos operativos)
+      const gastosUnificados = [
+        ...(gastosRaw ?? [])
+          .filter((g: any) => g.pagado !== false)
+          .map((g: any) => ({ monto: g.monto, mesContable: mesContableGasto(g) })),
+        ...(mpRaw ?? [])
+          .filter((m: any) => esMPGasto(m))
+          .map((m: any) => ({ monto: m.monto, mesContable: (m.fecha as string).slice(0, 7) })),
+      ]
+
       const totalVMes = sumVentas(vMes ?? [])
       const totalVMesAnt = sumVentas(vMesAnt ?? [])
       const totalVMesAA = sumVentas(vMesAA ?? [])
       const totalCMes = sumMonto(cMes ?? [])
       const totalCMesAnt = sumMonto(cMesAnt ?? [])
       const totalCMesAA = sumMonto(cMesAA ?? [])
-      const totalGMes = sumMonto(gMes ?? [])
-      const totalGMesAnt = sumMonto(gMesAnt ?? [])
+      const totalGMes = gastosUnificados.filter((g) => g.mesContable === monthKey).reduce((s, g) => s + (g.monto ?? 0), 0)
+      const totalGMesAnt = gastosUnificados.filter((g) => g.mesContable === lastMonthKey).reduce((s, g) => s + (g.monto ?? 0), 0)
       const totalCompMes = sumTotal(compMes ?? [])
 
       // Timeline de costos: para cada venta usa el último precio de compra vigente en esa fecha.
