@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
 import { insertRow, queryRows } from "@/hooks/use-supabase"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
@@ -52,6 +53,7 @@ interface GastoReview extends GastoExtraido {
   categoria: string
   proveedor: string
   regla_existe: boolean
+  incluido: boolean
 }
 
 type Step = "upload" | "loading" | "review" | "saving" | "done"
@@ -108,6 +110,7 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
           categoria: match?.categoria ?? "",
           proveedor: match?.proveedor ?? "",
           regla_existe: !!match,
+          incluido: true,
         }
       })
 
@@ -127,12 +130,27 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
     )
   }
 
+  const toggleIncluido = (index: number) => {
+    setGastosReview((prev) =>
+      prev.map((g, i) => (i === index ? { ...g, incluido: !g.incluido } : g))
+    )
+  }
+
+  const toggleIncluidoTodos = (incluido: boolean) => {
+    setGastosReview((prev) => prev.map((g) => ({ ...g, incluido })))
+  }
+
   const handleConfirm = async () => {
+    const aImportar = gastosReview.filter((g) => g.incluido)
+    if (aImportar.length === 0) {
+      toast({ title: "Nada para importar", description: "Marcá al menos un gasto antes de confirmar.", variant: "destructive" })
+      return
+    }
     setStep("saving")
     try {
       // 1. Collect new rules from manually categorized gastos (deduplicated)
       const nuevasReglas = new Map<string, GastoReview>()
-      for (const g of gastosReview) {
+      for (const g of aImportar) {
         if (!g.regla_existe && g.categoria && !nuevasReglas.has(g.descripcion_original)) {
           nuevasReglas.set(g.descripcion_original, g)
         }
@@ -151,7 +169,7 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
 
       // 2. Save all gastos in parallel — use "Otros" fallback so categoria is never null
       await Promise.all(
-        gastosReview.map((g) =>
+        aImportar.map((g) =>
           insertRow("gastos", {
             fecha: g.fecha,
             tipo: "Egreso",
@@ -167,7 +185,7 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
 
       toast({
         title: "Importación exitosa",
-        description: `Se importaron ${gastosReview.length} gastos.${nuevasReglas.size > 0 ? ` Se guardaron ${nuevasReglas.size} nuevas reglas.` : ""}`,
+        description: `Se importaron ${aImportar.length} gastos.${nuevasReglas.size > 0 ? ` Se guardaron ${nuevasReglas.size} nuevas reglas.` : ""}`,
       })
       onImportComplete()
       setStep("done")
@@ -272,9 +290,13 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
 
   // ─── REVIEW ─────────────────────────────────────────────────────────────────
 
-  const sinCategoria = gastosReview.filter((g) => !g.categoria).length
-  const conRegla = gastosReview.filter((g) => g.regla_existe).length
-  const manuales = gastosReview.filter((g) => !g.regla_existe && g.categoria).length
+  const incluidos = gastosReview.filter((g) => g.incluido)
+  const sinCategoria = incluidos.filter((g) => !g.categoria).length
+  const conRegla = incluidos.filter((g) => g.regla_existe).length
+  const manuales = incluidos.filter((g) => !g.regla_existe && g.categoria).length
+  const todosIncluidos = gastosReview.length > 0 && incluidos.length === gastosReview.length
+  const algunoIncluido = incluidos.length > 0 && !todosIncluidos
+  const totalIncluido = incluidos.reduce((s, g) => s + g.monto, 0)
 
   return (
     <div className="space-y-4">
@@ -282,7 +304,9 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
         <div>
           <h2 className="text-lg font-semibold">Revisar gastos extraídos</h2>
           <div className="flex flex-wrap gap-3 mt-1">
-            <span className="text-sm text-muted-foreground">{gastosReview.length} gastos encontrados</span>
+            <span className="text-sm text-muted-foreground">
+              {incluidos.length} de {gastosReview.length} seleccionados — {formatCurrency(totalIncluido)}
+            </span>
             {tarjetaSeleccionada && <Badge variant="outline">{tarjetaSeleccionada}</Badge>}
             {fechaPago && <Badge variant="outline">Vence: {new Date(fechaPago + "T12:00:00").toLocaleDateString()}</Badge>}
             <Badge variant="secondary">{conRegla} categorizados automáticamente</Badge>
@@ -303,6 +327,13 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
         <table className="w-full text-sm">
           <thead className="bg-muted/50 sticky top-0 z-10">
             <tr>
+              <th className="p-3 w-10">
+                <Checkbox
+                  checked={todosIncluidos ? true : algunoIncluido ? "indeterminate" : false}
+                  onCheckedChange={(v) => toggleIncluidoTodos(v === true)}
+                  aria-label="Seleccionar todos"
+                />
+              </th>
               <th className="text-left p-3 font-semibold">Descripcion</th>
               <th className="text-left p-3 font-semibold whitespace-nowrap">Fecha</th>
               <th className="text-right p-3 font-semibold whitespace-nowrap">Monto</th>
@@ -312,7 +343,14 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
           </thead>
           <tbody>
             {gastosReview.map((g, i) => (
-              <tr key={i} className="border-t hover:bg-muted/20">
+              <tr key={i} className={`border-t hover:bg-muted/20 ${!g.incluido ? "opacity-50" : ""}`}>
+                <td className="p-3">
+                  <Checkbox
+                    checked={g.incluido}
+                    onCheckedChange={() => toggleIncluido(i)}
+                    aria-label={`Incluir ${g.descripcion_original}`}
+                  />
+                </td>
                 <td className="p-3">
                   <div className="flex items-center gap-2">
                     <span
@@ -375,9 +413,9 @@ export function ImportarTarjeta({ onClose, onImportComplete }: ImportarTarjetaPr
               {sinCategoria} gasto{sinCategoria !== 1 ? "s" : ""} se guardar{sinCategoria !== 1 ? "án" : "á"} sin categoría
             </p>
           )}
-          <Button onClick={handleConfirm} disabled={step === "saving"}>
+          <Button onClick={handleConfirm} disabled={step === "saving" || incluidos.length === 0}>
             {step === "saving" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Confirmar importación ({gastosReview.length})
+            Confirmar importación ({incluidos.length})
           </Button>
         </div>
       </div>
