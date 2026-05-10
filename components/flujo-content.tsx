@@ -308,8 +308,12 @@ export function FlujoContent() {
     const fechaEfectiva = (g: Gasto) =>
       g.medio_pago === "Tarjeta Credito" && g.fecha_pago ? g.fecha_pago : g.fecha
 
-    const cobrosFiltrados   = cobros.filter(c => c.fecha.startsWith(selectedMonth))
-    const pagosFiltrados    = pagos.filter(p => p.fecha.startsWith(selectedMonth))
+    const esCompensacion = (m?: string) => (m ?? "").toLowerCase() === "compensación"
+
+    const cobrosFiltradosTodos = cobros.filter(c => c.fecha.startsWith(selectedMonth))
+    const pagosFiltradosTodos  = pagos.filter(p => p.fecha.startsWith(selectedMonth))
+    const cobrosFiltrados   = cobrosFiltradosTodos.filter(c => !esCompensacion(c.metodo_pago))
+    const pagosFiltrados    = pagosFiltradosTodos.filter(p => !esCompensacion(p.metodo_pago))
     const gastosFiltrados   = gastos.filter(g => g.pagado !== false && fechaEfectiva(g).startsWith(selectedMonth))
 
     const totalIngresos      = cobrosFiltrados.reduce((s, c) => s + Number(c.monto), 0)
@@ -318,6 +322,8 @@ export function FlujoContent() {
     const pagosProveedores   = pagosFiltrados.reduce((s, p) => s + Number(p.monto), 0)
     const gastosPagados      = gastosFiltrados.reduce((s, g) => s + g.monto, 0)
     const resultado          = totalIngresos - pagosProveedores - gastosPagados
+    const compensacionesCobros = cobrosFiltradosTodos.filter(c => esCompensacion(c.metodo_pago)).reduce((s, c) => s + Number(c.monto), 0)
+    const compensacionesPagos  = pagosFiltradosTodos.filter(p => esCompensacion(p.metodo_pago)).reduce((s, p) => s + Number(p.monto), 0)
 
     const gastosPorCategoria = gastosFiltrados.reduce((acc, g) => {
       const cat = g.categoria || "Sin categoría"
@@ -350,6 +356,7 @@ export function FlujoContent() {
     return {
       totalIngresos, cobrosEfectivo, cobrosTransferencia,
       pagosProveedores, gastosPagados, gastosPorCategoria, resultado,
+      compensacionesCobros, compensacionesPagos,
       prevIngresos, prevPagosProveedores, prevGastosPagados, prevResultado,
       proximos, vencidos,
     }
@@ -505,6 +512,28 @@ export function FlujoContent() {
           )}
 
           <CashTotal label="= Resultado de Caja" value={flujo.resultado} />
+
+          {(flujo.compensacionesCobros > 0 || flujo.compensacionesPagos > 0) && (
+            <div className="mt-4 pt-3 border-t border-dashed border-border/50">
+              <p className="text-xs text-muted-foreground italic mb-1">
+                Compensaciones (no afectan caja)
+              </p>
+              <div className="flex items-center justify-between py-1 text-xs">
+                <span className="text-muted-foreground">Cobros compensados</span>
+                <span className="tabular-nums text-muted-foreground">{formatCurrency(flujo.compensacionesCobros)}</span>
+              </div>
+              <div className="flex items-center justify-between py-1 text-xs">
+                <span className="text-muted-foreground">Pagos compensados</span>
+                <span className="tabular-nums text-muted-foreground">{formatCurrency(flujo.compensacionesPagos)}</span>
+              </div>
+              <div className="flex items-center justify-between py-1 text-xs font-medium">
+                <span>Saldo neto compensación</span>
+                <span className={`tabular-nums ${flujo.compensacionesCobros - flujo.compensacionesPagos >= 0 ? "text-green-600" : "text-red-500"}`}>
+                  {formatCurrency(flujo.compensacionesCobros - flujo.compensacionesPagos)}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       </Card>
 
