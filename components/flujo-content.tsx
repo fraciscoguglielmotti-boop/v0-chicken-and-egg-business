@@ -17,7 +17,7 @@ import { ChevronDown, ChevronRight, TrendingUp, TrendingDown } from "lucide-reac
 import { useToast } from "@/hooks/use-toast"
 
 interface Cobro { fecha: string; monto: number; metodo_pago: string }
-interface Pago { fecha: string; monto: number }
+interface Pago { fecha: string; monto: number; metodo_pago?: string }
 interface VentaPendiente { id: string; fecha: string; cliente_nombre: string; producto_nombre?: string; cantidad: number; precio_unitario: number; fecha_vto_cobro?: string; cobrado?: boolean }
 interface Gasto { id: string; fecha: string; monto: number; categoria: string; descripcion?: string; medio_pago?: string; tarjeta?: string; fecha_pago?: string; pagado?: boolean }
 interface MovimientoMP { fecha: string; tipo: string; monto: number; descripcion?: string; categoria?: string }
