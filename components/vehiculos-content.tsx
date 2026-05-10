@@ -33,6 +33,8 @@ interface Mantenimiento {
   taller?: string
   proximo_km?: number
   proxima_fecha?: string
+  medio_pago?: string
+  gasto_id?: string | null
 }
 
 const TIPOS_MANTENIMIENTO = [
@@ -45,6 +47,9 @@ const TIPOS_MANTENIMIENTO = [
   "Reparacion",
   "Otro"
 ]
+
+const MEDIOS_PAGO = ["Efectivo", "Cuenta Francisco", "Cuenta Diego", "MercadoPago", "Tarjeta Credito"]
+const CATEGORIA_GASTO_MANTENIMIENTO = "Mantenimiento Vehículos"
 
 export function VehiculosContent() {
   const { data: vehiculos = [], isLoading: loadingVehiculos, mutate: mutateVehiculos } = useSupabase<Vehiculo>("vehiculos")
@@ -72,7 +77,8 @@ export function VehiculosContent() {
     costo: "",
     taller: "",
     proximo_km: "",
-    proxima_fecha: ""
+    proxima_fecha: "",
+    medio_pago: "Efectivo"
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -92,14 +98,39 @@ export function VehiculosContent() {
 
   const handleMantenimientoSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    const costo = parseFloat(mantenimientoForm.costo) || 0
+    const vehiculo = vehiculos.find(v => v.id === mantenimientoForm.vehiculo_id)
+    const partes = [
+      "Mantenimiento",
+      mantenimientoForm.tipo,
+      vehiculo?.patente ? `- ${vehiculo.patente}` : "",
+      mantenimientoForm.descripcion ? `(${mantenimientoForm.descripcion})` : "",
+    ].filter(Boolean)
+    const descripcionGasto = partes.join(" ").trim()
+
+    let gastoId: string | null = null
+    if (costo > 0) {
+      const gasto = await insertRow("gastos", {
+        fecha: mantenimientoForm.fecha,
+        tipo: "Egreso",
+        categoria: CATEGORIA_GASTO_MANTENIMIENTO,
+        descripcion: descripcionGasto,
+        monto: costo,
+        medio_pago: mantenimientoForm.medio_pago || "Efectivo",
+        pagado: true,
+      })
+      gastoId = gasto?.id ?? null
+    }
+
     const data = {
       ...mantenimientoForm,
-      costo: parseFloat(mantenimientoForm.costo) || 0,
+      costo,
       kilometraje: mantenimientoForm.kilometraje ? parseFloat(mantenimientoForm.kilometraje) : null,
       proximo_km: mantenimientoForm.proximo_km ? parseFloat(mantenimientoForm.proximo_km) : null,
-      proxima_fecha: mantenimientoForm.proxima_fecha || null
+      proxima_fecha: mantenimientoForm.proxima_fecha || null,
+      gasto_id: gastoId,
     }
-    
+
     await insertRow("mantenimientos", data)
     mutateMantenimientos()
     setIsMantenimientoDialogOpen(false)
@@ -114,10 +145,17 @@ export function VehiculosContent() {
   }
 
   const handleDeleteMantenimiento = async (id: string) => {
-    if (confirm("¿Eliminar este mantenimiento?")) {
-      await deleteRow("mantenimientos", id)
-      mutateMantenimientos()
+    if (!confirm("¿Eliminar este mantenimiento? También se eliminará el gasto asociado.")) return
+    const m = mantenimientos.find(x => x.id === id)
+    await deleteRow("mantenimientos", id)
+    if (m?.gasto_id) {
+      try {
+        await deleteRow("gastos", m.gasto_id)
+      } catch (err) {
+        console.error("No se pudo eliminar el gasto asociado al mantenimiento:", err)
+      }
     }
+    mutateMantenimientos()
   }
 
   const resetForm = () => {
@@ -134,7 +172,8 @@ export function VehiculosContent() {
       costo: "",
       taller: "",
       proximo_km: "",
-      proxima_fecha: ""
+      proxima_fecha: "",
+      medio_pago: "Efectivo"
     })
   }
 
@@ -325,6 +364,20 @@ export function VehiculosContent() {
                       <Label>Taller</Label>
                       <Input value={mantenimientoForm.taller} onChange={(e) => setMantenimientoForm({...mantenimientoForm, taller: e.target.value})} />
                     </div>
+                  </div>
+
+                  <div>
+                    <Label>Medio de pago</Label>
+                    <Select value={mantenimientoForm.medio_pago} onValueChange={(value) => setMantenimientoForm({...mantenimientoForm, medio_pago: value})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Medio de pago" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MEDIOS_PAGO.map(mp => (
+                          <SelectItem key={mp} value={mp}>{mp}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">

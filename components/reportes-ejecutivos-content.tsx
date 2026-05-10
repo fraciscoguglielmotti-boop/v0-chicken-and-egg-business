@@ -159,7 +159,7 @@ interface DatosMensuales {
   topClientes: { nombre: string; monto: number }[]
   distribucionMetodosPago: { name: string; value: number }[]
   rentabilidadProductos: { producto: string; ingresos: number; costo: number; margen: number }[]
-  clientesMes: { nombre: string; cajones: number; totalVendido: number; costoVendido: number; ganancia: number; margen: number }[]
+  clientesMes: { nombre: string; cajones: number; totalVendido: number; costoVendido: number; incobrable?: number; ganancia: number; margen: number }[]
 }
 
 // ─── Tooltip dark-mode ────────────────────────────────────────────────────────
@@ -951,7 +951,14 @@ function PdfTemplateMensual({ data }: { data: DatosMensuales }) {
             <tbody>
               {data.clientesMes.map((c, i) => (
                 <tr key={c.nombre} style={{ background: i % 2 === 0 ? "#f8fafc" : "#ffffff" }}>
-                  <td style={{ ...tdStyle, fontWeight: "500" }}>{c.nombre}</td>
+                  <td style={{ ...tdStyle, fontWeight: "500" }}>
+                    {c.nombre}
+                    {(c.incobrable ?? 0) > 0 && (
+                      <span style={{ fontSize: "8.5px", color: "#dc2626", fontWeight: "700", marginLeft: "6px" }}>
+                        INCOBRABLE −{formatCurrency(c.incobrable!)}
+                      </span>
+                    )}
+                  </td>
                   <td style={{ ...tdR, color: "#64748b" }}>{c.cajones}</td>
                   <td style={{ ...tdR, fontWeight: "600" }}>{formatCurrency(c.totalVendido)}</td>
                   <td style={{ ...tdR, color: "#64748b" }}>{formatCurrency(c.costoVendido)}</td>
@@ -1646,7 +1653,7 @@ function ClientesMesTable({ rows, mes }: { rows: ClienteMes[]; mes: string }) {
   const totalVendido = rows.reduce((s, c) => s + c.totalVendido, 0)
   const totalCosto = rows.reduce((s, c) => s + c.costoVendido, 0)
   const totalGanancia = rows.reduce((s, c) => s + c.ganancia, 0)
-  const margenTotal = totalVendido > 0 ? `${(((totalVendido - totalCosto) / totalVendido) * 100).toFixed(1)}%` : "—"
+  const margenTotal = totalVendido > 0 ? `${((totalGanancia / totalVendido) * 100).toFixed(1)}%` : "—"
 
   return (
     <Card>
@@ -1672,11 +1679,18 @@ function ClientesMesTable({ rows, mes }: { rows: ClienteMes[]; mes: string }) {
             <tbody>
               {sorted.map((c, i) => (
                 <tr key={c.nombre} className={i % 2 === 0 ? "bg-slate-50 dark:bg-slate-900/40" : ""}>
-                  <td className="px-3 py-2 font-medium">{c.nombre}</td>
+                  <td className="px-3 py-2 font-medium">
+                    {c.nombre}
+                    {(c.incobrable ?? 0) > 0 && (
+                      <span className="ml-2 inline-flex items-center rounded-md bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide">
+                        INCOBRABLE −{formatCurrency(c.incobrable!)}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-right">{c.cajones}</td>
                   <td className="px-3 py-2 text-right">{formatCurrency(c.totalVendido)}</td>
                   <td className="px-3 py-2 text-right text-muted-foreground">{formatCurrency(c.costoVendido)}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-green-700 dark:text-green-400">{formatCurrency(c.ganancia)}</td>
+                  <td className={`px-3 py-2 text-right font-semibold ${c.ganancia >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>{formatCurrency(c.ganancia)}</td>
                   <td className="px-3 py-2 text-right">
                     <span className={`inline-flex items-center justify-center h-5 w-14 rounded-md text-[10px] font-semibold tabular-nums whitespace-nowrap ${c.margen >= 20 ? "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300" : c.margen >= 10 ? "bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300" : "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300"}`}>{c.margen}%</span>
                   </td>
