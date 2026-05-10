@@ -22,6 +22,7 @@ interface EERRResult {
   gastosRetiros: Gasto[]
   totalSueldos: number
   totalRetiros: number
+  totalIncobrables?: number
   resultadoOp: number
   resultadoOpPct: number
   resultadoFinal: number
@@ -225,6 +226,9 @@ export async function generateEERRPdf(data: EERRResponse): Promise<void> {
     ...Object.entries(eerr.desglose)
       .sort((a, b) => b[1] - a[1])
       .map(([cat, val]) => ({ label: cat, value: -val, indent: 1, bold: false, total: false })),
+    ...((eerr.totalIncobrables ?? 0) > 0
+      ? [{ label: "Incobrables", value: -(eerr.totalIncobrables ?? 0), indent: 0, bold: false, total: false, prefix: "(-)" }]
+      : []),
     { label: "Resultado Operativo", value: eerr.resultadoOp, indent: 0, bold: true, total: true, positive: eerr.resultadoOp >= 0 },
     { label: "Sueldos y Comisiones", value: -eerr.totalSueldos, indent: 0, bold: false, total: false, prefix: "(-)" },
     ...(eerr.totalRetiros > 0
@@ -329,6 +333,9 @@ export async function generateEERRPdf(data: EERRResponse): Promise<void> {
     { label: "Costo mercadería", actual: eerr.totalCMV, ant: prev.totalCMV },
     { label: "Margen Bruto", actual: eerr.margenBruto, ant: prev.margenBruto },
     { label: "Gastos Operativos", actual: eerr.totalGastosOp, ant: prev.totalGastosOp },
+    ...((eerr.totalIncobrables ?? 0) > 0 || (prev.totalIncobrables ?? 0) > 0
+      ? [{ label: "Incobrables", actual: eerr.totalIncobrables ?? 0, ant: prev.totalIncobrables ?? 0 }]
+      : []),
     { label: "Resultado Operativo", actual: eerr.resultadoOp, ant: prev.resultadoOp },
     { label: "Sueldos y Comisiones", actual: eerr.totalSueldos, ant: prev.totalSueldos },
     { label: "Resultado Final", actual: eerr.resultadoFinal, ant: prev.resultadoFinal },

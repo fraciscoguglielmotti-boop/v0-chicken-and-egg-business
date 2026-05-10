@@ -309,11 +309,13 @@ export function FlujoContent() {
       g.medio_pago === "Tarjeta Credito" && g.fecha_pago ? g.fecha_pago : g.fecha
 
     const esCompensacion = (m?: string) => (m ?? "").toLowerCase() === "compensación"
+    const esIncobrable = (m?: string) => (m ?? "").toLowerCase() === "incobrable"
+    const fueraDeCash = (m?: string) => esCompensacion(m) || esIncobrable(m)
 
     const cobrosFiltradosTodos = cobros.filter(c => c.fecha.startsWith(selectedMonth))
     const pagosFiltradosTodos  = pagos.filter(p => p.fecha.startsWith(selectedMonth))
-    const cobrosFiltrados   = cobrosFiltradosTodos.filter(c => !esCompensacion(c.metodo_pago))
-    const pagosFiltrados    = pagosFiltradosTodos.filter(p => !esCompensacion(p.metodo_pago))
+    const cobrosFiltrados   = cobrosFiltradosTodos.filter(c => !fueraDeCash(c.metodo_pago))
+    const pagosFiltrados    = pagosFiltradosTodos.filter(p => !fueraDeCash(p.metodo_pago))
     const gastosFiltrados   = gastos.filter(g => g.pagado !== false && fechaEfectiva(g).startsWith(selectedMonth))
 
     const totalIngresos      = cobrosFiltrados.reduce((s, c) => s + Number(c.monto), 0)

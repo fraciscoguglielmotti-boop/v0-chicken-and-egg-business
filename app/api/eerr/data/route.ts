@@ -25,6 +25,12 @@ interface MovimientoMP {
   descripcion?: string
   categoria?: string
 }
+interface Cobro {
+  fecha: string
+  monto: number
+  metodo_pago?: string
+  cliente_nombre?: string
+}
 
 const CATEGORIAS_SUELDOS = ["comisiones", "sueldos", "sueldo", "comisión", "comision"]
 const CATEGORIAS_RETIROS = ["gastos personales francisco", "retiro de socio", "retiros"]
@@ -88,10 +94,14 @@ function calcEERR(
   todasVentas: Venta[],
   todasCompras: Compra[],
   gastosUnificados: Gasto[],
+  todosCobros: Cobro[],
   month: string
 ) {
   const ventasFiltradas = todasVentas.filter((v) => v.fecha.startsWith(month))
   const gastosFiltrados = gastosUnificados.filter((g) => mesContable(g) === month)
+  const incobrablesFiltrados = todosCobros.filter(
+    (c) => c.fecha.startsWith(month) && (c.metodo_pago ?? "").toLowerCase() === "incobrable"
+  )
 
   const totalVentas = ventasFiltradas.reduce((s, v) => s + v.cantidad * v.precio_unitario, 0)
   const costTimeline = buildCostTimeline(todasCompras)
@@ -113,6 +123,7 @@ function calcEERR(
   const totalGastosOp = gastosOp.reduce((s, g) => s + g.monto, 0)
   const totalSueldos = gastosSueldos.reduce((s, g) => s + g.monto, 0)
   const totalRetiros = gastosRetiros.reduce((s, g) => s + g.monto, 0)
+  const totalIncobrables = incobrablesFiltrados.reduce((s, c) => s + Number(c.monto), 0)
 
   const desglose: Record<string, number> = {}
   const movimientosPorCat: Record<string, Gasto[]> = {}
@@ -123,7 +134,7 @@ function calcEERR(
     movimientosPorCat[cat].push(g)
   }
 
-  const resultadoOp = margenBruto - totalGastosOp
+  const resultadoOp = margenBruto - totalGastosOp - totalIncobrables
   const resultadoOpPct = totalVentas > 0 ? (resultadoOp / totalVentas) * 100 : 0
   const resultadoFinal = resultadoOp - totalSueldos - totalRetiros
   const resultadoFinalPct = totalVentas > 0 ? (resultadoFinal / totalVentas) * 100 : 0
@@ -140,6 +151,8 @@ function calcEERR(
     gastosRetiros,
     totalSueldos,
     totalRetiros,
+    totalIncobrables,
+    incobrables: incobrablesFiltrados,
     resultadoOp,
     resultadoOpPct,
     resultadoFinal,
@@ -187,7 +200,7 @@ export async function GET(req: NextRequest) {
       return all
     }
 
-    const [ventas, compras, gastos, movimientosMp] = await Promise.all([
+    const [ventas, compras, gastos, movimientosMp, cobros] = await Promise.all([
       fetchAll<Venta>(
         supabase,
         "ventas",
@@ -207,6 +220,12 @@ export async function GET(req: NextRequest) {
         "fecha,tipo,monto,descripcion,categoria",
         [{ col: "fecha", op: "gte", val: `${prev}-01` }, { col: "fecha", op: "lte", val: endOfMonth }]
       ),
+      fetchAll<Cobro>(
+        supabase,
+        "cobros",
+        "fecha,monto,metodo_pago,cliente_nombre",
+        [{ col: "fecha", op: "gte", val: prevStart }, { col: "fecha", op: "lte", val: endOfMonth }]
+      ),
     ])
 
     const gastosUnificados: Gasto[] = [
@@ -214,8 +233,8 @@ export async function GET(req: NextRequest) {
       ...movimientosMp.filter(esMPGasto).map(mpAGasto),
     ]
 
-    const current = calcEERR(ventas, compras, gastosUnificados, month)
-    const previous = calcEERR(ventas, compras, gastosUnificados, prev)
+    const current = calcEERR(ventas, compras, gastosUnificados, cobros, month)
+    const previous = calcEERR(ventas, compras, gastosUnificados, cobros, prev)
 
     return NextResponse.json({
       month,

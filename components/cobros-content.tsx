@@ -40,7 +40,7 @@ interface Proveedor {
 }
 
 const CUENTAS_DESTINO = CUENTAS_DESTINO_COBROS
-const METODOS_PAGO = ["efectivo", "transferencia", "mercadopago", "cheque", "compensación"]
+const METODOS_PAGO = ["efectivo", "transferencia", "mercadopago", "cheque", "compensación", "incobrable"]
 // RECEPTORES_EFECTIVO viene de lib/config
 
 export function CobrosContent() {
