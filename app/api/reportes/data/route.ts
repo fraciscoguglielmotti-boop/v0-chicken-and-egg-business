@@ -532,7 +532,7 @@ export async function GET(req: NextRequest) {
         supabase.from("ventas").select("fecha,cliente_nombre,producto_nombre,cantidad,precio_unitario").gte("fecha", d.monthStart).lte("fecha", d.monthEnd),
         supabase.from("ventas").select("fecha,producto_nombre,cantidad,precio_unitario").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
         supabase.from("ventas").select("producto_nombre,cantidad,precio_unitario").gte("fecha", d.sameMonthLastYearStart).lte("fecha", d.sameMonthLastYearEnd),
-        supabase.from("cobros").select("fecha,monto,metodo_pago").gte("fecha", d.monthStart).lte("fecha", d.monthEnd),
+        supabase.from("cobros").select("fecha,monto,metodo_pago,cliente_nombre").gte("fecha", d.monthStart).lte("fecha", d.monthEnd),
         supabase.from("cobros").select("monto,metodo_pago").gte("fecha", d.lastMonthStart).lte("fecha", d.lastMonthEnd),
         supabase.from("cobros").select("monto").gte("fecha", d.sameMonthLastYearStart).lte("fecha", d.sameMonthLastYearEnd),
         // Gastos: incluir tanto los con `fecha` en el rango como los de tarjeta de crédito
@@ -656,7 +656,9 @@ export async function GET(req: NextRequest) {
 
       const mesLabel = d.now.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" })
 
-      // Por cliente: último precio de compra vigente en la fecha de cada venta
+      // Por cliente: último precio de compra vigente en la fecha de cada venta.
+      // Los cobros marcados como "incobrable" reducen la ganancia del cliente
+      // (se vendió la mercadería pero el cobro nunca va a ingresar).
       const costoMap: Record<string, { cajones: number; totalVendido: number; costoVendido: number }> = {}
       for (const v of vMes ?? []) {
         if (!v.cantidad || v.cantidad <= 0) continue
@@ -667,17 +669,25 @@ export async function GET(req: NextRequest) {
         costoMap[nombre].totalVendido += v.cantidad * (v.precio_unitario ?? 0)
         costoMap[nombre].costoVendido += v.cantidad * costUnit
       }
+      const incobrablesPorCliente: Record<string, number> = {}
+      for (const c of cMes ?? []) {
+        if (!esIncobrable(c.metodo_pago)) continue
+        const nombre = c.cliente_nombre || "Sin nombre"
+        incobrablesPorCliente[nombre] = (incobrablesPorCliente[nombre] ?? 0) + Number(c.monto ?? 0)
+      }
       const clientesMes = Object.entries(costoMap)
         .map(([nombre, d]) => {
           const costoVendido = Math.round(d.costoVendido)
           const totalVendido = Math.round(d.totalVendido)
-          const ganancia = totalVendido - costoVendido
-          const margen = totalVendido > 0 ? round1(((totalVendido - costoVendido) / totalVendido) * 100) : 0
+          const incobrable = Math.round(incobrablesPorCliente[nombre] ?? 0)
+          const ganancia = totalVendido - costoVendido - incobrable
+          const margen = totalVendido > 0 ? round1((ganancia / totalVendido) * 100) : 0
           return {
             nombre,
             cajones: Math.round(d.cajones),
             totalVendido,
             costoVendido,
+            incobrable,
             ganancia,
             margen,
           }
