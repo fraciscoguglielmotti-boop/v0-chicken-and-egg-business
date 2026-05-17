@@ -33,6 +33,7 @@ import {
   Store,
   WifiOff,
   Shield,
+  MessageCircle,
 } from "lucide-react"
 import {
   DndContext,
@@ -60,6 +61,7 @@ const ALL_SECTIONS = [
     items: [
       { name: "Dashboard", href: "/", icon: LayoutDashboard },
       { name: "Minorista", href: "/minorista", icon: Store },
+      { name: "WhatsApp Minorista", href: "/whatsapp", icon: MessageCircle },
       { name: "Ventas", href: "/ventas", icon: ShoppingCart },
       { name: "Resumen de Ventas", href: "/resumen-ventas", icon: CalendarDays },
       { name: "Producción", href: "/produccion", icon: Factory },
