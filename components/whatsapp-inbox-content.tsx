@@ -2,35 +2,65 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
-import type { WaConversation, WaMessage } from "@/lib/whatsapp/types"
 import {
   Send,
   MessageSquare,
   ArrowLeft,
   RefreshCw,
   Phone,
-  AlertTriangle,
+  Bot,
+  ShoppingCart,
   CheckCheck,
-  X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 
-type FilterTab = "todas" | "no-leidas" | "escaladas" | "cerradas"
-
-interface ConvWithPreview extends WaConversation {
-  lastMsgBody?: string | null
-  lastMsgDirection?: "inbound" | "outbound"
+// ─── Tipos de las tablas mn_* (manejadas por Make.com) ────────────────────────
+interface MnMensaje {
+  id: string
+  telefono: string
+  direccion: "inbound" | "outbound"
+  tipo: string
+  contenido: string | null
+  metadata: Record<string, unknown> | null
+  created_at: string
 }
 
+interface MnSesion {
+  id: string
+  telefono: string
+  cliente_id: string | null
+  estado: string | null
+  contexto: Record<string, unknown> | null
+  pedido_id_activo: string | null
+  created_at: string
+}
+
+interface ClienteMini {
+  id: string
+  nombre: string
+}
+
+interface Conversacion {
+  telefono: string
+  clienteNombre: string | null
+  estado: string | null
+  pedidoActivo: string | null
+  lastMsg: MnMensaje | null
+  msgCount: number
+  inboundSinResponder: boolean
+}
+
+type FilterTab = "todas" | "sin-responder" | "hoy"
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function fmtTime(dateStr: string | null | undefined): string {
   if (!dateStr) return ""
   const d = new Date(dateStr)
   const now = new Date()
-  const diffMs = now.getTime() - d.getTime()
-  const diffDays = Math.floor(diffMs / 86_400_000)
+  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86_400_000)
   if (diffDays === 0) return d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })
   if (diffDays === 1) return "Ayer"
   if (diffDays < 7) return d.toLocaleDateString("es-AR", { weekday: "short" })
@@ -46,20 +76,24 @@ function fmtFull(dateStr: string): string {
   })
 }
 
-function initials(name: string | null | undefined, phone: string): string {
-  if (name && name !== phone) return name.charAt(0).toUpperCase()
+function isToday(dateStr: string | null): boolean {
+  if (!dateStr) return false
+  const d = new Date(dateStr)
+  const now = new Date()
+  return d.toDateString() === now.toDateString()
+}
+
+function initials(name: string | null, phone: string): string {
+  if (name) return name.charAt(0).toUpperCase()
   return phone.slice(-2)
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  active: "Activa",
-  escalated: "Escalada",
-  closed: "Cerrada",
-}
-const STATUS_COLOR: Record<string, string> = {
-  active: "bg-green-500",
-  escalated: "bg-yellow-500",
-  closed: "bg-gray-400",
+function fmtPhone(phone: string): string {
+  // Argentina: 5491121568981 → +54 9 11 2156-8981
+  if (phone.startsWith("549") && phone.length === 13) {
+    return `+54 9 ${phone.slice(3, 5)} ${phone.slice(5, 9)}-${phone.slice(9)}`
+  }
+  return `+${phone}`
 }
 
 // ─── Conversation list item ────────────────────────────────────────────────────
@@ -68,17 +102,13 @@ function ConvItem({
   selected,
   onClick,
 }: {
-  conv: ConvWithPreview
+  conv: Conversacion
   selected: boolean
   onClick: () => void
 }) {
-  const name = conv.display_name && conv.display_name !== conv.phone_number
-    ? conv.display_name
-    : `+${conv.phone_number}`
-
-  const preview = conv.lastMsgBody
-    ? (conv.lastMsgDirection === "outbound" ? "Tú: " : "") + conv.lastMsgBody
-    : "Sin mensajes"
+  const displayName = conv.clienteNombre ?? fmtPhone(conv.telefono)
+  const lastMsgBody = conv.lastMsg?.contenido ?? "Sin mensajes"
+  const preview = conv.lastMsg?.direccion === "outbound" ? `Tú: ${lastMsgBody}` : lastMsgBody
 
   return (
     <button
@@ -88,30 +118,31 @@ function ConvItem({
         selected && "bg-muted"
       )}
     >
-      {/* Avatar */}
       <div
         className={cn(
           "h-11 w-11 shrink-0 rounded-full flex items-center justify-center text-sm font-semibold text-white",
-          conv.status === "escalated" ? "bg-yellow-500" : "bg-emerald-600"
+          conv.inboundSinResponder ? "bg-emerald-600" : "bg-muted-foreground/50"
         )}
       >
-        {initials(conv.display_name, conv.phone_number)}
+        {initials(conv.clienteNombre, conv.telefono)}
       </div>
 
-      {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-semibold truncate text-foreground">{name}</span>
+          <span className="text-sm font-semibold truncate text-foreground">{displayName}</span>
           <span className="text-[11px] text-muted-foreground shrink-0">
-            {fmtTime(conv.last_message_at)}
+            {fmtTime(conv.lastMsg?.created_at)}
           </span>
         </div>
         <div className="flex items-center justify-between gap-2 mt-0.5">
-          <span className="text-xs text-muted-foreground truncate">{preview}</span>
-          {conv.unread_count > 0 && (
-            <span className="shrink-0 h-5 min-w-5 rounded-full bg-emerald-600 text-white text-[11px] font-bold flex items-center justify-center px-1">
-              {conv.unread_count}
-            </span>
+          <span className={cn(
+            "text-xs truncate",
+            conv.inboundSinResponder ? "text-foreground font-medium" : "text-muted-foreground"
+          )}>
+            {preview}
+          </span>
+          {conv.inboundSinResponder && (
+            <span className="shrink-0 h-2 w-2 rounded-full bg-emerald-600" title="Sin responder" />
           )}
         </div>
       </div>
@@ -119,10 +150,10 @@ function ConvItem({
   )
 }
 
-// ─── Message bubble ─────────────────────────────────────────────────────────
-function MsgBubble({ msg }: { msg: WaMessage }) {
-  const isOut = msg.direction === "outbound"
-  const body = msg.body ?? (msg.message_type !== "text" ? `[${msg.message_type}]` : "[vacío]")
+// ─── Message bubble ────────────────────────────────────────────────────────────
+function MsgBubble({ msg }: { msg: MnMensaje }) {
+  const isOut = msg.direccion === "outbound"
+  const body = msg.contenido ?? (msg.tipo !== "text" ? `[${msg.tipo}]` : "[vacío]")
 
   return (
     <div className={cn("flex mb-2", isOut ? "justify-end" : "justify-start")}>
@@ -134,16 +165,8 @@ function MsgBubble({ msg }: { msg: WaMessage }) {
             : "bg-card border border-border rounded-tl-sm"
         )}
       >
-        {msg.sender_type === "bot" && (
-          <span className="block text-[10px] font-semibold mb-1 opacity-70">🤖 Bot</span>
-        )}
         <p className="whitespace-pre-wrap break-words leading-relaxed">{body}</p>
-        <div
-          className={cn(
-            "flex items-center gap-1 mt-1",
-            isOut ? "justify-end" : "justify-start"
-          )}
-        >
+        <div className={cn("flex items-center gap-1 mt-1", isOut ? "justify-end" : "justify-start")}>
           <span className={cn("text-[10px]", isOut ? "text-emerald-100" : "text-muted-foreground")}>
             {fmtFull(msg.created_at)}
           </span>
@@ -154,7 +177,6 @@ function MsgBubble({ msg }: { msg: WaMessage }) {
   )
 }
 
-// ─── Empty state ─────────────────────────────────────────────────────────────
 function EmptyChat() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground bg-muted/20">
@@ -164,23 +186,21 @@ function EmptyChat() {
   )
 }
 
-// ─── Filter tabs ─────────────────────────────────────────────────────────────
 function FilterTabs({
   active,
   onChange,
-  unreadCount,
-  escalatedCount,
+  sinResponderCount,
+  hoyCount,
 }: {
   active: FilterTab
   onChange: (t: FilterTab) => void
-  unreadCount: number
-  escalatedCount: number
+  sinResponderCount: number
+  hoyCount: number
 }) {
   const tabs: { id: FilterTab; label: string; count?: number }[] = [
     { id: "todas", label: "Todas" },
-    { id: "no-leidas", label: "No leídas", count: unreadCount },
-    { id: "escaladas", label: "Escaladas", count: escalatedCount },
-    { id: "cerradas", label: "Cerradas" },
+    { id: "sin-responder", label: "Sin responder", count: sinResponderCount },
+    { id: "hoy", label: "Hoy", count: hoyCount },
   ]
 
   return (
@@ -212,9 +232,10 @@ function FilterTabs({
 export function WhatsappInboxContent() {
   const supabase = createClient()
 
-  const [conversations, setConversations] = useState<ConvWithPreview[]>([])
-  const [messages, setMessages] = useState<WaMessage[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [messages, setMessages] = useState<MnMensaje[]>([])
+  const [sesiones, setSesiones] = useState<MnSesion[]>([])
+  const [clientes, setClientes] = useState<Map<string, ClienteMini>>(new Map())
+  const [selectedPhone, setSelectedPhone] = useState<string | null>(null)
   const [filterTab, setFilterTab] = useState<FilterTab>("todas")
   const [replyText, setReplyText] = useState("")
   const [sending, setSending] = useState(false)
@@ -222,129 +243,157 @@ export function WhatsappInboxContent() {
   const [showChat, setShowChat] = useState(false)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const selectedIdRef = useRef<string | null>(null)
-  selectedIdRef.current = selectedId
+  const selectedPhoneRef = useRef<string | null>(null)
+  selectedPhoneRef.current = selectedPhone
 
-  // ── Load conversations + last message preview ──────────────────────────────
-  const loadConversations = useCallback(async () => {
-    const { data: convs } = await supabase
-      .from("wa_conversations")
-      .select("*")
-      .order("last_message_at", { ascending: false })
-      .limit(200)
+  // ── Load data ──────────────────────────────────────────────────────────────
+  const loadAll = useCallback(async () => {
+    const [{ data: msgs }, { data: ses }] = await Promise.all([
+      supabase
+        .from("mn_mensajes_whatsapp")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(2000),
+      supabase
+        .from("mn_sesiones_whatsapp")
+        .select("*"),
+    ])
 
-    if (!convs) return
+    setMessages((msgs as MnMensaje[]) ?? [])
+    setSesiones((ses as MnSesion[]) ?? [])
 
-    // Fetch recent messages to build last-message preview
-    const { data: recentMsgs } = await supabase
-      .from("wa_messages")
-      .select("conversation_id, body, direction, created_at")
-      .order("created_at", { ascending: false })
-      .limit(500)
-
-    // Map last message per conversation (messages are already ordered newest-first)
-    const lastMap = new Map<string, { body: string | null; direction: "inbound" | "outbound" }>()
-    for (const m of recentMsgs ?? []) {
-      if (!lastMap.has(m.conversation_id)) {
-        lastMap.set(m.conversation_id, { body: m.body, direction: m.direction })
-      }
+    // Load linked clientes for name display
+    const clienteIds = Array.from(
+      new Set((ses ?? []).map((s: MnSesion) => s.cliente_id).filter(Boolean) as string[])
+    )
+    if (clienteIds.length > 0) {
+      const { data: cls } = await supabase
+        .from("clientes")
+        .select("id, nombre")
+        .in("id", clienteIds)
+      const map = new Map<string, ClienteMini>()
+      for (const c of (cls as ClienteMini[]) ?? []) map.set(c.id, c)
+      setClientes(map)
     }
 
-    setConversations(
-      (convs as WaConversation[]).map((c) => ({
-        ...c,
-        lastMsgBody: lastMap.get(c.id)?.body ?? undefined,
-        lastMsgDirection: lastMap.get(c.id)?.direction ?? undefined,
-      }))
-    )
     setLoading(false)
   }, [supabase])
 
-  // ── Load messages for selected conversation ────────────────────────────────
-  const loadMessages = useCallback(
-    async (convId: string) => {
-      const { data } = await supabase
-        .from("wa_messages")
-        .select("*")
-        .eq("conversation_id", convId)
-        .order("created_at", { ascending: true })
-        .limit(500)
-
-      setMessages(data ?? [])
-
-      // Mark as read
-      await supabase
-        .from("wa_conversations")
-        .update({ unread_count: 0 })
-        .eq("id", convId)
-
-      setConversations((prev) =>
-        prev.map((c) => (c.id === convId ? { ...c, unread_count: 0 } : c))
-      )
-    },
-    [supabase]
-  )
-
-  // ── Realtime ───────────────────────────────────────────────────────────────
+  // ── Initial load + realtime ────────────────────────────────────────────────
   useEffect(() => {
+    loadAll()
+
     const channel = supabase
-      .channel("wa-inbox-realtime")
+      .channel("mn-whatsapp-inbox")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "wa_messages" },
+        { event: "INSERT", schema: "public", table: "mn_mensajes_whatsapp" },
         (payload) => {
-          const msg = payload.new as WaMessage
-          if (msg.conversation_id === selectedIdRef.current) {
-            setMessages((prev) => [...prev, msg])
-          }
-          loadConversations()
+          const msg = payload.new as MnMensaje
+          setMessages((prev) => [msg, ...prev])
         }
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "wa_conversations" },
-        () => loadConversations()
+        { event: "UPDATE", schema: "public", table: "mn_sesiones_whatsapp" },
+        () => loadAll()
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "mn_sesiones_whatsapp" },
+        () => loadAll()
       )
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [supabase, loadConversations])
+  }, [supabase, loadAll])
 
-  // ── Initial load ───────────────────────────────────────────────────────────
-  useEffect(() => {
-    loadConversations()
-  }, [loadConversations])
+  // ── Build conversations from messages + sessions ───────────────────────────
+  const conversations = useMemo<Conversacion[]>(() => {
+    // Group messages by telefono (already ordered by created_at desc)
+    const byPhone = new Map<string, MnMensaje[]>()
+    for (const m of messages) {
+      const list = byPhone.get(m.telefono)
+      if (list) list.push(m)
+      else byPhone.set(m.telefono, [m])
+    }
 
-  // ── Load messages on selection change ─────────────────────────────────────
-  useEffect(() => {
-    if (selectedId) loadMessages(selectedId)
-    else setMessages([])
-  }, [selectedId, loadMessages])
+    // Map sessions by telefono
+    const sesPorTel = new Map<string, MnSesion>()
+    for (const s of sesiones) {
+      const existing = sesPorTel.get(s.telefono)
+      if (!existing || new Date(s.created_at) > new Date(existing.created_at)) {
+        sesPorTel.set(s.telefono, s)
+      }
+    }
 
-  // ── Scroll to bottom on new messages ──────────────────────────────────────
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages])
+    const result: Conversacion[] = []
+    for (const [telefono, msgs] of byPhone) {
+      const sesion = sesPorTel.get(telefono)
+      const clienteNombre = sesion?.cliente_id ? clientes.get(sesion.cliente_id)?.nombre ?? null : null
+      const lastMsg = msgs[0] ?? null
+      result.push({
+        telefono,
+        clienteNombre,
+        estado: sesion?.estado ?? null,
+        pedidoActivo: sesion?.pedido_id_activo ?? null,
+        lastMsg,
+        msgCount: msgs.length,
+        inboundSinResponder: lastMsg?.direccion === "inbound",
+      })
+    }
 
-  // ── Derived state ─────────────────────────────────────────────────────────
+    result.sort((a, b) => {
+      const aT = a.lastMsg?.created_at ?? ""
+      const bT = b.lastMsg?.created_at ?? ""
+      return bT.localeCompare(aT)
+    })
+
+    return result
+  }, [messages, sesiones, clientes])
+
+  // ── Filtered conversations ─────────────────────────────────────────────────
   const filteredConvs = useMemo(() => {
     switch (filterTab) {
-      case "no-leidas": return conversations.filter((c) => c.unread_count > 0)
-      case "escaladas": return conversations.filter((c) => c.status === "escalated")
-      case "cerradas":  return conversations.filter((c) => c.status === "closed")
-      default:          return conversations
+      case "sin-responder": return conversations.filter((c) => c.inboundSinResponder)
+      case "hoy":           return conversations.filter((c) => isToday(c.lastMsg?.created_at ?? null))
+      default:              return conversations
     }
   }, [conversations, filterTab])
 
-  const unreadCount   = useMemo(() => conversations.filter((c) => c.unread_count > 0).length, [conversations])
-  const escalatedCount = useMemo(() => conversations.filter((c) => c.status === "escalated").length, [conversations])
-  const selectedConv  = useMemo(() => conversations.find((c) => c.id === selectedId), [conversations, selectedId])
+  const sinResponderCount = useMemo(
+    () => conversations.filter((c) => c.inboundSinResponder).length,
+    [conversations]
+  )
+  const hoyCount = useMemo(
+    () => conversations.filter((c) => isToday(c.lastMsg?.created_at ?? null)).length,
+    [conversations]
+  )
+
+  // ── Messages for selected conversation ─────────────────────────────────────
+  const selectedConv = useMemo(
+    () => conversations.find((c) => c.telefono === selectedPhone) ?? null,
+    [conversations, selectedPhone]
+  )
+
+  const selectedMessages = useMemo(() => {
+    if (!selectedPhone) return []
+    return messages
+      .filter((m) => m.telefono === selectedPhone)
+      .slice()
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+  }, [messages, selectedPhone])
+
+  // ── Scroll to bottom when messages change ──────────────────────────────────
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [selectedMessages.length])
 
   // ── Actions ───────────────────────────────────────────────────────────────
-  const selectConversation = (id: string) => {
-    setSelectedId(id)
+  const selectConversation = (telefono: string) => {
+    setSelectedPhone(telefono)
     setShowChat(true)
   }
 
@@ -356,9 +405,8 @@ export function WhatsappInboxContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          conversationId: selectedConv.id,
-          to: selectedConv.phone_number,
-          body: replyText.trim(),
+          telefono: selectedConv.telefono,
+          contenido: replyText.trim(),
         }),
       })
       setReplyText("")
@@ -367,39 +415,24 @@ export function WhatsappInboxContent() {
     }
   }
 
-  const closeConversation = async () => {
-    if (!selectedId) return
-    await supabase
-      .from("wa_conversations")
-      .update({ status: "closed" })
-      .eq("id", selectedId)
-    setConversations((prev) =>
-      prev.map((c) => (c.id === selectedId ? { ...c, status: "closed" } : c))
-    )
-  }
-
   const contactName = selectedConv
-    ? selectedConv.display_name && selectedConv.display_name !== selectedConv.phone_number
-      ? selectedConv.display_name
-      : `+${selectedConv.phone_number}`
+    ? selectedConv.clienteNombre ?? fmtPhone(selectedConv.telefono)
     : null
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-[calc(100vh-3.5rem-2rem)] lg:h-[calc(100vh-3.5rem-3rem)] overflow-hidden rounded-lg border border-border bg-background shadow-sm">
-      {/* ── Left panel: conversation list ─────────────────────────────────── */}
+      {/* ── Conversation list ───────────────────────────────────────────── */}
       <div
         className={cn(
           "flex flex-col border-r border-border",
-          // On mobile: full width when showing list, hidden when showing chat
           showChat ? "hidden md:flex md:w-80 lg:w-96" : "flex w-full md:w-80 lg:w-96"
         )}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
           <h2 className="font-semibold text-base">WhatsApp Minorista</h2>
           <button
-            onClick={loadConversations}
+            onClick={loadAll}
             className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground"
             title="Actualizar"
           >
@@ -407,15 +440,13 @@ export function WhatsappInboxContent() {
           </button>
         </div>
 
-        {/* Filter tabs */}
         <FilterTabs
           active={filterTab}
           onChange={setFilterTab}
-          unreadCount={unreadCount}
-          escalatedCount={escalatedCount}
+          sinResponderCount={sinResponderCount}
+          hoyCount={hoyCount}
         />
 
-        {/* List */}
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
@@ -429,93 +460,69 @@ export function WhatsappInboxContent() {
           ) : (
             filteredConvs.map((conv) => (
               <ConvItem
-                key={conv.id}
+                key={conv.telefono}
                 conv={conv}
-                selected={conv.id === selectedId}
-                onClick={() => selectConversation(conv.id)}
+                selected={conv.telefono === selectedPhone}
+                onClick={() => selectConversation(conv.telefono)}
               />
             ))
           )}
         </div>
       </div>
 
-      {/* ── Right panel: chat view ────────────────────────────────────────── */}
-      <div
-        className={cn(
-          "flex flex-col flex-1 min-w-0",
-          !showChat && "hidden md:flex"
-        )}
-      >
+      {/* ── Chat view ───────────────────────────────────────────────────── */}
+      <div className={cn("flex flex-col flex-1 min-w-0", !showChat && "hidden md:flex")}>
         {!selectedConv ? (
           <EmptyChat />
         ) : (
           <>
-            {/* Chat header */}
             <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/30">
-              {/* Back button (mobile) */}
               <button
-                onClick={() => { setShowChat(false); setSelectedId(null) }}
+                onClick={() => { setShowChat(false); setSelectedPhone(null) }}
                 className="md:hidden p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground"
               >
                 <ArrowLeft className="h-5 w-5" />
               </button>
 
-              {/* Avatar */}
               <div className="h-9 w-9 rounded-full bg-emerald-600 flex items-center justify-center text-sm font-semibold text-white shrink-0">
-                {initials(selectedConv.display_name, selectedConv.phone_number)}
+                {initials(selectedConv.clienteNombre, selectedConv.telefono)}
               </div>
 
-              {/* Name + status */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-sm truncate">{contactName}</span>
-                  <span
-                    className={cn(
-                      "h-2 w-2 rounded-full shrink-0",
-                      STATUS_COLOR[selectedConv.status] ?? "bg-gray-400"
-                    )}
-                    title={STATUS_LABEL[selectedConv.status]}
-                  />
-                </div>
+                <span className="font-semibold text-sm truncate block">{contactName}</span>
                 <div className="flex items-center gap-1 text-xs text-muted-foreground">
                   <Phone className="h-3 w-3" />
-                  <span>+{selectedConv.phone_number}</span>
+                  <span>{fmtPhone(selectedConv.telefono)}</span>
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-1 shrink-0">
-                {selectedConv.status === "escalated" && (
-                  <Badge variant="outline" className="text-yellow-600 border-yellow-400 text-[11px]">
-                    <AlertTriangle className="h-3 w-3 mr-1" />
-                    Escalada
+              <div className="flex items-center gap-1.5 shrink-0">
+                {selectedConv.estado && (
+                  <Badge variant="outline" className="text-[11px] gap-1 border-emerald-300 text-emerald-700 dark:text-emerald-400">
+                    <Bot className="h-3 w-3" />
+                    {selectedConv.estado}
                   </Badge>
                 )}
-                {selectedConv.status !== "closed" && (
-                  <button
-                    onClick={closeConversation}
-                    className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground"
-                    title="Cerrar conversación"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                {selectedConv.pedidoActivo && (
+                  <Badge variant="outline" className="text-[11px] gap-1 border-amber-300 text-amber-700 dark:text-amber-400">
+                    <ShoppingCart className="h-3 w-3" />
+                    Pedido
+                  </Badge>
                 )}
               </div>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto px-4 py-4 bg-muted/10">
-              {messages.length === 0 ? (
+              {selectedMessages.length === 0 ? (
                 <p className="text-center text-muted-foreground text-sm mt-8">
                   No hay mensajes todavía
                 </p>
               ) : (
-                messages.map((msg) => <MsgBubble key={msg.id} msg={msg} />)
+                selectedMessages.map((msg) => <MsgBubble key={msg.id} msg={msg} />)
               )}
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Reply input */}
             <div className="flex items-end gap-2 px-4 py-3 border-t border-border bg-background">
               <Textarea
                 value={replyText}
@@ -529,23 +536,16 @@ export function WhatsappInboxContent() {
                 placeholder="Escribí un mensaje..."
                 rows={1}
                 className="resize-none min-h-[40px] max-h-[120px] flex-1 text-sm"
-                disabled={selectedConv.status === "closed"}
               />
               <Button
                 size="icon"
                 onClick={sendReply}
-                disabled={!replyText.trim() || sending || selectedConv.status === "closed"}
+                disabled={!replyText.trim() || sending}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white h-10 w-10 shrink-0"
               >
                 <Send className="h-4 w-4" />
               </Button>
             </div>
-
-            {selectedConv.status === "closed" && (
-              <p className="text-center text-xs text-muted-foreground pb-2">
-                Conversación cerrada — no se pueden enviar mensajes
-              </p>
-            )}
           </>
         )}
       </div>
