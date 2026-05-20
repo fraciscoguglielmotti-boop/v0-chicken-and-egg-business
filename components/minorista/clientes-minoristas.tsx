@@ -1,11 +1,10 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Plus, Pencil, Trash2, Search, Phone, MapPin, User } from "lucide-react"
+import { Plus, Pencil, Trash2, Search, Phone, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -18,29 +17,21 @@ import { Card, CardContent } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { useConfirm } from "@/components/confirm-dialog"
-import { ClienteMinorista, nextCustomerId } from "./types"
+import { MnCliente, clienteNombre } from "./types"
 
 interface Props {
-  clientes: ClienteMinorista[]
+  clientes: MnCliente[]
   mutate: () => Promise<any>
 }
 
-const empty = {
-  nombre: "",
-  apellido: "",
-  telefono: "",
-  direccion: "",
-  lat: "",
-  lng: "",
-  notas: "",
-}
+const empty = { nombre: "", telefono: "" }
 
 export function ClientesMinoristas({ clientes, mutate }: Props) {
   const { toast } = useToast()
   const { confirm, ConfirmDialog } = useConfirm()
   const [search, setSearch] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editing, setEditing] = useState<ClienteMinorista | null>(null)
+  const [editing, setEditing] = useState<MnCliente | null>(null)
   const [form, setForm] = useState(empty)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -48,7 +39,7 @@ export function ClientesMinoristas({ clientes, mutate }: Props) {
     const q = search.toLowerCase().trim()
     if (!q) return clientes
     return clientes.filter((c) =>
-      [c.customer_id, c.nombre, c.apellido, c.telefono, c.direccion]
+      [c.nombre, c.telefono]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q))
     )
@@ -60,92 +51,56 @@ export function ClientesMinoristas({ clientes, mutate }: Props) {
     setDialogOpen(true)
   }
 
-  const openEdit = (c: ClienteMinorista) => {
+  const openEdit = (c: MnCliente) => {
     setEditing(c)
-    setForm({
-      nombre: c.nombre || "",
-      apellido: c.apellido || "",
-      telefono: c.telefono || "",
-      direccion: c.direccion || "",
-      lat: c.lat != null ? String(c.lat) : "",
-      lng: c.lng != null ? String(c.lng) : "",
-      notas: c.notas || "",
-    })
+    setForm({ nombre: c.nombre || "", telefono: c.telefono || "" })
     setDialogOpen(true)
-  }
-
-  const parseLatLng = (s: string): { lat: number | null; lng: number | null } => {
-    if (!s) return { lat: null, lng: null }
-    const m = s.match(/(-?\d+\.?\d*)\s*,\s*(-?\d+\.?\d*)/)
-    if (m) return { lat: Number(m[1]), lng: Number(m[2]) }
-    return { lat: null, lng: null }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmitting) return
+    if (!form.telefono.trim()) {
+      toast({ title: "Falta teléfono", description: "El teléfono es requerido.", variant: "destructive" })
+      return
+    }
     setIsSubmitting(true)
     try {
-      const lat = form.lat ? Number(form.lat) : null
-      const lng = form.lng ? Number(form.lng) : null
       const payload = {
         nombre: form.nombre.trim(),
-        apellido: form.apellido.trim(),
-        telefono: form.telefono.trim() || null,
-        direccion: form.direccion.trim() || null,
-        lat,
-        lng,
-        notas: form.notas.trim() || null,
+        telefono: form.telefono.trim(),
+        activo: true,
       }
       if (editing) {
-        await updateRow("clientes_minoristas", editing.id, payload)
+        await updateRow("mn_clientes", editing.id, payload)
         toast({ title: "Cliente actualizado" })
       } else {
-        await insertRow("clientes_minoristas", {
-          ...payload,
-          customer_id: nextCustomerId(clientes),
-          activo: true,
-        })
+        await insertRow("mn_clientes", payload)
         toast({ title: "Cliente creado" })
       }
       await mutate()
       setDialogOpen(false)
     } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err.message || "No se pudo guardar",
-        variant: "destructive",
-      })
+      toast({ title: "Error", description: err.message || "No se pudo guardar", variant: "destructive" })
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const handleDelete = async (c: ClienteMinorista) => {
+  const handleDelete = async (c: MnCliente) => {
     const ok = await confirm({
-      title: `Eliminar cliente ${c.nombre} ${c.apellido}?`,
+      title: `Eliminar cliente ${clienteNombre(c)}?`,
       description: "Esta acción no se puede deshacer.",
       destructive: true,
       confirmLabel: "Eliminar",
     })
     if (!ok) return
     try {
-      await deleteRow("clientes_minoristas", c.id)
+      await deleteRow("mn_clientes", c.id)
       await mutate()
       toast({ title: "Cliente eliminado" })
     } catch (err: any) {
-      toast({
-        title: "Error",
-        description: err.message || "No se pudo eliminar",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleLatLngPaste = (value: string) => {
-    const { lat, lng } = parseLatLng(value)
-    if (lat != null && lng != null) {
-      setForm((f) => ({ ...f, lat: String(lat), lng: String(lng) }))
+      toast({ title: "Error", description: err.message || "No se pudo eliminar", variant: "destructive" })
     }
   }
 
@@ -157,7 +112,7 @@ export function ClientesMinoristas({ clientes, mutate }: Props) {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre, teléfono, dirección..."
+            placeholder="Buscar por nombre o teléfono..."
             className="pl-9"
           />
         </div>
@@ -173,11 +128,9 @@ export function ClientesMinoristas({ clientes, mutate }: Props) {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <Badge variant="outline" className="text-[10px] mb-1">
-                    {c.customer_id}
+                    #{c.id}
                   </Badge>
-                  <h3 className="font-semibold leading-tight">
-                    {c.nombre} {c.apellido}
-                  </h3>
+                  <h3 className="font-semibold leading-tight">{clienteNombre(c)}</h3>
                 </div>
                 <div className="flex gap-1">
                   <Button
@@ -198,43 +151,19 @@ export function ClientesMinoristas({ clientes, mutate }: Props) {
                   </Button>
                 </div>
               </div>
-              <div className="space-y-1 text-sm text-muted-foreground">
-                {c.telefono && (
-                  <div className="flex items-center gap-2">
-                    <Phone className="h-3.5 w-3.5 shrink-0" />
-                    <a
-                      href={`https://wa.me/${c.telefono.replace(/\D/g, "")}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="hover:text-foreground"
-                    >
-                      {c.telefono}
-                    </a>
-                  </div>
-                )}
-                {c.direccion && (
-                  <div className="flex items-start gap-2">
-                    <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                    <a
-                      href={
-                        c.lat != null && c.lng != null
-                          ? `https://www.google.com/maps/search/?api=1&query=${c.lat},${c.lng}`
-                          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.direccion)}`
-                      }
-                      target="_blank"
-                      rel="noreferrer"
-                      className="hover:text-foreground leading-tight"
-                    >
-                      {c.direccion}
-                    </a>
-                  </div>
-                )}
-                {c.notas && (
-                  <p className="text-xs italic text-muted-foreground/80 pt-1">
-                    {c.notas}
-                  </p>
-                )}
-              </div>
+              {c.telefono && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Phone className="h-3.5 w-3.5 shrink-0" />
+                  <a
+                    href={`https://wa.me/${c.telefono.replace(/\D/g, "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:text-foreground"
+                  >
+                    {c.telefono}
+                  </a>
+                </div>
+              )}
             </CardContent>
           </Card>
         ))}
@@ -243,7 +172,7 @@ export function ClientesMinoristas({ clientes, mutate }: Props) {
             <User className="h-10 w-10 mx-auto mb-2 opacity-30" />
             {search
               ? "No hay clientes que coincidan con la búsqueda"
-              : "Todavía no hay clientes minoristas. Cargá el primero."}
+              : "Todavía no hay clientes. Los que usen el bot de WhatsApp se registran automáticamente."}
           </div>
         )}
       </div>
@@ -252,69 +181,26 @@ export function ClientesMinoristas({ clientes, mutate }: Props) {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {editing ? `Editar ${editing.customer_id}` : "Nuevo cliente minorista"}
+              {editing ? `Editar cliente #${editing.id}` : "Nuevo cliente"}
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Nombre *</Label>
-                <Input
-                  value={form.nombre}
-                  onChange={(e) => setForm({ ...form, nombre: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label>Apellido *</Label>
-                <Input
-                  value={form.apellido}
-                  onChange={(e) => setForm({ ...form, apellido: e.target.value })}
-                  required
-                />
-              </div>
+            <div>
+              <Label>Nombre *</Label>
+              <Input
+                value={form.nombre}
+                onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+                required
+                placeholder="Nombre completo"
+              />
             </div>
             <div>
-              <Label>Teléfono</Label>
+              <Label>Teléfono *</Label>
               <Input
                 value={form.telefono}
                 onChange={(e) => setForm({ ...form, telefono: e.target.value })}
                 placeholder="+54 9 11 ..."
-              />
-            </div>
-            <div>
-              <Label>Dirección</Label>
-              <Input
-                value={form.direccion}
-                onChange={(e) => setForm({ ...form, direccion: e.target.value })}
-                placeholder="Calle, altura, localidad"
-              />
-            </div>
-            <div>
-              <Label>Coordenadas (opcional)</Label>
-              <Input
-                placeholder="Pegá 'lat, lng' de Google Maps"
-                onPaste={(e) => {
-                  const text = e.clipboardData.getData("text")
-                  if (text.includes(",")) {
-                    e.preventDefault()
-                    handleLatLngPaste(text)
-                  }
-                }}
-                value={form.lat && form.lng ? `${form.lat}, ${form.lng}` : ""}
-                onChange={(e) => handleLatLngPaste(e.target.value)}
-              />
-              <p className="text-[11px] text-muted-foreground mt-1">
-                En Google Maps: click derecho sobre el punto → copiar coordenadas
-              </p>
-            </div>
-            <div>
-              <Label>Notas</Label>
-              <Textarea
-                value={form.notas}
-                onChange={(e) => setForm({ ...form, notas: e.target.value })}
-                rows={2}
-                placeholder="Referencias, horarios, etc."
+                required
               />
             </div>
             <DialogFooter>

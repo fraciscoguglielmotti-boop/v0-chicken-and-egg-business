@@ -21,16 +21,18 @@ import { formatCurrency } from "@/lib/utils"
 import { insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { useConfirm } from "@/components/confirm-dialog"
 import {
-  ClienteMinorista,
-  PedidoMinorista,
+  MnCliente,
+  MnPedido,
   RepartoMinorista,
   RendicionMinorista,
+  clienteNombre,
+  pedidoNumero,
 } from "./types"
 
 interface Props {
   repartos: RepartoMinorista[]
-  pedidos: PedidoMinorista[]
-  clientes: ClienteMinorista[]
+  pedidos: MnPedido[]
+  clientes: MnCliente[]
   rendiciones: RendicionMinorista[]
   mutateRendiciones: () => Promise<any>
 }
@@ -51,14 +53,14 @@ export function RendicionMinoristas({
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const clientesById = useMemo(() => {
-    const m = new Map<string, ClienteMinorista>()
+    const m = new Map<number, MnCliente>()
     clientes.forEach((c) => m.set(c.id, c))
     return m
   }, [clientes])
 
   const pedidosById = useMemo(() => {
-    const m = new Map<string, PedidoMinorista>()
-    pedidos.forEach((p) => m.set(p.id, p))
+    const m = new Map<string, MnPedido>()
+    pedidos.forEach((p) => m.set(String(p.id), p))
     return m
   }, [pedidos])
 
@@ -76,24 +78,22 @@ export function RendicionMinoristas({
     if (!repartoSelected) return []
     return (repartoSelected.orden_pedidos || [])
       .map((id) => pedidosById.get(id))
-      .filter(Boolean) as PedidoMinorista[]
+      .filter(Boolean) as MnPedido[]
   }, [repartoSelected, pedidosById])
 
   const entregados = pedidosDelReparto.filter((p) => p.estado === "entregado")
-  const noEntregados = pedidosDelReparto.filter(
-    (p) => p.estado === "intento_fallido"
-  )
+  const noEntregados = pedidosDelReparto.filter((p) => p.estado === "cancelado")
   const pendientes = pedidosDelReparto.filter(
-    (p) => !["entregado", "intento_fallido"].includes(p.estado)
+    (p) => !["entregado", "cancelado"].includes(p.estado)
   )
 
   const esperadoEfectivo = entregados
-    .filter((p) => p.forma_pago === "efectivo")
+    .filter((p) => p.metodo_pago === "efectivo")
     .reduce((s, p) => s + (p.total || 0), 0)
-  const esperadoMP = entregados
-    .filter((p) => p.forma_pago === "mercadopago")
+  const esperadoNoEfectivo = entregados
+    .filter((p) => p.metodo_pago !== "efectivo")
     .reduce((s, p) => s + (p.total || 0), 0)
-  const esperadoTotal = esperadoEfectivo + esperadoMP
+  const esperadoTotal = esperadoEfectivo + esperadoNoEfectivo
 
   const cobradoTotal = (Number(efectivo) || 0) + (Number(mp) || 0)
   const diferencia = cobradoTotal - esperadoTotal
@@ -109,12 +109,12 @@ export function RendicionMinoristas({
     if (!repartoSelected) return
     const entregadosLocal = (repartoSelected.orden_pedidos || [])
       .map((id) => pedidosById.get(id))
-      .filter((p): p is PedidoMinorista => !!p && p.estado === "entregado")
+      .filter((p): p is MnPedido => !!p && p.estado === "entregado")
     const efLocal = entregadosLocal
-      .filter((p) => p.forma_pago === "efectivo")
+      .filter((p) => p.metodo_pago === "efectivo")
       .reduce((s, p) => s + (p.total || 0), 0)
     const mpLocal = entregadosLocal
-      .filter((p) => p.forma_pago === "mercadopago")
+      .filter((p) => p.metodo_pago !== "efectivo")
       .reduce((s, p) => s + (p.total || 0), 0)
     setEfectivo(efLocal.toFixed(2))
     setMp(mpLocal.toFixed(2))
@@ -122,8 +122,7 @@ export function RendicionMinoristas({
   }, [rendicionDelReparto?.id, repartoSelected?.id, pedidosById])
 
   const handleGuardar = async () => {
-    if (!repartoSelected) return
-    if (isSubmitting) return
+    if (!repartoSelected || isSubmitting) return
     setIsSubmitting(true)
     try {
       const payload = {
@@ -154,11 +153,7 @@ export function RendicionMinoristas({
 
   const handleDelete = async () => {
     if (!rendicionDelReparto) return
-    const ok = await confirm({
-      title: "Borrar rendición?",
-      destructive: true,
-      confirmLabel: "Borrar",
-    })
+    const ok = await confirm({ title: "Borrar rendición?", destructive: true, confirmLabel: "Borrar" })
     if (!ok) return
     try {
       await deleteRow("rendiciones_minoristas", rendicionDelReparto.id)
@@ -198,23 +193,10 @@ export function RendicionMinoristas({
         </div>
       ) : (
         <>
-          {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard
-              title="Entregados"
-              value={String(entregados.length)}
-              icon={TrendingUp}
-            />
-            <StatCard
-              title="Fallidos"
-              value={String(noEntregados.length)}
-              icon={AlertTriangle}
-            />
-            <StatCard
-              title="Esperado"
-              value={formatCurrency(esperadoTotal)}
-              icon={Wallet}
-            />
+            <StatCard title="Entregados" value={String(entregados.length)} icon={TrendingUp} />
+            <StatCard title="Cancelados" value={String(noEntregados.length)} icon={AlertTriangle} />
+            <StatCard title="Esperado" value={formatCurrency(esperadoTotal)} icon={Wallet} />
             <StatCard
               title="Cobrado"
               value={formatCurrency(cobradoTotal)}
@@ -232,13 +214,12 @@ export function RendicionMinoristas({
             <Card className="border-amber-200 bg-amber-50/50">
               <CardContent className="p-3 flex items-center gap-2 text-sm text-amber-800">
                 <AlertTriangle className="h-4 w-4" />
-                Hay {pendientes.length} pedido(s) aún sin cerrar. Marcalos como
-                "Entregado" o "Intento fallido" en la pestaña Pedidos antes de rendir.
+                Hay {pendientes.length} pedido(s) aún sin cerrar. Marcalos como "Entregado" o
+                "Cancelado" antes de rendir.
               </CardContent>
             </Card>
           )}
 
-          {/* Inputs */}
           <Card>
             <CardContent className="p-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -255,7 +236,7 @@ export function RendicionMinoristas({
                   </p>
                 </div>
                 <div>
-                  <Label>MercadoPago cobrado</Label>
+                  <Label>Transferencia / MP cobrado</Label>
                   <Input
                     type="number"
                     step="0.01"
@@ -263,7 +244,7 @@ export function RendicionMinoristas({
                     onChange={(e) => setMp(e.target.value)}
                   />
                   <p className="text-[11px] text-muted-foreground mt-1">
-                    Esperado: {formatCurrency(esperadoMP)}
+                    Esperado: {formatCurrency(esperadoNoEfectivo)}
                   </p>
                 </div>
               </div>
@@ -312,41 +293,40 @@ export function RendicionMinoristas({
             </CardContent>
           </Card>
 
-          {/* Detalle por pedido */}
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">Detalle del reparto</h3>
             <div className="space-y-1.5">
               {pedidosDelReparto.map((p) => {
-                const cli = clientesById.get(p.cliente_id || "")
+                const cli = p.cliente_id ? clientesById.get(p.cliente_id) : undefined
                 return (
                   <div
                     key={p.id}
                     className="flex items-center gap-2 p-2 rounded border bg-card"
                   >
                     <Badge variant="outline" className="text-[10px]">
-                      {p.numero}
+                      {pedidoNumero(p)}
                     </Badge>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate">
-                        {cli ? `${cli.nombre} ${cli.apellido}` : "Sin cliente"}
+                        {cli ? clienteNombre(cli) : "Sin cliente"}
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
-                        {p.forma_pago.toUpperCase()} · {formatCurrency(p.total)}
+                        {(p.metodo_pago || "—").toUpperCase()} · {formatCurrency(p.total)}
                       </div>
                     </div>
                     <Badge
                       className={`text-[10px] ${
                         p.estado === "entregado"
                           ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                          : p.estado === "intento_fallido"
+                          : p.estado === "cancelado"
                           ? "bg-rose-100 text-rose-700 border-rose-200"
                           : "bg-slate-100 text-slate-700 border-slate-200"
                       } border`}
                     >
                       {p.estado === "entregado"
                         ? "Entregado"
-                        : p.estado === "intento_fallido"
-                        ? "Fallido"
+                        : p.estado === "cancelado"
+                        ? "Cancelado"
                         : p.estado === "en_reparto"
                         ? "En reparto"
                         : "Pendiente"}

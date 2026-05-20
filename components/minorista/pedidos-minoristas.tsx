@@ -34,62 +34,47 @@ import {
 } from "@/components/ui/dialog"
 import { Card, CardContent } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
-import { formatCurrency, todayISO } from "@/lib/utils"
+import { formatCurrency } from "@/lib/utils"
 import { insertRow, updateRow, deleteRow } from "@/hooks/use-supabase"
 import { useConfirm } from "@/components/confirm-dialog"
 import { createClient } from "@/lib/supabase/client"
 import {
-  ClienteMinorista,
-  ProductoMinorista,
-  PromoMinorista,
-  PedidoMinorista,
-  ItemPedidoMinorista,
-  EstadoPedido,
+  MnCliente,
+  MnProducto,
+  MnPedido,
+  MnItemConNombre,
+  MnEstadoPedido,
   ESTADO_LABEL,
   ESTADO_COLOR,
-  nextPedidoNumero,
+  MN_ESTADOS,
+  pedidoFecha,
+  pedidoNumero,
+  clienteNombre,
 } from "./types"
-
-interface PedidoCosto {
-  costo: number
-  ganancia: number
-  margenPct: number
-  itemsConCosto: number
-  itemsSinCosto: number
-}
+import type { PedidoCosto } from "../minorista-content"
 
 interface Props {
-  pedidos: PedidoMinorista[]
-  items: ItemPedidoMinorista[]
-  clientes: ClienteMinorista[]
-  productos: ProductoMinorista[]
-  promos: PromoMinorista[]
+  pedidos: MnPedido[]
+  items: MnItemConNombre[]
+  clientes: MnCliente[]
+  productos: MnProducto[]
   mutatePedidos: () => Promise<any>
   mutateItems: () => Promise<any>
   costoByPedido: Map<string, PedidoCosto>
 }
 
 interface DraftItem {
-  producto_id: string | null
+  producto_id: number | null
   nombre_producto: string
   cantidad: string
   precio_unitario: string
 }
-
-const ESTADOS: EstadoPedido[] = [
-  "recibido",
-  "confirmado",
-  "en_reparto",
-  "entregado",
-  "intento_fallido",
-]
 
 export function PedidosMinoristas({
   pedidos,
   items,
   clientes,
   productos,
-  promos,
   mutatePedidos,
   mutateItems,
   costoByPedido,
@@ -97,31 +82,31 @@ export function PedidosMinoristas({
   const { toast } = useToast()
   const { confirm, ConfirmDialog } = useConfirm()
   const [open, setOpen] = useState(false)
-  const [editing, setEditing] = useState<PedidoMinorista | null>(null)
+  const [editing, setEditing] = useState<MnPedido | null>(null)
   const [search, setSearch] = useState("")
   const [filterEstado, setFilterEstado] = useState<string>("todos")
   const [filterFecha, setFilterFecha] = useState<string>("")
 
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [clienteId, setClienteId] = useState<string>("")
-  const [fecha, setFecha] = useState(todayISO())
-  const [formaPago, setFormaPago] = useState<"efectivo" | "mercadopago">("efectivo")
-  const [mpLink, setMpLink] = useState("")
+  const [direccion, setDireccion] = useState("")
+  const [metodoPago, setMetodoPago] = useState("efectivo")
   const [notas, setNotas] = useState("")
-  const [promoId, setPromoId] = useState<string>("")
+  const [costoEnvio, setCostoEnvio] = useState("0")
   const [draftItems, setDraftItems] = useState<DraftItem[]>([])
 
   const clientesById = useMemo(() => {
-    const m = new Map<string, ClienteMinorista>()
+    const m = new Map<number, MnCliente>()
     clientes.forEach((c) => m.set(c.id, c))
     return m
   }, [clientes])
 
   const itemsByPedido = useMemo(() => {
-    const m = new Map<string, ItemPedidoMinorista[]>()
+    const m = new Map<string, MnItemConNombre[]>()
     items.forEach((it) => {
-      if (!m.has(it.pedido_id)) m.set(it.pedido_id, [])
-      m.get(it.pedido_id)!.push(it)
+      const key = String(it.pedido_id)
+      if (!m.has(key)) m.set(key, [])
+      m.get(key)!.push(it)
     })
     return m
   }, [items])
@@ -129,34 +114,25 @@ export function PedidosMinoristas({
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
     return pedidos.filter((p) => {
-      const cliente = clientesById.get(p.cliente_id || "")
+      const cliente = p.cliente_id ? clientesById.get(p.cliente_id) : undefined
       const clientStr = cliente
-        ? `${cliente.nombre} ${cliente.apellido} ${cliente.telefono || ""}`.toLowerCase()
+        ? `${clienteNombre(cliente)} ${cliente.telefono || ""}`.toLowerCase()
         : ""
-      if (q && !(p.numero.toLowerCase().includes(q) || clientStr.includes(q))) {
-        return false
-      }
+      const pedNum = String(p.id)
+      if (q && !(pedNum.includes(q) || clientStr.includes(q))) return false
       if (filterEstado !== "todos" && p.estado !== filterEstado) return false
-      if (filterFecha && p.fecha !== filterFecha) return false
+      if (filterFecha && pedidoFecha(p) !== filterFecha) return false
       return true
     })
   }, [pedidos, clientesById, search, filterEstado, filterFecha])
 
   const resetForm = () => {
     setClienteId("")
-    setFecha(todayISO())
-    setFormaPago("efectivo")
-    setMpLink("")
+    setDireccion("")
+    setMetodoPago("efectivo")
     setNotas("")
-    setPromoId("")
-    setDraftItems([
-      {
-        producto_id: null,
-        nombre_producto: "",
-        cantidad: "1",
-        precio_unitario: "0",
-      },
-    ])
+    setCostoEnvio("0")
+    setDraftItems([{ producto_id: null, nombre_producto: "", cantidad: "1", precio_unitario: "0" }])
   }
 
   const openNew = () => {
@@ -165,18 +141,17 @@ export function PedidosMinoristas({
     setOpen(true)
   }
 
-  const openEdit = (p: PedidoMinorista) => {
+  const openEdit = (p: MnPedido) => {
     setEditing(p)
-    setClienteId(p.cliente_id || "")
-    setFecha(p.fecha)
-    setFormaPago(p.forma_pago)
-    setMpLink(p.mp_link || "")
+    setClienteId(p.cliente_id ? String(p.cliente_id) : "")
+    setDireccion(p.direccion_entrega || "")
+    setMetodoPago(p.metodo_pago || "efectivo")
     setNotas(p.notas || "")
-    setPromoId(p.promo_id || "")
-    const pedidoItems = itemsByPedido.get(p.id) || []
+    setCostoEnvio(String(p.costo_envio ?? 0))
+    const pedidoItems = itemsByPedido.get(String(p.id)) || []
     setDraftItems(
       pedidoItems.map((it) => ({
-        producto_id: it.producto_id,
+        producto_id: it.producto_id ?? null,
         nombre_producto: it.nombre_producto,
         cantidad: String(it.cantidad),
         precio_unitario: String(it.precio_unitario),
@@ -201,7 +176,7 @@ export function PedidosMinoristas({
   }
 
   const pickProducto = (idx: number, productoId: string) => {
-    const p = productos.find((x) => x.id === productoId)
+    const p = productos.find((x) => String(x.id) === productoId)
     if (!p) return
     updateDraftItem(idx, {
       producto_id: p.id,
@@ -219,62 +194,36 @@ export function PedidosMinoristas({
     [draftItems]
   )
 
-  const { total, descuento } = useMemo(() => {
-    const promo = promos.find((p) => p.id === promoId)
-    if (!promo) return { total: subtotal, descuento: 0 }
-    if (promo.tipo === "precio_fijo") {
-      return { total: promo.valor, descuento: Math.max(0, subtotal - promo.valor) }
-    }
-    const desc = (subtotal * promo.valor) / 100
-    return { total: Math.max(0, subtotal - desc), descuento: desc }
-  }, [draftItems, promoId, promos, subtotal])
+  const total = subtotal + (Number(costoEnvio) || 0)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSubmitting) return
-    if (!clienteId) {
-      toast({
-        title: "Falta cliente",
-        description: "Seleccioná un cliente antes de guardar.",
-        variant: "destructive",
-      })
-      return
-    }
     if (draftItems.length === 0 || draftItems.every((it) => !it.nombre_producto)) {
-      toast({
-        title: "Sin items",
-        description: "Agregá al menos un producto.",
-        variant: "destructive",
-      })
+      toast({ title: "Sin items", description: "Agregá al menos un producto.", variant: "destructive" })
       return
     }
     setIsSubmitting(true)
     try {
-      const payload = {
-        cliente_id: clienteId,
-        fecha,
-        forma_pago: formaPago,
-        mp_link: formaPago === "mercadopago" ? mpLink || null : null,
+      const payload: Record<string, any> = {
+        cliente_id: clienteId ? Number(clienteId) : null,
+        direccion_entrega: direccion.trim() || null,
+        metodo_pago: metodoPago,
         notas: notas.trim() || null,
-        promo_id: promoId || null,
-        descuento,
+        costo_envio: Number(costoEnvio) || 0,
+        subtotal,
         total,
+        canal: "manual",
       }
-      let pedidoId: string
+
+      let pedidoId: number
       if (editing) {
-        await updateRow("pedidos_minoristas", editing.id, payload)
+        await updateRow("mn_pedidos", editing.id, payload)
         pedidoId = editing.id
         const supabase = createClient()
-        await supabase
-          .from("items_pedido_minorista")
-          .delete()
-          .eq("pedido_id", pedidoId)
+        await supabase.from("mn_items_pedido").delete().eq("pedido_id", pedidoId)
       } else {
-        const inserted = await insertRow("pedidos_minoristas", {
-          ...payload,
-          numero: nextPedidoNumero(pedidos),
-          estado: "recibido" as EstadoPedido,
-        })
+        const inserted = await insertRow("mn_pedidos", { ...payload, estado: "pendiente" })
         pedidoId = inserted.id
       }
 
@@ -286,12 +235,11 @@ export function PedidosMinoristas({
         const rows = validItems.map((it) => ({
           pedido_id: pedidoId,
           producto_id: it.producto_id,
-          nombre_producto: it.nombre_producto,
           cantidad: Number(it.cantidad),
           precio_unitario: Number(it.precio_unitario),
           subtotal: Number(it.cantidad) * Number(it.precio_unitario),
         }))
-        const { error } = await supabase.from("items_pedido_minorista").insert(rows)
+        const { error } = await supabase.from("mn_items_pedido").insert(rows)
         if (error) throw error
       }
 
@@ -305,16 +253,16 @@ export function PedidosMinoristas({
     }
   }
 
-  const handleDelete = async (p: PedidoMinorista) => {
+  const handleDelete = async (p: MnPedido) => {
     const ok = await confirm({
-      title: `Eliminar pedido ${p.numero}?`,
+      title: `Eliminar pedido ${pedidoNumero(p)}?`,
       description: "Se borrarán también sus items.",
       destructive: true,
       confirmLabel: "Eliminar",
     })
     if (!ok) return
     try {
-      await deleteRow("pedidos_minoristas", p.id)
+      await deleteRow("mn_pedidos", p.id)
       await Promise.all([mutatePedidos(), mutateItems()])
       toast({ title: "Pedido eliminado" })
     } catch (err: any) {
@@ -322,31 +270,37 @@ export function PedidosMinoristas({
     }
   }
 
-  const cambiarEstado = async (p: PedidoMinorista, nuevo: EstadoPedido) => {
+  const cambiarEstado = async (p: MnPedido, nuevo: MnEstadoPedido) => {
     try {
-      await updateRow("pedidos_minoristas", p.id, { estado: nuevo })
+      const extra: Record<string, any> = {}
+      if (nuevo === "confirmado" && !p.confirmado_at) {
+        extra.confirmado_at = new Date().toISOString()
+      }
+      if (nuevo === "entregado" && !p.entregado_at) {
+        extra.entregado_at = new Date().toISOString()
+      }
+      await updateRow("mn_pedidos", p.id, { estado: nuevo, ...extra })
       await mutatePedidos()
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" })
     }
   }
 
-  const copiarResumen = (p: PedidoMinorista) => {
-    const cliente = clientesById.get(p.cliente_id || "")
-    const pedidoItems = itemsByPedido.get(p.id) || []
+  const copiarResumen = (p: MnPedido) => {
+    const cli = p.cliente_id ? clientesById.get(p.cliente_id) : undefined
+    const pedidoItems = itemsByPedido.get(String(p.id)) || []
     const lines = [
-      `Pedido ${p.numero}`,
-      cliente ? `Cliente: ${cliente.nombre} ${cliente.apellido}` : "",
-      cliente?.telefono ? `Tel: ${cliente.telefono}` : "",
-      cliente?.direccion ? `Dirección: ${cliente.direccion}` : "",
+      `Pedido ${pedidoNumero(p)}`,
+      cli ? `Cliente: ${clienteNombre(cli)}` : "",
+      cli?.telefono ? `Tel: ${cli.telefono}` : "",
+      p.direccion_entrega ? `Dirección: ${p.direccion_entrega}` : "",
       "",
       ...pedidoItems.map(
-        (it) =>
-          `• ${it.cantidad} x ${it.nombre_producto} — ${formatCurrency(it.subtotal)}`
+        (it) => `• ${it.cantidad} x ${it.nombre_producto} — ${formatCurrency(it.subtotal)}`
       ),
       "",
       `Total: ${formatCurrency(p.total)}`,
-      `Pago: ${p.forma_pago}`,
+      `Pago: ${p.metodo_pago || ""}`,
       p.notas ? `Notas: ${p.notas}` : "",
     ]
       .filter(Boolean)
@@ -375,7 +329,7 @@ export function PedidosMinoristas({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos los estados</SelectItem>
-            {ESTADOS.map((e) => (
+            {MN_ESTADOS.map((e) => (
               <SelectItem key={e} value={e}>
                 {ESTADO_LABEL[e]}
               </SelectItem>
@@ -401,8 +355,9 @@ export function PedidosMinoristas({
       {/* Listado */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {filtered.map((p) => {
-          const cliente = clientesById.get(p.cliente_id || "")
-          const pedidoItems = itemsByPedido.get(p.id) || []
+          const cliente = p.cliente_id ? clientesById.get(p.cliente_id) : undefined
+          const pedidoItems = itemsByPedido.get(String(p.id)) || []
+          const cg = costoByPedido.get(String(p.id))
           return (
             <Card key={p.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-4 space-y-3">
@@ -410,23 +365,26 @@ export function PedidosMinoristas({
                   <div>
                     <div className="flex items-center gap-2 mb-1">
                       <Badge variant="outline" className="text-[10px]">
-                        {p.numero}
+                        {pedidoNumero(p)}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">{p.fecha}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {pedidoFecha(p)}
+                        {p.canal === "whatsapp" && (
+                          <span className="ml-1 text-emerald-600">· WA</span>
+                        )}
+                      </span>
                     </div>
                     <h3 className="font-semibold leading-tight">
-                      {cliente
-                        ? `${cliente.nombre} ${cliente.apellido}`
-                        : "Sin cliente"}
+                      {cliente ? clienteNombre(cliente) : "Sin cliente"}
                     </h3>
                     {cliente?.telefono && (
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
                         <Phone className="h-3 w-3" /> {cliente.telefono}
                       </div>
                     )}
-                    {cliente?.direccion && (
+                    {p.direccion_entrega && (
                       <div className="flex items-start gap-1 text-xs text-muted-foreground">
-                        <MapPin className="h-3 w-3 mt-0.5 shrink-0" /> {cliente.direccion}
+                        <MapPin className="h-3 w-3 mt-0.5 shrink-0" /> {p.direccion_entrega}
                       </div>
                     )}
                   </div>
@@ -441,36 +399,34 @@ export function PedidosMinoristas({
                       <span>
                         {it.cantidad} × {it.nombre_producto}
                       </span>
-                      <span className="text-muted-foreground">
-                        {formatCurrency(it.subtotal)}
-                      </span>
+                      <span className="text-muted-foreground">{formatCurrency(it.subtotal)}</span>
                     </div>
                   ))}
                 </div>
 
                 <div className="border-t pt-2 space-y-1">
-                  {(() => {
-                    const cg = costoByPedido.get(p.id)
-                    if (!cg || (cg.itemsConCosto === 0 && cg.itemsSinCosto === 0)) return null
-                    return (
-                      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                        <span>
-                          Costo {formatCurrency(cg.costo)}
-                          {cg.itemsSinCosto > 0 && (
-                            <span className="ml-1 text-amber-600">
-                              ({cg.itemsSinCosto} sin costo)
-                            </span>
-                          )}
-                        </span>
-                        <span className={cg.ganancia >= 0 ? "text-emerald-600 font-medium" : "text-rose-600 font-medium"}>
-                          Gan. {formatCurrency(cg.ganancia)} ({cg.margenPct.toFixed(0)}%)
-                        </span>
-                      </div>
-                    )
-                  })()}
+                  {cg && (cg.itemsConCosto > 0 || cg.itemsSinCosto > 0) && (
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>
+                        Costo {formatCurrency(cg.costo)}
+                        {cg.itemsSinCosto > 0 && (
+                          <span className="ml-1 text-amber-600">({cg.itemsSinCosto} sin costo)</span>
+                        )}
+                      </span>
+                      <span
+                        className={
+                          cg.ganancia >= 0
+                            ? "text-emerald-600 font-medium"
+                            : "text-rose-600 font-medium"
+                        }
+                      >
+                        Gan. {formatCurrency(cg.ganancia)} ({cg.margenPct.toFixed(0)}%)
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-muted-foreground uppercase">
-                      {p.forma_pago}
+                      {p.metodo_pago || "—"}
                     </span>
                     <span className="text-lg font-bold">{formatCurrency(p.total)}</span>
                   </div>
@@ -479,13 +435,13 @@ export function PedidosMinoristas({
                 <div className="grid grid-cols-2 gap-1.5">
                   <Select
                     value={p.estado}
-                    onValueChange={(v) => cambiarEstado(p, v as EstadoPedido)}
+                    onValueChange={(v) => cambiarEstado(p, v as MnEstadoPedido)}
                   >
                     <SelectTrigger className="h-8 text-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {ESTADOS.map((e) => (
+                      {MN_ESTADOS.map((e) => (
                         <SelectItem key={e} value={e}>
                           {ESTADO_LABEL[e]}
                         </SelectItem>
@@ -529,7 +485,7 @@ export function PedidosMinoristas({
             <ShoppingBag className="h-10 w-10 mx-auto mb-2 opacity-30" />
             {search || filterEstado !== "todos" || filterFecha
               ? "No hay pedidos con esos filtros"
-              : "Todavía no hay pedidos. Creá el primero."}
+              : "Todavía no hay pedidos."}
           </div>
         )}
       </div>
@@ -539,49 +495,61 @@ export function PedidosMinoristas({
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editing ? `Editar ${editing.numero}` : "Nuevo pedido"}
+              {editing ? `Editar pedido ${pedidoNumero(editing)}` : "Nuevo pedido"}
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label>Cliente *</Label>
-                <Select value={clienteId} onValueChange={setClienteId}>
+                <Label>Cliente</Label>
+                <Select
+                  value={clienteId || "none"}
+                  onValueChange={(v) => setClienteId(v === "none" ? "" : v)}
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar cliente" />
+                    <SelectValue placeholder="Sin cliente" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="none">Sin cliente</SelectItem>
                     {clientes
                       .filter((c) => c.activo !== false)
                       .map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.nombre} {c.apellido} · {c.customer_id}
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {clienteNombre(c)} · {c.telefono}
                         </SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
               </div>
               <div>
-                <Label>Fecha *</Label>
-                <Input
-                  type="date"
-                  value={fecha}
-                  onChange={(e) => setFecha(e.target.value)}
-                  required
-                />
+                <Label>Método de pago</Label>
+                <Select value={metodoPago} onValueChange={setMetodoPago}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="efectivo">Efectivo</SelectItem>
+                    <SelectItem value="transferencia">Transferencia</SelectItem>
+                    <SelectItem value="mercadopago">MercadoPago</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+            </div>
+
+            <div>
+              <Label>Dirección de entrega</Label>
+              <Input
+                value={direccion}
+                onChange={(e) => setDireccion(e.target.value)}
+                placeholder="Calle, número, localidad"
+              />
             </div>
 
             {/* Items */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label>Items *</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addItem}
-                >
+                <Button type="button" variant="outline" size="sm" onClick={addItem}>
                   <Plus className="h-3 w-3 mr-1" /> Agregar item
                 </Button>
               </div>
@@ -594,7 +562,7 @@ export function PedidosMinoristas({
                     <div className="col-span-12 sm:col-span-5">
                       <Label className="text-xs">Producto</Label>
                       <Select
-                        value={it.producto_id || ""}
+                        value={it.producto_id ? String(it.producto_id) : ""}
                         onValueChange={(v) => pickProducto(idx, v)}
                       >
                         <SelectTrigger>
@@ -604,8 +572,9 @@ export function PedidosMinoristas({
                           {productos
                             .filter((p) => p.activo !== false)
                             .map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                {p.nombre} ({formatCurrency(p.precio)}/{p.unidad})
+                              <SelectItem key={p.id} value={String(p.id)}>
+                                {p.nombre}
+                                {p.precio ? ` (${formatCurrency(p.precio)}/${p.unidad ?? "u"})` : ""}
                               </SelectItem>
                             ))}
                         </SelectContent>
@@ -617,9 +586,7 @@ export function PedidosMinoristas({
                         type="number"
                         step="0.01"
                         value={it.cantidad}
-                        onChange={(e) =>
-                          updateDraftItem(idx, { cantidad: e.target.value })
-                        }
+                        onChange={(e) => updateDraftItem(idx, { cantidad: e.target.value })}
                       />
                     </div>
                     <div className="col-span-5 sm:col-span-3">
@@ -628,16 +595,11 @@ export function PedidosMinoristas({
                         type="number"
                         step="0.01"
                         value={it.precio_unitario}
-                        onChange={(e) =>
-                          updateDraftItem(idx, { precio_unitario: e.target.value })
-                        }
+                        onChange={(e) => updateDraftItem(idx, { precio_unitario: e.target.value })}
                       />
                     </div>
                     <div className="col-span-2 text-right text-sm font-medium">
-                      {formatCurrency(
-                        (Number(it.cantidad) || 0) *
-                          (Number(it.precio_unitario) || 0)
-                      )}
+                      {formatCurrency((Number(it.cantidad) || 0) * (Number(it.precio_unitario) || 0))}
                     </div>
                     <div className="col-span-1 flex justify-end">
                       <Button
@@ -655,60 +617,15 @@ export function PedidosMinoristas({
               </div>
             </div>
 
-            {/* Promo */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label>Promo (opcional)</Label>
-                <Select
-                  value={promoId || "none"}
-                  onValueChange={(v) => setPromoId(v === "none" ? "" : v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Sin promo</SelectItem>
-                    {promos
-                      .filter((p) => p.activo !== false)
-                      .map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.nombre} (
-                          {p.tipo === "descuento_pct"
-                            ? `${p.valor}% off`
-                            : formatCurrency(p.valor)}
-                          )
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Forma de pago</Label>
-                <Select
-                  value={formaPago}
-                  onValueChange={(v) => setFormaPago(v as "efectivo" | "mercadopago")}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="efectivo">Efectivo</SelectItem>
-                    <SelectItem value="mercadopago">MercadoPago</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div>
+              <Label>Costo de envío</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={costoEnvio}
+                onChange={(e) => setCostoEnvio(e.target.value)}
+              />
             </div>
-
-            {formaPago === "mercadopago" && (
-              <div>
-                <Label>Link MercadoPago</Label>
-                <Input
-                  value={mpLink}
-                  onChange={(e) => setMpLink(e.target.value)}
-                  placeholder="https://mpago.la/..."
-                />
-              </div>
-            )}
 
             <div>
               <Label>Notas</Label>
@@ -716,7 +633,7 @@ export function PedidosMinoristas({
                 value={notas}
                 onChange={(e) => setNotas(e.target.value)}
                 rows={2}
-                placeholder="Tocar timbre, horario, etc."
+                placeholder="Timbre, horario, referencias..."
               />
             </div>
 
@@ -726,10 +643,10 @@ export function PedidosMinoristas({
                 <span className="text-muted-foreground">Subtotal</span>
                 <span>{formatCurrency(subtotal)}</span>
               </div>
-              {descuento > 0 && (
-                <div className="flex justify-between text-emerald-700">
-                  <span>Descuento</span>
-                  <span>- {formatCurrency(descuento)}</span>
+              {(Number(costoEnvio) || 0) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Envío</span>
+                  <span>{formatCurrency(Number(costoEnvio) || 0)}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold text-base border-t pt-1">
@@ -748,11 +665,7 @@ export function PedidosMinoristas({
                 Cancelar
               </Button>
               <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting
-                  ? "Guardando…"
-                  : editing
-                  ? "Guardar"
-                  : "Crear pedido"}
+                {isSubmitting ? "Guardando…" : editing ? "Guardar" : "Crear pedido"}
               </Button>
             </DialogFooter>
           </form>

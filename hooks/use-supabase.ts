@@ -63,7 +63,7 @@ export async function insertRow(table: string, data: Record<string, any>) {
 }
 
 // Update a row by ID
-export async function updateRow(table: string, id: string, data: Record<string, any>) {
+export async function updateRow(table: string, id: string | number, data: Record<string, any>) {
   const supabase = createClient()
   const { data: updated, error } = await supabase.from(table).update(data).eq("id", id).select().single()
   if (error) throw error
@@ -71,7 +71,7 @@ export async function updateRow(table: string, id: string, data: Record<string, 
 }
 
 // Delete a row by ID
-export async function deleteRow(table: string, id: string) {
+export async function deleteRow(table: string, id: string | number) {
   const supabase = createClient()
   const { error } = await supabase.from(table).delete().eq("id", id)
   if (error) throw error

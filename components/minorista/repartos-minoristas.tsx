@@ -53,18 +53,21 @@ import { useConfirm } from "@/components/confirm-dialog"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 import {
-  ClienteMinorista,
-  PedidoMinorista,
-  ItemPedidoMinorista,
+  MnCliente,
+  MnPedido,
+  MnItemConNombre,
   RepartoMinorista,
   ESTADO_LABEL,
+  pedidoFecha,
+  pedidoNumero,
+  clienteNombre,
 } from "./types"
 
 interface Props {
   repartos: RepartoMinorista[]
-  pedidos: PedidoMinorista[]
-  items: ItemPedidoMinorista[]
-  clientes: ClienteMinorista[]
+  pedidos: MnPedido[]
+  items: MnItemConNombre[]
+  clientes: MnCliente[]
   mutateRepartos: () => Promise<any>
   mutatePedidos: () => Promise<any>
 }
@@ -85,29 +88,27 @@ export function RepartosMinoristas({
   const dndSensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   )
-  const [newForm, setNewForm] = useState({
-    fecha: todayISO(),
-    nombre: "",
-    repartidor: "",
-  })
+  const [newForm, setNewForm] = useState({ fecha: todayISO(), nombre: "", repartidor: "" })
 
   const clientesById = useMemo(() => {
-    const m = new Map<string, ClienteMinorista>()
+    const m = new Map<number, MnCliente>()
     clientes.forEach((c) => m.set(c.id, c))
     return m
   }, [clientes])
 
+  // Keyed by String(mn_pedido.id)
   const pedidosById = useMemo(() => {
-    const m = new Map<string, PedidoMinorista>()
-    pedidos.forEach((p) => m.set(p.id, p))
+    const m = new Map<string, MnPedido>()
+    pedidos.forEach((p) => m.set(String(p.id), p))
     return m
   }, [pedidos])
 
   const itemsByPedido = useMemo(() => {
-    const m = new Map<string, ItemPedidoMinorista[]>()
+    const m = new Map<string, MnItemConNombre[]>()
     items.forEach((it) => {
-      if (!m.has(it.pedido_id)) m.set(it.pedido_id, [])
-      m.get(it.pedido_id)!.push(it)
+      const key = String(it.pedido_id)
+      if (!m.has(key)) m.set(key, [])
+      m.get(key)!.push(it)
     })
     return m
   }, [items])
@@ -126,16 +127,16 @@ export function RepartosMinoristas({
   const pedidosPorAsignar = useMemo(() => {
     if (!repartoSelected) return []
     return pedidos
-      .filter((p) => p.fecha === repartoSelected.fecha)
-      .filter((p) => !pedidosAsignadosId.has(p.id))
-      .filter((p) => !["entregado", "intento_fallido"].includes(p.estado))
+      .filter((p) => pedidoFecha(p) === repartoSelected.fecha)
+      .filter((p) => !pedidosAsignadosId.has(String(p.id)))
+      .filter((p) => !["entregado", "cancelado"].includes(p.estado))
   }, [pedidos, repartoSelected, pedidosAsignadosId])
 
   const pedidosDelReparto = useMemo(() => {
     if (!repartoSelected) return []
     return (repartoSelected.orden_pedidos || [])
       .map((id) => pedidosById.get(id))
-      .filter(Boolean) as PedidoMinorista[]
+      .filter(Boolean) as MnPedido[]
   }, [repartoSelected, pedidosById])
 
   const totalReparto = useMemo(
@@ -158,11 +159,7 @@ export function RepartosMinoristas({
       await mutateRepartos()
       setNewOpen(false)
       setSelectedId(inserted.id)
-      setNewForm({
-        fecha: todayISO(),
-        nombre: "",
-        repartidor: "",
-      })
+      setNewForm({ fecha: todayISO(), nombre: "", repartidor: "" })
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" })
     } finally {
@@ -173,38 +170,32 @@ export function RepartosMinoristas({
   const updateOrden = async (nuevoOrden: string[]) => {
     if (!repartoSelected) return
     try {
-      await updateRow("repartos_minoristas", repartoSelected.id, {
-        orden_pedidos: nuevoOrden,
-      })
+      await updateRow("repartos_minoristas", repartoSelected.id, { orden_pedidos: nuevoOrden })
       await mutateRepartos()
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" })
     }
   }
 
-  const addPedido = async (pedidoId: string) => {
+  const addPedido = async (pedidoId: number) => {
     if (!repartoSelected) return
-    const nuevoOrden = [...(repartoSelected.orden_pedidos || []), pedidoId]
+    const nuevoOrden = [...(repartoSelected.orden_pedidos || []), String(pedidoId)]
     await updateOrden(nuevoOrden)
   }
 
-  const removePedido = async (pedidoId: string) => {
+  const removePedido = async (pedidoId: number) => {
     if (!repartoSelected) return
-    const nuevoOrden = (repartoSelected.orden_pedidos || []).filter(
-      (id) => id !== pedidoId
-    )
+    const nuevoOrden = (repartoSelected.orden_pedidos || []).filter((id) => id !== String(pedidoId))
     await updateOrden(nuevoOrden)
   }
 
   const handleIniciarReparto = async () => {
     if (!repartoSelected) return
     try {
-      await updateRow("repartos_minoristas", repartoSelected.id, {
-        estado: "en_curso",
-      })
+      await updateRow("repartos_minoristas", repartoSelected.id, { estado: "en_curso" })
       for (const p of pedidosDelReparto) {
-        if (p.estado === "recibido" || p.estado === "confirmado") {
-          await updateRow("pedidos_minoristas", p.id, { estado: "en_reparto" })
+        if (p.estado === "pendiente" || p.estado === "confirmado") {
+          await updateRow("mn_pedidos", p.id, { estado: "en_reparto" })
         }
       }
       await Promise.all([mutateRepartos(), mutatePedidos()])
@@ -217,9 +208,7 @@ export function RepartosMinoristas({
   const handleFinalizar = async () => {
     if (!repartoSelected) return
     try {
-      await updateRow("repartos_minoristas", repartoSelected.id, {
-        estado: "finalizado",
-      })
+      await updateRow("repartos_minoristas", repartoSelected.id, { estado: "finalizado" })
       await mutateRepartos()
       toast({ title: "Reparto finalizado" })
     } catch (err: any) {
@@ -263,17 +252,14 @@ export function RepartosMinoristas({
     const margin = 15
     const pageW = 297
 
-    // Header izquierda
     doc.setFontSize(14)
     doc.setFont("helvetica", "bold")
     doc.text("HOJA DE RUTA", margin, 18)
-
     doc.setFontSize(10)
     doc.setFont("helvetica", "normal")
     doc.text(`Reparto: ${repartoSelected.nombre}`, margin, 26)
     doc.text(`Fecha: ${repartoSelected.fecha}`, margin, 31)
 
-    // Header derecha
     const rightX = pageW - margin
     if (repartoSelected.repartidor) {
       doc.text(`Repartidor: ${repartoSelected.repartidor}`, rightX, 26, { align: "right" })
@@ -286,18 +272,16 @@ export function RepartosMinoristas({
     )
 
     const rows = pedidosDelReparto.map((p, idx) => {
-      const cli = clientesById.get(p.cliente_id || "")
-      const its = itemsByPedido.get(p.id) || []
-      const detalle = its
-        .map((it) => `${it.cantidad} × ${it.nombre_producto}`)
-        .join("\n")
+      const cli = p.cliente_id ? clientesById.get(p.cliente_id) : undefined
+      const its = itemsByPedido.get(String(p.id)) || []
+      const detalle = its.map((it) => `${it.cantidad} × ${it.nombre_producto}`).join("\n")
       return [
         String(idx + 1),
-        cli ? `${cli.nombre} ${cli.apellido}\n${cli.telefono || ""}` : "-",
-        cli?.direccion || "-",
+        cli ? `${clienteNombre(cli)}\n${cli.telefono || ""}` : "-",
+        p.direccion_entrega || "-",
         detalle,
         formatCurrency(p.total),
-        p.forma_pago === "mercadopago" ? "MP" : "EFE",
+        p.metodo_pago === "efectivo" ? "EFE" : "TRAN",
       ]
     })
 
@@ -319,34 +303,27 @@ export function RepartosMinoristas({
 
     const finalY = (doc as any).lastAutoTable?.finalY || 180
     doc.setFontSize(9)
-    doc.text(
-      `Total a cobrar: ${formatCurrency(totalReparto)}`,
-      margin,
-      finalY + 8
+    doc.text(`Total a cobrar: ${formatCurrency(totalReparto)}`, margin, finalY + 8)
+    doc.save(
+      `hoja-ruta-${repartoSelected.fecha}-${repartoSelected.nombre.replace(/\s+/g, "_")}.pdf`
     )
-
-    doc.save(`hoja-ruta-${repartoSelected.fecha}-${repartoSelected.nombre.replace(/\s+/g, "_")}.pdf`)
   }
 
   const abrirEnGoogleMaps = () => {
     if (!repartoSelected || pedidosDelReparto.length === 0) return
     const stops = pedidosDelReparto
       .map((p) => {
-        const c = clientesById.get(p.cliente_id || "")
-        if (!c) return null
-        if (c.lat != null && c.lng != null) return `${c.lat},${c.lng}`
-        if (c.direccion) return encodeURIComponent(c.direccion)
+        if (p.direccion_entrega) return encodeURIComponent(p.direccion_entrega)
         return null
       })
       .filter(Boolean)
     if (stops.length === 0) return
-    const url = `https://www.google.com/maps/dir/${stops.join("/")}`
-    window.open(url, "_blank")
+    window.open(`https://www.google.com/maps/dir/${stops.join("/")}`, "_blank")
   }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      {/* Sidebar: lista de repartos */}
+      {/* Sidebar */}
       <div className="lg:col-span-1 space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">Repartos</h3>
@@ -373,11 +350,7 @@ export function RepartosMinoristas({
                     variant={r.estado === "finalizado" ? "secondary" : "outline"}
                     className="text-[10px]"
                   >
-                    {r.estado === "armando"
-                      ? "Armando"
-                      : r.estado === "en_curso"
-                      ? "En curso"
-                      : "Finalizado"}
+                    {r.estado === "armando" ? "Armando" : r.estado === "en_curso" ? "En curso" : "Finalizado"}
                   </Badge>
                 </div>
                 <div className="text-xs text-muted-foreground flex items-center justify-between">
@@ -399,7 +372,7 @@ export function RepartosMinoristas({
         </div>
       </div>
 
-      {/* Detalle del reparto */}
+      {/* Detalle */}
       <div className="lg:col-span-2">
         {!repartoSelected ? (
           <div className="py-24 text-center text-muted-foreground text-sm border-2 border-dashed rounded-lg">
@@ -408,22 +381,17 @@ export function RepartosMinoristas({
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Header del reparto */}
             <Card>
               <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
                 <div>
                   <h2 className="text-lg font-bold">{repartoSelected.nombre}</h2>
                   <p className="text-sm text-muted-foreground">
                     {repartoSelected.fecha}
-                    {repartoSelected.repartidor &&
-                      ` · Repartidor: ${repartoSelected.repartidor}`}
+                    {repartoSelected.repartidor && ` · Repartidor: ${repartoSelected.repartidor}`}
                   </p>
                   <p className="text-sm">
-                    <span className="font-semibold">{pedidosDelReparto.length}</span>{" "}
-                    pedidos · Total{" "}
-                    <span className="font-semibold">
-                      {formatCurrency(totalReparto)}
-                    </span>
+                    <span className="font-semibold">{pedidosDelReparto.length}</span> pedidos · Total{" "}
+                    <span className="font-semibold">{formatCurrency(totalReparto)}</span>
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -460,7 +428,6 @@ export function RepartosMinoristas({
               </CardContent>
             </Card>
 
-            {/* Pedidos del reparto (sortable) */}
             <div className="space-y-2">
               <h3 className="text-sm font-semibold">
                 Pedidos en este reparto ({pedidosDelReparto.length})
@@ -476,7 +443,7 @@ export function RepartosMinoristas({
                   onDragEnd={handleDragEnd}
                 >
                   <SortableContext
-                    items={pedidosDelReparto.map((p) => p.id)}
+                    items={pedidosDelReparto.map((p) => String(p.id))}
                     strategy={verticalListSortingStrategy}
                   >
                     <div className="space-y-1.5">
@@ -484,8 +451,8 @@ export function RepartosMinoristas({
                         <SortableRow
                           key={p.id}
                           pedido={p}
-                          cliente={clientesById.get(p.cliente_id || "")}
-                          items={itemsByPedido.get(p.id) || []}
+                          cliente={p.cliente_id ? clientesById.get(p.cliente_id) : undefined}
+                          items={itemsByPedido.get(String(p.id)) || []}
                           index={idx}
                           onRemove={() => removePedido(p.id)}
                         />
@@ -496,12 +463,10 @@ export function RepartosMinoristas({
               )}
             </div>
 
-            {/* Pedidos por asignar */}
             {repartoSelected.estado === "armando" && (
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold">
-                  Pedidos sin asignar del {repartoSelected.fecha} (
-                  {pedidosPorAsignar.length})
+                  Pedidos sin asignar del {repartoSelected.fecha} ({pedidosPorAsignar.length})
                 </h3>
                 {pedidosPorAsignar.length === 0 ? (
                   <div className="py-4 text-center text-muted-foreground text-sm">
@@ -510,7 +475,7 @@ export function RepartosMinoristas({
                 ) : (
                   <div className="space-y-1.5">
                     {pedidosPorAsignar.map((p) => {
-                      const cli = clientesById.get(p.cliente_id || "")
+                      const cli = p.cliente_id ? clientesById.get(p.cliente_id) : undefined
                       return (
                         <div
                           key={p.id}
@@ -519,24 +484,17 @@ export function RepartosMinoristas({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
                               <Badge variant="outline" className="text-[10px]">
-                                {p.numero}
+                                {pedidoNumero(p)}
                               </Badge>
                               <span className="text-sm font-medium truncate">
-                                {cli
-                                  ? `${cli.nombre} ${cli.apellido}`
-                                  : "Sin cliente"}
+                                {cli ? clienteNombre(cli) : "Sin cliente"}
                               </span>
                             </div>
                             <p className="text-xs text-muted-foreground truncate">
-                              {cli?.direccion || "Sin dirección"} ·{" "}
-                              {formatCurrency(p.total)}
+                              {p.direccion_entrega || "Sin dirección"} · {formatCurrency(p.total)}
                             </p>
                           </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => addPedido(p.id)}
-                          >
+                          <Button size="sm" variant="outline" onClick={() => addPedido(p.id)}>
                             <ChevronRight className="h-3.5 w-3.5" />
                           </Button>
                         </div>
@@ -550,7 +508,6 @@ export function RepartosMinoristas({
         )}
       </div>
 
-      {/* Dialog nuevo reparto */}
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -579,9 +536,7 @@ export function RepartosMinoristas({
               <Label>Repartidor</Label>
               <Input
                 value={newForm.repartidor}
-                onChange={(e) =>
-                  setNewForm({ ...newForm, repartidor: e.target.value })
-                }
+                onChange={(e) => setNewForm({ ...newForm, repartidor: e.target.value })}
                 placeholder="Nombre del repartidor"
               />
             </div>
@@ -613,14 +568,14 @@ function SortableRow({
   index,
   onRemove,
 }: {
-  pedido: PedidoMinorista
-  cliente?: ClienteMinorista
-  items: ItemPedidoMinorista[]
+  pedido: MnPedido
+  cliente?: MnCliente
+  items: MnItemConNombre[]
   index: number
   onRemove: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: pedido.id })
+    useSortable({ id: String(pedido.id) })
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -647,15 +602,15 @@ function SortableRow({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-[10px]">
-            {pedido.numero}
+            {pedidoNumero(pedido)}
           </Badge>
           <span className="font-medium text-sm">
-            {cliente ? `${cliente.nombre} ${cliente.apellido}` : "Sin cliente"}
+            {cliente ? clienteNombre(cliente) : "Sin cliente"}
           </span>
           <Badge className="text-[10px]">{ESTADO_LABEL[pedido.estado]}</Badge>
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {cliente?.direccion || "Sin dirección"}
+          {pedido.direccion_entrega || "Sin dirección"}
           {cliente?.telefono && ` · ${cliente.telefono}`}
         </p>
         <p className="text-xs text-muted-foreground truncate">
@@ -665,7 +620,7 @@ function SortableRow({
       <div className="text-right">
         <div className="text-sm font-bold">{formatCurrency(pedido.total)}</div>
         <div className="text-[10px] uppercase text-muted-foreground">
-          {pedido.forma_pago}
+          {pedido.metodo_pago || "—"}
         </div>
       </div>
       <Button

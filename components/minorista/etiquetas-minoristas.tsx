@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { FileDown, Tag, CheckSquare, Square, Truck } from "lucide-react"
+import { FileDown, Tag, CheckSquare, Square } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,21 +13,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Card, CardContent } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
 import { formatCurrency, todayISO } from "@/lib/utils"
 import jsPDF from "jspdf"
 import {
-  ClienteMinorista,
-  PedidoMinorista,
-  ItemPedidoMinorista,
+  MnCliente,
+  MnPedido,
+  MnItemConNombre,
   RepartoMinorista,
+  pedidoFecha,
+  pedidoNumero,
+  clienteNombre,
 } from "./types"
 
 interface Props {
-  pedidos: PedidoMinorista[]
-  items: ItemPedidoMinorista[]
-  clientes: ClienteMinorista[]
+  pedidos: MnPedido[]
+  items: MnItemConNombre[]
+  clientes: MnCliente[]
   repartos: RepartoMinorista[]
 }
 
@@ -38,31 +40,29 @@ export function EtiquetasMinoristas({ pedidos, items, clientes, repartos }: Prop
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const clientesById = useMemo(() => {
-    const m = new Map<string, ClienteMinorista>()
+    const m = new Map<number, MnCliente>()
     clientes.forEach((c) => m.set(c.id, c))
     return m
   }, [clientes])
 
   const itemsByPedido = useMemo(() => {
-    const m = new Map<string, ItemPedidoMinorista[]>()
+    const m = new Map<string, MnItemConNombre[]>()
     items.forEach((it) => {
-      if (!m.has(it.pedido_id)) m.set(it.pedido_id, [])
-      m.get(it.pedido_id)!.push(it)
+      const key = String(it.pedido_id)
+      if (!m.has(key)) m.set(key, [])
+      m.get(key)!.push(it)
     })
     return m
   }, [items])
 
   const filtered = useMemo(() => {
-    let base = pedidos.filter((p) => p.fecha === fecha)
+    let base = pedidos.filter((p) => pedidoFecha(p) === fecha)
     if (repartoId !== "all") {
       const r = repartos.find((x) => x.id === repartoId)
       const orden = r?.orden_pedidos || []
       const setIds = new Set(orden)
-      base = base.filter((p) => setIds.has(p.id))
-      base.sort(
-        (a, b) =>
-          orden.indexOf(a.id) - orden.indexOf(b.id)
-      )
+      base = base.filter((p) => setIds.has(String(p.id)))
+      base.sort((a, b) => orden.indexOf(String(a.id)) - orden.indexOf(String(b.id)))
     }
     return base
   }, [pedidos, fecha, repartoId, repartos])
@@ -79,55 +79,41 @@ export function EtiquetasMinoristas({ pedidos, items, clientes, repartos }: Prop
     if (selected.size === filtered.length) {
       setSelected(new Set())
     } else {
-      setSelected(new Set(filtered.map((p) => p.id)))
+      setSelected(new Set(filtered.map((p) => String(p.id))))
     }
   }
 
   const generarEtiquetas = () => {
-    const list = filtered.filter((p) => selected.has(p.id))
+    const list = filtered.filter((p) => selected.has(String(p.id)))
     if (list.length === 0) {
-      toast({
-        title: "Sin pedidos",
-        description: "Seleccioná al menos un pedido",
-        variant: "destructive",
-      })
+      toast({ title: "Sin pedidos", description: "Seleccioná al menos un pedido", variant: "destructive" })
       return
     }
 
-    // Formato térmico 10x15cm (100 x 150 mm), una etiqueta por página
-    const doc = new jsPDF({
-      unit: "mm",
-      format: [100, 150],
-      orientation: "portrait",
-    })
+    const doc = new jsPDF({ unit: "mm", format: [100, 150], orientation: "portrait" })
 
     list.forEach((p, idx) => {
       if (idx > 0) doc.addPage([100, 150], "portrait")
-      const cli = clientesById.get(p.cliente_id || "")
-      const its = itemsByPedido.get(p.id) || []
+      const cli = p.cliente_id ? clientesById.get(p.cliente_id) : undefined
+      const its = itemsByPedido.get(String(p.id)) || []
 
       let y = 8
-
-      // Header: número y fecha
       doc.setFont("helvetica", "bold")
       doc.setFontSize(10)
-      doc.text(p.numero, 6, y)
+      doc.text(pedidoNumero(p), 6, y)
       doc.setFont("helvetica", "normal")
       doc.setFontSize(8)
-      doc.text(p.fecha, 94, y, { align: "right" })
+      doc.text(pedidoFecha(p), 94, y, { align: "right" })
       y += 2
       doc.setLineWidth(0.3)
       doc.line(6, y, 94, y)
       y += 5
 
-      // Cliente
       doc.setFont("helvetica", "bold")
       doc.setFontSize(14)
-      const nombre = cli ? `${cli.nombre} ${cli.apellido}` : "Sin cliente"
-      doc.text(nombre, 6, y)
+      doc.text(cli ? clienteNombre(cli) : "Sin cliente", 6, y)
       y += 6
 
-      // Teléfono
       if (cli?.telefono) {
         doc.setFont("helvetica", "normal")
         doc.setFontSize(10)
@@ -135,16 +121,14 @@ export function EtiquetasMinoristas({ pedidos, items, clientes, repartos }: Prop
         y += 5
       }
 
-      // Dirección (wrap)
-      if (cli?.direccion) {
+      if (p.direccion_entrega) {
         doc.setFont("helvetica", "bold")
         doc.setFontSize(11)
-        const dirLines = doc.splitTextToSize(cli.direccion, 88)
+        const dirLines = doc.splitTextToSize(p.direccion_entrega, 88)
         doc.text(dirLines, 6, y)
         y += dirLines.length * 5 + 1
       }
 
-      // Notas
       if (p.notas) {
         doc.setFont("helvetica", "italic")
         doc.setFontSize(8)
@@ -153,12 +137,10 @@ export function EtiquetasMinoristas({ pedidos, items, clientes, repartos }: Prop
         y += notesLines.length * 4 + 2
       }
 
-      // Separador
       doc.setLineWidth(0.2)
       doc.line(6, y, 94, y)
       y += 4
 
-      // Detalle de items
       doc.setFont("helvetica", "bold")
       doc.setFontSize(9)
       doc.text("DETALLE", 6, y)
@@ -174,7 +156,6 @@ export function EtiquetasMinoristas({ pedidos, items, clientes, repartos }: Prop
       })
       y += 2
 
-      // Total
       doc.setLineWidth(0.2)
       doc.line(6, y, 94, y)
       y += 5
@@ -184,11 +165,10 @@ export function EtiquetasMinoristas({ pedidos, items, clientes, repartos }: Prop
       doc.text(formatCurrency(p.total), 94, y, { align: "right" })
       y += 6
 
-      // Forma de pago
       doc.setFont("helvetica", "normal")
       doc.setFontSize(9)
       const pagoTxt =
-        p.forma_pago === "mercadopago" ? "Pago: MercadoPago" : "Pago: Efectivo"
+        p.metodo_pago === "efectivo" ? "Pago: Efectivo" : `Pago: ${p.metodo_pago || "—"}`
       doc.text(pagoTxt, 6, y)
     })
 
@@ -256,17 +236,15 @@ export function EtiquetasMinoristas({ pedidos, items, clientes, repartos }: Prop
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
           {filtered.map((p) => {
-            const cli = clientesById.get(p.cliente_id || "")
-            const its = itemsByPedido.get(p.id) || []
-            const isChecked = selected.has(p.id)
+            const cli = p.cliente_id ? clientesById.get(p.cliente_id) : undefined
+            const its = itemsByPedido.get(String(p.id)) || []
+            const isChecked = selected.has(String(p.id))
             return (
               <button
                 key={p.id}
-                onClick={() => toggle(p.id)}
+                onClick={() => toggle(String(p.id))}
                 className={`text-left p-3 rounded-lg border transition-colors ${
-                  isChecked
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:bg-muted/30"
+                  isChecked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/30"
                 }`}
               >
                 <div className="flex items-start gap-2">
@@ -278,14 +256,14 @@ export function EtiquetasMinoristas({ pedidos, items, clientes, repartos }: Prop
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <Badge variant="outline" className="text-[10px]">
-                        {p.numero}
+                        {pedidoNumero(p)}
                       </Badge>
                       <span className="text-sm font-medium truncate">
-                        {cli ? `${cli.nombre} ${cli.apellido}` : "Sin cliente"}
+                        {cli ? clienteNombre(cli) : "Sin cliente"}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground truncate">
-                      {cli?.direccion || "Sin dirección"}
+                      {p.direccion_entrega || "Sin dirección"}
                     </p>
                     <p className="text-xs text-muted-foreground truncate">
                       {its.map((it) => `${it.cantidad}× ${it.nombre_producto}`).join(", ")}
