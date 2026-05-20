@@ -1,6 +1,10 @@
 import { createBrowserClient } from '@supabase/ssr'
+import type { SupabaseClient } from '@supabase/supabase-js'
+
+let client: SupabaseClient | null = null
 
 export function createClient() {
+  if (client) return client
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!url || !key) {
@@ -8,5 +12,6 @@ export function createClient() {
       'Faltan variables de entorno de Supabase. Verificá que NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY estén configuradas.'
     )
   }
-  return createBrowserClient(url, key)
+  client = createBrowserClient(url, key)
+  return client
 }
