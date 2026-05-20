@@ -22,17 +22,20 @@ import { StatCard } from "@/components/stat-card"
 import { Badge } from "@/components/ui/badge"
 import { useSupabase } from "@/hooks/use-supabase"
 import { formatCurrency } from "@/lib/utils"
-import { buildCostTimeline, getCostAtDate, type CostTimeline } from "@/lib/cost-timeline"
+import { buildCostTimeline, getCostAtDate } from "@/lib/cost-timeline"
 import {
-  ClienteMinorista,
-  ProductoMinorista,
-  PromoMinorista,
-  PedidoMinorista,
-  ItemPedidoMinorista,
+  MnCliente,
+  MnProducto,
+  MnPedido,
+  MnItemPedido,
+  MnItemConNombre,
   RepartoMinorista,
   RendicionMinorista,
   ESTADO_COLOR,
   ESTADO_LABEL,
+  pedidoFecha,
+  pedidoNumero,
+  clienteNombre,
 } from "./minorista/types"
 import { ClientesMinoristas } from "./minorista/clientes-minoristas"
 import { CatalogoMinoristas } from "./minorista/catalogo-minoristas"
@@ -58,58 +61,58 @@ export interface PedidoCosto {
 }
 
 export function MinoristaContent() {
-  const {
-    data: clientes = [],
-    mutate: mutateClientes,
-    isLoading: lC,
-  } = useSupabase<ClienteMinorista>("clientes_minoristas")
-  const {
-    data: productos = [],
-    mutate: mutateProductos,
-  } = useSupabase<ProductoMinorista>("productos_minoristas")
-  const {
-    data: promos = [],
-    mutate: mutatePromos,
-  } = useSupabase<PromoMinorista>("promos_minoristas")
-  const {
-    data: pedidos = [],
-    mutate: mutatePedidos,
-  } = useSupabase<PedidoMinorista>("pedidos_minoristas")
-  const {
-    data: items = [],
-    mutate: mutateItems,
-  } = useSupabase<ItemPedidoMinorista>("items_pedido_minorista")
-  const {
-    data: repartos = [],
-    mutate: mutateRepartos,
-  } = useSupabase<RepartoMinorista>("repartos_minoristas")
-  const {
-    data: rendiciones = [],
-    mutate: mutateRendiciones,
-  } = useSupabase<RendicionMinorista>("rendiciones_minoristas")
+  const { data: clientes = [], mutate: mutateClientes } =
+    useSupabase<MnCliente>("mn_clientes", { orderBy: "nombre", ascending: true })
+  const { data: productos = [], mutate: mutateProductos } =
+    useSupabase<MnProducto>("mn_productos", { orderBy: "nombre", ascending: true })
+  const { data: pedidos = [], mutate: mutatePedidos } =
+    useSupabase<MnPedido>("mn_pedidos", { limit: 1000 })
+  const { data: items = [], mutate: mutateItems } =
+    useSupabase<MnItemPedido>("mn_items_pedido", { limit: 2000 })
+  const { data: repartos = [], mutate: mutateRepartos } =
+    useSupabase<RepartoMinorista>("repartos_minoristas")
+  const { data: rendiciones = [], mutate: mutateRendiciones } =
+    useSupabase<RendicionMinorista>("rendiciones_minoristas")
   const { data: compras = [] } = useSupabase<CompraRow>("compras")
+
+  // Enrich items with product name from mn_productos
+  const productosById = useMemo(() => {
+    const m = new Map<number, MnProducto>()
+    productos.forEach((p) => m.set(p.id, p))
+    return m
+  }, [productos])
+
+  const itemsConNombre = useMemo<MnItemConNombre[]>(() => {
+    return items.map((it) => ({
+      ...it,
+      nombre_producto: it.producto_id
+        ? productosById.get(it.producto_id)?.nombre ?? `Producto ${it.producto_id}`
+        : "Producto libre",
+    }))
+  }, [items, productosById])
 
   const costTimeline = useMemo(() => buildCostTimeline(compras), [compras])
 
-  // Ganancia por pedido: cada item busca el costo unitario en la compra más
-  // cercana anterior a la fecha del pedido. Mismo esquema que ventas mayoristas.
   const costoByPedido = useMemo(() => {
     const m = new Map<string, PedidoCosto>()
-    const itemsByPed = new Map<string, ItemPedidoMinorista[]>()
-    for (const it of items) {
-      const arr = itemsByPed.get(it.pedido_id) ?? []
+    const itemsByPed = new Map<string, MnItemConNombre[]>()
+    for (const it of itemsConNombre) {
+      const key = String(it.pedido_id)
+      const arr = itemsByPed.get(key) ?? []
       arr.push(it)
-      itemsByPed.set(it.pedido_id, arr)
+      itemsByPed.set(key, arr)
     }
     for (const p of pedidos) {
-      const its = itemsByPed.get(p.id) ?? []
+      const key = String(p.id)
+      const its = itemsByPed.get(key) ?? []
       let costo = 0
       let conCosto = 0
       let sinCosto = 0
+      const fecha = pedidoFecha(p)
       for (const it of its) {
-        const c = getCostAtDate(it.nombre_producto, p.fecha, costTimeline)
+        const c = getCostAtDate(it.nombre_producto, fecha, costTimeline)
         if (c > 0) {
-          costo += c * (it.cantidad ?? 0)
+          costo += c * it.cantidad
           conCosto++
         } else {
           sinCosto++
@@ -117,10 +120,10 @@ export function MinoristaContent() {
       }
       const ganancia = (p.total ?? 0) - costo
       const margenPct = (p.total ?? 0) > 0 ? (ganancia / p.total) * 100 : 0
-      m.set(p.id, { costo, ganancia, margenPct, itemsConCosto: conCosto, itemsSinCosto: sinCosto })
+      m.set(key, { costo, ganancia, margenPct, itemsConCosto: conCosto, itemsSinCosto: sinCosto })
     }
     return m
-  }, [pedidos, items, costTimeline])
+  }, [pedidos, itemsConNombre, costTimeline])
 
   return (
     <Tabs defaultValue="hoy" className="space-y-4">
@@ -158,7 +161,7 @@ export function MinoristaContent() {
       <TabsContent value="hoy">
         <HoyTab
           pedidos={pedidos}
-          items={items}
+          items={itemsConNombre}
           clientes={clientes}
           repartos={repartos}
           costoByPedido={costoByPedido}
@@ -168,10 +171,9 @@ export function MinoristaContent() {
       <TabsContent value="pedidos">
         <PedidosMinoristas
           pedidos={pedidos}
-          items={items}
+          items={itemsConNombre}
           clientes={clientes}
           productos={productos}
-          promos={promos}
           mutatePedidos={mutatePedidos}
           mutateItems={mutateItems}
           costoByPedido={costoByPedido}
@@ -182,7 +184,7 @@ export function MinoristaContent() {
         <RepartosMinoristas
           repartos={repartos}
           pedidos={pedidos}
-          items={items}
+          items={itemsConNombre}
           clientes={clientes}
           mutateRepartos={mutateRepartos}
           mutatePedidos={mutatePedidos}
@@ -192,7 +194,7 @@ export function MinoristaContent() {
       <TabsContent value="etiquetas">
         <EtiquetasMinoristas
           pedidos={pedidos}
-          items={items}
+          items={itemsConNombre}
           clientes={clientes}
           repartos={repartos}
         />
@@ -205,9 +207,7 @@ export function MinoristaContent() {
       <TabsContent value="catalogo">
         <CatalogoMinoristas
           productos={productos}
-          promos={promos}
           mutateProductos={mutateProductos}
-          mutatePromos={mutatePromos}
         />
       </TabsContent>
 
@@ -224,7 +224,7 @@ export function MinoristaContent() {
   )
 }
 
-// --------- Hoy ---------
+// ── Hoy ──────────────────────────────────────────────────────────────────────
 
 function HoyTab({
   pedidos,
@@ -233,54 +233,54 @@ function HoyTab({
   repartos,
   costoByPedido,
 }: {
-  pedidos: PedidoMinorista[]
-  items: ItemPedidoMinorista[]
-  clientes: ClienteMinorista[]
+  pedidos: MnPedido[]
+  items: MnItemConNombre[]
+  clientes: MnCliente[]
   repartos: RepartoMinorista[]
   costoByPedido: Map<string, PedidoCosto>
 }) {
   const hoy = new Date().toISOString().slice(0, 10)
 
   const clientesById = useMemo(() => {
-    const m = new Map<string, ClienteMinorista>()
+    const m = new Map<number, MnCliente>()
     clientes.forEach((c) => m.set(c.id, c))
     return m
   }, [clientes])
 
   const pedidosById = useMemo(() => {
-    const m = new Map<string, PedidoMinorista>()
-    pedidos.forEach((p) => m.set(p.id, p))
+    const m = new Map<string, MnPedido>()
+    pedidos.forEach((p) => m.set(String(p.id), p))
     return m
   }, [pedidos])
 
   const itemsByPedido = useMemo(() => {
-    const m = new Map<string, ItemPedidoMinorista[]>()
+    const m = new Map<string, MnItemConNombre[]>()
     items.forEach((it) => {
-      if (!m.has(it.pedido_id)) m.set(it.pedido_id, [])
-      m.get(it.pedido_id)!.push(it)
+      const key = String(it.pedido_id)
+      if (!m.has(key)) m.set(key, [])
+      m.get(key)!.push(it)
     })
     return m
   }, [items])
 
-  const pedidosHoy = pedidos.filter((p) => p.fecha === hoy)
+  const pedidosHoy = pedidos.filter((p) => pedidoFecha(p) === hoy)
   const totalHoy = pedidosHoy.reduce((s, p) => s + (p.total || 0), 0)
   const enReparto = pedidosHoy.filter((p) => p.estado === "en_reparto").length
   const entregados = pedidosHoy.filter((p) => p.estado === "entregado").length
-  const fallidos = pedidosHoy.filter((p) => p.estado === "intento_fallido").length
+  const fallidos = pedidosHoy.filter((p) => p.estado === "cancelado").length
   const pendientes = pedidosHoy.filter((p) =>
-    ["recibido", "confirmado"].includes(p.estado)
+    ["pendiente", "confirmado"].includes(p.estado)
   ).length
 
-  // Ganancia del día (sólo entregados — los demás aún no se concretaron)
   const pedidosCobrados = pedidosHoy.filter((p) => p.estado === "entregado")
   const gananciaHoy = pedidosCobrados.reduce(
-    (s, p) => s + (costoByPedido.get(p.id)?.ganancia ?? 0),
+    (s, p) => s + (costoByPedido.get(String(p.id))?.ganancia ?? 0),
     0
   )
   const ventasCobradasHoy = pedidosCobrados.reduce((s, p) => s + (p.total ?? 0), 0)
   const margenPctHoy = ventasCobradasHoy > 0 ? (gananciaHoy / ventasCobradasHoy) * 100 : 0
   const itemsSinCostoHoy = pedidosHoy.reduce(
-    (s, p) => s + (costoByPedido.get(p.id)?.itemsSinCosto ?? 0),
+    (s, p) => s + (costoByPedido.get(String(p.id))?.itemsSinCosto ?? 0),
     0
   )
 
@@ -310,7 +310,7 @@ function HoyTab({
         <StatCard
           title="Entregados"
           value={String(entregados)}
-          subtitle={fallidos > 0 ? `${fallidos} fallidos` : undefined}
+          subtitle={fallidos > 0 ? `${fallidos} cancelados` : undefined}
           icon={CheckCircle2}
           variant={fallidos > 0 ? "warning" : "default"}
         />
@@ -320,7 +320,7 @@ function HoyTab({
         <StatCard
           title="Ganancia (entregados hoy)"
           value={formatCurrency(gananciaHoy)}
-          subtitle={ventasCobradasHoy > 0 ? `${margenPctHoy.toFixed(1)}% margen` : "Aún no hay entregas"}
+          subtitle={ventasCobradasHoy > 0 ? `${margenPctHoy.toFixed(1)}% margen` : "Sin entregas aún"}
           icon={DollarSign}
           variant={gananciaHoy >= 0 ? "success" : "warning"}
         />
@@ -342,7 +342,6 @@ function HoyTab({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Repartos del día */}
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
@@ -357,8 +356,10 @@ function HoyTab({
               <div className="space-y-2">
                 {repartosHoy.map((r) => {
                   const ped = (r.orden_pedidos || []).length
-                  const tot = (r.orden_pedidos || [])
-                    .reduce((s, id) => s + (pedidosById.get(id)?.total || 0), 0)
+                  const tot = (r.orden_pedidos || []).reduce(
+                    (s, id) => s + (pedidosById.get(id)?.total || 0),
+                    0
+                  )
                   return (
                     <div
                       key={r.id}
@@ -371,13 +372,9 @@ function HoyTab({
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="text-sm font-bold">
-                          {formatCurrency(tot)}
-                        </div>
+                        <div className="text-sm font-bold">{formatCurrency(tot)}</div>
                         <Badge
-                          variant={
-                            r.estado === "finalizado" ? "secondary" : "outline"
-                          }
+                          variant={r.estado === "finalizado" ? "secondary" : "outline"}
                           className="text-[10px]"
                         >
                           {r.estado === "armando"
@@ -395,7 +392,6 @@ function HoyTab({
           </CardContent>
         </Card>
 
-        {/* Pedidos recientes hoy */}
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
@@ -410,42 +406,30 @@ function HoyTab({
               <div className="space-y-1.5 max-h-80 overflow-y-auto">
                 {pedidosHoy
                   .slice()
-                  .sort((a, b) =>
-                    (b.created_at || "").localeCompare(a.created_at || "")
-                  )
+                  .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
                   .slice(0, 10)
                   .map((p) => {
-                    const cli = clientesById.get(p.cliente_id || "")
-                    const its = itemsByPedido.get(p.id) || []
+                    const cli = p.cliente_id ? clientesById.get(p.cliente_id) : undefined
+                    const its = itemsByPedido.get(String(p.id)) || []
                     return (
                       <div
                         key={p.id}
                         className="flex items-center gap-2 p-2 rounded border bg-card"
                       >
                         <Badge variant="outline" className="text-[10px] shrink-0">
-                          {p.numero}
+                          {pedidoNumero(p)}
                         </Badge>
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium truncate">
-                            {cli
-                              ? `${cli.nombre} ${cli.apellido}`
-                              : "Sin cliente"}
+                            {cli ? clienteNombre(cli) : "Sin cliente"}
                           </div>
                           <div className="text-xs text-muted-foreground truncate">
-                            {its
-                              .map(
-                                (it) => `${it.cantidad}× ${it.nombre_producto}`
-                              )
-                              .join(", ")}
+                            {its.map((it) => `${it.cantidad}× ${it.nombre_producto}`).join(", ")}
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="text-sm font-bold">
-                            {formatCurrency(p.total)}
-                          </div>
-                          <Badge
-                            className={`${ESTADO_COLOR[p.estado]} border text-[9px]`}
-                          >
+                          <div className="text-sm font-bold">{formatCurrency(p.total)}</div>
+                          <Badge className={`${ESTADO_COLOR[p.estado]} border text-[9px]`}>
                             {ESTADO_LABEL[p.estado]}
                           </Badge>
                         </div>
@@ -462,8 +446,7 @@ function HoyTab({
         <Card className="border-rose-200 bg-rose-50/50">
           <CardContent className="p-3 flex items-center gap-2 text-sm text-rose-800">
             <AlertTriangle className="h-4 w-4" />
-            Hoy hay {fallidos} intento(s) de entrega fallido(s). Revisá la pestaña
-            Pedidos para reprogramar.
+            Hoy hay {fallidos} pedido(s) cancelado(s). Revisá la pestaña Pedidos.
           </CardContent>
         </Card>
       )}
