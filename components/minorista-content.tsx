@@ -87,7 +87,7 @@ export function MinoristaContent() {
       ...it,
       nombre_producto: it.producto_id
         ? productosById.get(it.producto_id)?.nombre ?? `Producto ${it.producto_id}`
-        : "Producto libre",
+        : it.notas || "Producto libre",
     }))
   }, [items, productosById])
 
