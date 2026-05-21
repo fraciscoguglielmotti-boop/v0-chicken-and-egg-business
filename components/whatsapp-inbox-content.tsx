@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import {
   Send, MessageSquare, ArrowLeft, RefreshCw, Phone,
   AlertTriangle, CheckCheck, ShoppingCart, MapPin,
-  CreditCard, Bot,
+  CreditCard, Bot, UserCheck, BotOff,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
@@ -292,6 +292,7 @@ export function WhatsappInboxContent() {
   const [filterTab, setFilterTab] = useState<FilterTab>("todas")
   const [replyText, setReplyText] = useState("")
   const [sending, setSending] = useState(false)
+  const [togglingBot, setTogglingBot] = useState(false)
   const [loading, setLoading] = useState(true)
   const [showChat, setShowChat] = useState(false)
 
@@ -423,6 +424,21 @@ export function WhatsappInboxContent() {
     }
   }
 
+  // ── Tomar / liberar control del bot ───────────────────────────────────────
+  const toggleBot = async () => {
+    if (!selectedConv || togglingBot) return
+    setTogglingBot(true)
+    try {
+      await supabase
+        .from("wa_conversaciones")
+        .update({ pausado_por_humano: !selectedConv.pausado_por_humano })
+        .eq("id", selectedConv.id)
+      await loadConvs()
+    } finally {
+      setTogglingBot(false)
+    }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-[calc(100vh-3.5rem-2rem)] lg:h-[calc(100vh-3.5rem-3rem)] overflow-hidden rounded-lg border border-border bg-background shadow-sm">
@@ -488,17 +504,18 @@ export function WhatsappInboxContent() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-semibold text-sm">{contactName}</span>
-                  {selectedConv.pausado_por_humano && (
+                  {selectedConv.pausado_por_humano ? (
                     <Badge variant="outline" className="text-[11px] gap-1 border-red-300 text-red-600 bg-red-50">
                       <AlertTriangle className="h-3 w-3" />
-                      Necesita humano
+                      Agente activo
                     </Badge>
-                  )}
-                  {selectedConv.estado_actual && !selectedConv.pausado_por_humano && (
-                    <Badge variant="outline" className={cn("text-[11px] gap-1", ESTADO_COLOR[selectedConv.estado_actual] ?? "")}>
-                      <Bot className="h-3 w-3" />
-                      {ESTADO_LABEL[selectedConv.estado_actual] ?? selectedConv.estado_actual}
-                    </Badge>
+                  ) : (
+                    selectedConv.estado_actual && (
+                      <Badge variant="outline" className={cn("text-[11px] gap-1", ESTADO_COLOR[selectedConv.estado_actual] ?? "")}>
+                        <Bot className="h-3 w-3" />
+                        {ESTADO_LABEL[selectedConv.estado_actual] ?? selectedConv.estado_actual}
+                      </Badge>
+                    )
                   )}
                 </div>
                 <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
@@ -506,6 +523,26 @@ export function WhatsappInboxContent() {
                   <span>{fmtPhone(selectedConv.telefono)}</span>
                 </div>
               </div>
+
+              {/* Botón tomar / liberar control */}
+              <Button
+                size="sm"
+                variant={selectedConv.pausado_por_humano ? "outline" : "secondary"}
+                className={cn(
+                  "shrink-0 text-xs h-8 gap-1.5",
+                  selectedConv.pausado_por_humano
+                    ? "border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                    : "text-muted-foreground"
+                )}
+                onClick={toggleBot}
+                disabled={togglingBot}
+              >
+                {selectedConv.pausado_por_humano ? (
+                  <><Bot className="h-3.5 w-3.5" /> Devolver al bot</>
+                ) : (
+                  <><UserCheck className="h-3.5 w-3.5" /> Tomar control</>
+                )}
+              </Button>
             </div>
 
             {/* Info del carrito/pedido si hay */}
@@ -521,16 +558,24 @@ export function WhatsappInboxContent() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input de respuesta */}
-            {selectedConv.pausado_por_humano && (
-              <div className="flex items-end gap-2 px-4 py-3 border-t border-border bg-background shrink-0">
+            {/* Input de respuesta — siempre visible */}
+            <div className="border-t border-border bg-background shrink-0">
+              {!selectedConv.pausado_por_humano && (
+                <div className="px-4 pt-2 pb-0">
+                  <p className="text-[11px] text-amber-600 flex items-center gap-1">
+                    <Bot className="h-3 w-3" />
+                    El bot está activo. Tu mensaje se enviará igual, pero el bot puede seguir respondiendo.
+                  </p>
+                </div>
+              )}
+              <div className="flex items-end gap-2 px-4 py-3">
                 <Textarea
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendReply() }
                   }}
-                  placeholder="Respondé como agente humano..."
+                  placeholder={selectedConv.pausado_por_humano ? "Respondé como agente..." : "Escribí un mensaje manual..."}
                   rows={1}
                   className="resize-none min-h-[40px] max-h-[120px] flex-1 text-sm"
                 />
@@ -543,15 +588,7 @@ export function WhatsappInboxContent() {
                   <Send className="h-4 w-4" />
                 </Button>
               </div>
-            )}
-
-            {!selectedConv.pausado_por_humano && (
-              <div className="px-4 py-2 border-t border-border bg-muted/30 shrink-0">
-                <p className="text-xs text-center text-muted-foreground">
-                  El bot está activo — para responder manualmente, el cliente debe pedir un agente
-                </p>
-              </div>
-            )}
+            </div>
           </>
         )}
       </div>
